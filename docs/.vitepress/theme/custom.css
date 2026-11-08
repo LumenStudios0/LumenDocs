@@ -69,7 +69,7 @@
 }
 
 .VPNavBarSocialLinks .VPSocialLink[aria-label="Log in with Discord"]::after {
-  content: "Log in";
+  content: "Visit";
 }
 
 .VPNavBarSocialLinks .VPSocialLink[aria-label="Log in with Discord"]:hover {
