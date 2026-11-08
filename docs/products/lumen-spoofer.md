@@ -2,7 +2,7 @@
 
 Give your server a few extra hands. LumenSpoofer adds player-like NPCs that can explore, gather materials, follow task queues, fight in team roles, and bring supplies back to shared storage.
 
-[View LumenSpoofer on BuiltByBit](https://builtbybit.com/resources/lumenspoof.135950/)
+<a class="buy-now" href="https://builtbybit.com/resources/lumenspoof.135950/" target="_blank" rel="noreferrer">Buy LumenSpoofer on BuiltByBit ↗</a>
 
 ## What it does
 

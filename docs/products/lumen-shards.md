@@ -2,7 +2,7 @@
 
 LumenShards gives your server one currency for AFK rewards, player payments, and shop purchases. Choose YAML or SQLite for player data, and add PlaceholderAPI if you want to show shard information elsewhere.
 
-[View LumenShards on BuiltByBit](https://builtbybit.com/resources/lumenshards.116897/)
+<a class="buy-now" href="https://builtbybit.com/resources/lumenshards.116897/" target="_blank" rel="noreferrer">Buy LumenShards on BuiltByBit ↗</a>
 
 ## Features
 

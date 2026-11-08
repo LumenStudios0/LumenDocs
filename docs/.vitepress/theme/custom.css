@@ -124,6 +124,31 @@
   text-underline-offset: 3px;
 }
 
+.vp-doc a.buy-now {
+  display: inline-flex;
+  align-items: center;
+  margin: 4px 0 12px;
+  padding: 9px 14px;
+  border: 1px solid var(--vp-c-brand-1);
+  border-radius: 8px;
+  background: var(--vp-c-brand-1);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 650;
+  text-decoration: none;
+  transition: background-color 180ms ease, border-color 180ms ease;
+}
+
+.vp-doc a.buy-now:hover {
+  border-color: var(--vp-c-brand-2);
+  background: var(--vp-c-brand-2);
+  text-decoration: none;
+}
+
+.dark .vp-doc a.buy-now {
+  color: #17121f;
+}
+
 .vp-doc a.home-card {
   color: var(--vp-c-text-1);
 }

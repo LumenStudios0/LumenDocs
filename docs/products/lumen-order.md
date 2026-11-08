@@ -2,7 +2,7 @@
 
 With LumenOrder, players post what they want to buy and the price they’re offering. Other players deliver the items and get paid through Vault.
 
-[View LumenOrder on BuiltByBit](https://builtbybit.com/resources/lumenorders.132969/)
+<a class="buy-now" href="https://builtbybit.com/resources/lumenorders.132969/" target="_blank" rel="noreferrer">Buy LumenOrder on BuiltByBit ↗</a>
 
 ## Features
 

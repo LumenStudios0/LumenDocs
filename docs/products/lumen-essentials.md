@@ -2,7 +2,7 @@
 
 LumenEssentials puts day-to-day staff work in one place: a dashboard, moderation commands, notes, assistance requests, chat tools, and inventory snapshots. The player-data wipe workflow is separate and deliberately permission-gated.
 
-[View LumenEssentials on BuiltByBit](https://builtbybit.com/resources/lumenessentials.132966/)
+<a class="buy-now" href="https://builtbybit.com/resources/lumenessentials.132966/" target="_blank" rel="noreferrer">Buy LumenEssentials on BuiltByBit ↗</a>
 
 ## Features
 

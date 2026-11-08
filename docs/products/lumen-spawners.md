@@ -2,7 +2,7 @@
 
 Build a spawner setup without filling your world with mobs. LumenSpawners produces configured drops and items virtually, and saves each spawner and its stored output in SQLite.
 
-[View LumenSpawners on BuiltByBit](https://builtbybit.com/resources/lumenspawners.132970/)
+<a class="buy-now" href="https://builtbybit.com/resources/lumenspawners.132970/" target="_blank" rel="noreferrer">Buy LumenSpawners on BuiltByBit ↗</a>
 
 ## Features
 

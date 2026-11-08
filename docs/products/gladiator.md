@@ -2,7 +2,7 @@
 
 Gladiator brings server-side security checks and staff tools together. Many checks use normal Bukkit events; packet masking and a few other features need a compatible PacketEvents install.
 
-[View Gladiator on BuiltByBit](https://builtbybit.com/resources/gladiator.132519/)
+<a class="buy-now" href="https://builtbybit.com/resources/gladiator.132519/" target="_blank" rel="noreferrer">Buy Gladiator on BuiltByBit ↗</a>
 
 ## Features
 
