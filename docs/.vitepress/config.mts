@@ -42,12 +42,9 @@ export default defineConfig({
       },
     },
     nav: [
-      { text: 'Home', link: '/' },
       { text: 'Plugins', link: '/plugins/' },
       { text: 'Getting started', link: '/getting-started/' },
-      { text: 'Licensing', link: '/getting-started/licensing' },
       { text: 'Discord', link: 'https://discord.gg/lumenstudios' },
-      { text: 'Troubleshooting', link: '/troubleshooting' },
     ],
     sidebar: [
       {
@@ -88,6 +85,17 @@ export default defineConfig({
             ],
           },
           {
+            text: 'LumenSpoofer',
+            collapsed: true,
+            items: [
+              { text: 'Overview', link: '/products/lumen-spoofer' },
+              { text: 'Installation', link: '/products/lumen-spoofer#installation' },
+              { text: 'Commands', link: '/products/lumen-spoofer#commands' },
+              { text: 'What it does', link: '/products/lumen-spoofer#what-it-does' },
+              { text: 'Troubleshooting', link: '/products/lumen-spoofer#troubleshooting' },
+            ],
+          },
+          {
             text: 'LumenDuels',
             collapsed: true,
             items: [
@@ -97,6 +105,25 @@ export default defineConfig({
               { text: 'Configuration', link: '/products/lumen-duels#configuration' },
               { text: 'What it does', link: '/products/lumen-duels#features' },
               { text: 'Troubleshooting', link: '/products/lumen-duels#troubleshooting' },
+            ],
+          },
+          {
+            text: 'LumenDuels Premium',
+            collapsed: true,
+            items: [
+              { text: 'Overview', link: '/products/lumen-duels-premium' },
+              { text: 'Installation', link: '/products/lumen-duels-premium#installation' },
+              { text: 'Commands', link: '/products/lumen-duels-premium#commands' },
+              { text: 'Configuration', link: '/products/lumen-duels-premium#configuration' },
+              { text: 'What it does', link: '/products/lumen-duels-premium#what-it-does' },
+            ],
+          },
+          {
+            text: 'LumenBounty',
+            collapsed: true,
+            items: [
+              { text: 'Overview', link: '/products/lumen-bounty' },
+              { text: 'BuiltByBit', link: 'https://builtbybit.com/resources/lumenbounty.132973/' },
             ],
           },
           {
@@ -157,6 +184,15 @@ export default defineConfig({
               { text: 'Configuration', link: '/products/lumen-spawners#configuration' },
               { text: 'What it does', link: '/products/lumen-spawners#features' },
               { text: 'Troubleshooting', link: '/products/lumen-spawners#troubleshooting' },
+            ],
+          },
+          {
+            text: 'Coming soon',
+            collapsed: true,
+            items: [
+              { text: 'LumenTeam', link: '/coming-soon?product=LumenTeam' },
+              { text: 'LumenIntellegance', link: '/coming-soon?product=LumenIntellegance' },
+              { text: 'Sentinel', link: '/coming-soon?product=Sentinel' },
             ],
           },
         ],

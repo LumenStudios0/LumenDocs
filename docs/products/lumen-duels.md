@@ -2,6 +2,8 @@
 
 Build out your server’s PvP scene with duels, queues, arenas, kits, and ranked progression. LumenDuels also tracks Elo, ranks, leaderboards, and shop rewards. PlaceholderAPI, Vault, and WorldGuard are optional integrations.
 
+[View LumenDuels on BuiltByBit](https://builtbybit.com/resources/lumenduels.119760/)
+
 ## Features
 
 - Challenge players and manage duel requests.

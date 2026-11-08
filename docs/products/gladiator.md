@@ -2,6 +2,8 @@
 
 Gladiator brings server-side security checks and staff tools together. Many checks use normal Bukkit events; packet masking and a few other features need a compatible PacketEvents install.
 
+[View Gladiator on BuiltByBit](https://builtbybit.com/resources/gladiator.132519/)
+
 ## Features
 
 - Modular movement, combat, interaction, anti-ESP, anti-xray, anti-structure, and rate-limit checks.
@@ -14,11 +16,11 @@ Gladiator brings server-side security checks and staff tools together. Many chec
 
 ## Installation
 
-1. Use Java 21+ and a server compatible with the Spigot API 1.21.1 build target. Validate your exact fork/version on a test server.
+1. Use Minecraft 1.21.6–1.21.11 on Spigot, Bukkit, Paper, or Purpur, with Java 21+.
 2. Install Gladiator in `plugins/` and start the server.
 3. Install a PacketEvents release that explicitly supports the exact server software and protocol if using packet masking. It is not bundled.
 4. Configure `config.yml`, `anticheat.yml`, and `ores.yml`; run `/gladiator test` to inspect module and integration status.
-5. Tune alert thresholds and enforcement in staging before enabling punishments.
+5. Test your exact server build and tune alert thresholds before enabling punishments.
 
 Paper and Purpur have their own native Anti-Xray settings. Configure those per world and restart the server; they’re separate from Gladiator.
 

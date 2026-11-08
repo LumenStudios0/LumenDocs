@@ -2,6 +2,8 @@
 
 Give players one place to list items, browse the market, and pick up expired listings. LumenAuction keeps the marketplace and transaction history in SQLite, so listings are still there after a restart.
 
+[View LumenAuction on BuiltByBit](https://builtbybit.com/resources/lumenauction.132967/)
+
 ## Features
 
 - Create, browse, search, sort, and manage item listings through the auction GUI.

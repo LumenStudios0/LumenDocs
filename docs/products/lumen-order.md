@@ -2,6 +2,8 @@
 
 With LumenOrder, players post what they want to buy and the price they’re offering. Other players deliver the items and get paid through Vault.
 
+[View LumenOrder on BuiltByBit](https://builtbybit.com/resources/lumenorders.132969/)
+
 ## Features
 
 - Create, edit, cancel, search, deliver, and track player buy orders.

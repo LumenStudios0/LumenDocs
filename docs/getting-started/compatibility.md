@@ -5,7 +5,7 @@ Supported versions differ from plugin to plugin. Check the table before installi
 | Product | Documented target or notes |
 | --- | --- |
 | LumenAuction | Minecraft 1.21.6–1.21.11; Java 21; Bukkit API, including Paper, Spigot/Bukkit, and Purpur. |
-| Gladiator | Compiles against Spigot API 1.21.1; Java 21 bytecode. Packet masking requires a compatible PacketEvents version. |
+| Gladiator | Minecraft 1.21.6–1.21.11; Spigot, Bukkit, Paper, and Purpur. Packet masking requires a compatible PacketEvents version. |
 | LumenDuels | Plugin descriptor API version 1.21. Optional integrations include PlaceholderAPI, Vault, and WorldGuard. Confirm the jar's Java/server requirements with its release notes. |
 | LumenEconomy | Compiles against Paper API 1.21.4; Java 21 bytecode. Paper and Bukkit-compatible forks are intended; newer server versions and each fork/version combination are not all runtime-tested. |
 | LumenEssentials | Compiles against Paper API 1.21.11; Java 21 bytecode. Compatible Bukkit-family servers are intended but require runtime verification. |
