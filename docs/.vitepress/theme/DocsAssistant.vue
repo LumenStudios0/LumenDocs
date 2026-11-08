@@ -71,8 +71,10 @@ let musicFilter: BiquadFilterNode | undefined
 let musicOscillators: OscillatorNode[] = []
 let musicSources: AudioScheduledSourceNode[] = []
 let musicTimer: number | undefined
+let noteTimer: number | undefined
 let rainTimer: number | undefined
 let musicChordIndex = 0
+let musicNoteIndex = 0
 let lastMusicTrack = -1
 let activeTrack: AmbientTrack | undefined
 
@@ -81,6 +83,8 @@ interface AmbientTrack {
   chords: number[][]
   waveform: OscillatorType
   filterFrequency: number
+  chordInterval: number
+  chordVolume: number
   texture?: {
     filter: BiquadFilterType
     frequency: number
@@ -94,6 +98,7 @@ interface AmbientTrack {
     volume: number
     attack: number
     decay: number
+    interval: number
     partials?: { ratio: number; level: number }[]
   }
 }
@@ -103,77 +108,89 @@ const ambientTracks: AmbientTrack[] = [
     name: 'Tides',
     waveform: 'sine',
     filterFrequency: 560,
+    chordInterval: 6800,
+    chordVolume: 0.12,
     texture: { filter: 'lowpass', frequency: 420, volume: 0.035, pulse: 0.016 },
     chords: [
-    [196, 246.94, 293.66, 369.99],
-    [174.61, 220, 261.63, 349.23],
-    [146.83, 196, 246.94, 329.63],
-    [164.81, 220, 261.63, 329.63],
+      [130.81, 164.81, 196, 246.94],
+      [110, 146.83, 174.61, 220],
+      [123.47, 155.56, 196, 233.08],
+      [98, 130.81, 164.81, 196],
     ],
   },
   {
     name: 'Mountain Wind',
     waveform: 'triangle',
     filterFrequency: 390,
+    chordInterval: 8200,
+    chordVolume: 0.1,
     texture: { filter: 'lowpass', frequency: 280, volume: 0.07, pulse: 0.045 },
     chords: [
-    [220, 261.63, 329.63, 392],
-    [196, 246.94, 293.66, 392],
-    [164.81, 220, 261.63, 349.23],
-    [174.61, 220, 293.66, 349.23],
+      [110, 164.81, 220, 329.63],
+      [98, 146.83, 196, 293.66],
+      [123.47, 185, 246.94, 369.99],
+      [87.31, 130.81, 174.61, 261.63],
     ],
   },
   {
     name: 'Forest',
     waveform: 'triangle',
     filterFrequency: 1100,
+    chordInterval: 5200,
+    chordVolume: 0.09,
     texture: { filter: 'bandpass', frequency: 850, volume: 0.018, pulse: 0.012 },
     notes: {
-      frequencies: [587.33, 659.25, 783.99, 880],
+      frequencies: [392, 493.88, 587.33, 493.88, 440, 587.33, 659.25, 587.33],
       waveform: 'triangle',
-      volume: 0.055,
+      volume: 0.07,
       attack: 0.04,
-      decay: 0.9,
+      decay: 0.65,
+      interval: 1900,
     },
     chords: [
-    [174.61, 220, 261.63, 329.63],
-    [196, 246.94, 293.66, 349.23],
-    [146.83, 196, 246.94, 293.66],
-    [164.81, 220, 261.63, 329.63],
+      [146.83, 174.61, 220, 261.63],
+      [130.81, 164.81, 196, 246.94],
+      [155.56, 185, 233.08, 293.66],
+      [138.59, 174.61, 207.65, 261.63],
     ],
   },
   {
     name: 'Rain',
     waveform: 'sine',
     filterFrequency: 760,
+    chordInterval: 9000,
+    chordVolume: 0.055,
     rain: true,
     chords: [
-    [261.63, 329.63, 392, 493.88],
-    [220, 261.63, 329.63, 440],
-    [196, 246.94, 329.63, 392],
-    [220, 293.66, 349.23, 440],
+      [130.81, 196, 261.63],
+      [146.83, 220, 293.66],
+      [123.47, 185, 246.94],
+      [110, 164.81, 220],
     ],
   },
   {
     name: 'Starlight',
     waveform: 'sine',
     filterFrequency: 1800,
+    chordInterval: 6200,
+    chordVolume: 0.08,
     notes: {
-      frequencies: [783.99, 880, 987.77, 1174.66, 1318.51],
+      frequencies: [987.77, 783.99, 1174.66, 880, 1318.51, 1046.5],
       waveform: 'sine',
       volume: 0.12,
       attack: 0.08,
       decay: 2.8,
+      interval: 2800,
       partials: [
         { ratio: 2.01, level: 0.3 },
         { ratio: 3.92, level: 0.08 },
       ],
     },
     chords: [
-    [196, 246.94, 293.66, 392],
-    [220, 261.63, 329.63, 392],
-    [174.61, 220, 293.66, 349.23],
-    [164.81, 220, 261.63, 329.63],
+      [261.63, 329.63, 392, 493.88],
+      [293.66, 369.99, 440, 554.37],
+      [246.94, 311.13, 392, 493.88],
+      [220, 329.63, 392, 523.25],
     ],
   },
 ]
@@ -305,7 +322,7 @@ function startAmbientMusic() {
     tone.type = activeTrack.waveform
     tone.frequency.setValueAtTime(frequency, now)
     tone.detune.setValueAtTime(index % 2 === 0 ? -2 : 2, now)
-    voice.gain.setValueAtTime(0.12, now)
+    voice.gain.setValueAtTime(activeTrack.chordVolume, now)
     tone.connect(voice)
     voice.connect(musicFilter)
     tone.start(now)
@@ -381,10 +398,16 @@ function startAmbientMusic() {
       tone.frequency.cancelScheduledValues(changeAt)
       tone.frequency.setTargetAtTime(chord[index], changeAt, 0.8)
     })
+  }, activeTrack.chordInterval)
 
-    if (activeTrack.notes) {
+  musicNoteIndex = 0
+  if (activeTrack.notes) {
+    const playTrackNote = () => {
+      if (!audioContext || !activeTrack?.notes || !musicFilter) return
       const instrument = activeTrack.notes
-      const frequency = instrument.frequencies[Math.floor(Math.random() * instrument.frequencies.length)]
+      const changeAt = audioContext.currentTime
+      const frequency = instrument.frequencies[musicNoteIndex % instrument.frequencies.length]
+      musicNoteIndex += 1
       const partials = [{ ratio: 1, level: 1 }, ...(instrument.partials ?? [])]
 
       for (const partial of partials) {
@@ -396,12 +419,16 @@ function startAmbientMusic() {
         noteVolume.gain.linearRampToValueAtTime(instrument.volume * partial.level, changeAt + instrument.attack)
         noteVolume.gain.exponentialRampToValueAtTime(0.0001, changeAt + instrument.decay)
         note.connect(noteVolume)
-        noteVolume.connect(musicFilter!)
+        noteVolume.connect(musicFilter)
         note.start(changeAt)
         note.stop(changeAt + instrument.decay + 0.05)
       }
     }
-  }, 4500)
+
+    playTrackNote()
+    noteTimer = window.setInterval(playTrackNote, activeTrack.notes.interval)
+  }
+
 }
 
 function stopAmbientMusic() {
@@ -409,6 +436,8 @@ function stopAmbientMusic() {
 
   window.clearInterval(musicTimer)
   musicTimer = undefined
+  window.clearInterval(noteTimer)
+  noteTimer = undefined
   window.clearTimeout(rainTimer)
   rainTimer = undefined
   const now = audioContext.currentTime
@@ -448,6 +477,7 @@ onUnmounted(() => {
   document.removeEventListener('click', playClickSound, true)
   window.removeEventListener('keydown', onKeydown)
   window.clearInterval(musicTimer)
+  window.clearInterval(noteTimer)
   window.clearTimeout(rainTimer)
   for (const source of musicSources) source.stop()
   void audioContext?.close()
