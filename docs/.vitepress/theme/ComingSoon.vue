@@ -40,6 +40,6 @@ onMounted(() => {
     <h1>Wrong turn, adventurer.</h1>
     <p class="soon-intro"><strong>{{ product }}</strong> is coming soon. This page got here before its documentation did.</p>
     <div class="soon-message" aria-live="polite">{{ message }}</div>
-    <a class="soon-back" href="/LumenDocs/plugins/">Back to the plugin catalog <span aria-hidden="true">↗</span></a>
+    <a class="soon-back" href="/plugins/">Back to the plugin catalog <span aria-hidden="true">↗</span></a>
   </div>
 </template>

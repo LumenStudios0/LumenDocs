@@ -4,13 +4,13 @@ export default defineConfig({
   lang: 'en-US',
   title: 'Lumen Studios',
   description: 'Official documentation for Lumen Studios Minecraft plugins.',
-  base: '/LumenDocs/',
+  base: '/',
   cleanUrls: true,
   appearance: 'dark',
   lastUpdated: true,
   head: [
     ['meta', { name: 'theme-color', content: '#0d0a14' }],
-    ['link', { rel: 'icon', type: 'image/png', href: '/LumenDocs/assets/lumen-logo.png' }],
+    ['link', { rel: 'icon', type: 'image/png', href: '/assets/lumen-logo.png' }],
   ],
   themeConfig: {
     logo: '/assets/lumen-logo.png',

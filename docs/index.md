@@ -32,19 +32,19 @@ features:
 ---
 
 <div class="home-grid">
-  <a class="home-card" href="/LumenDocs/plugins/">
+  <a class="home-card" href="/plugins/">
     <span class="home-card-kicker">THE PLUGINS</span>
     <strong>What are you setting up?</strong>
     <span>Browse the plugin guides and find the one that fits your server.</span>
     <span class="home-card-arrow">See all plugins <span aria-hidden="true">↗</span></span>
   </a>
-  <a class="home-card" href="/LumenDocs/getting-started/installation">
+  <a class="home-card" href="/getting-started/installation">
     <span class="home-card-kicker">FIRST TIME HERE?</span>
     <strong>Start with the basics</strong>
     <span>A few simple checks can save a lot of time when installing a plugin.</span>
     <span class="home-card-arrow">Installation guide <span aria-hidden="true">↗</span></span>
   </a>
-  <a class="home-card" href="/LumenDocs/getting-started/licensing">
+  <a class="home-card" href="/getting-started/licensing">
     <span class="home-card-kicker">LICENSE SUPPORT</span>
     <strong>We’ll help you get set up</strong>
     <span>Join our Discord and open a license support ticket.</span>
