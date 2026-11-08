@@ -1,61 +1,79 @@
 ---
 layout: home
-title: Lumen Studios Documentation
-titleTemplate: Official plugin guides
+title: Lumen Studios
+titleTemplate: Minecraft plugins and guides
 hero:
   name: Lumen Studios
-  text: Tools for worlds worth building.
-  tagline: Official guides for installing, configuring, and getting more from Lumen Studios Minecraft plugins.
+  text: Good tools. Clear answers.
+  tagline: Find the right plugin, get it set up, and get back to running your server.
   image:
-    src: /logo.svg
+    src: /assets/lumen-logo.png
     alt: Lumen Studios logo
   actions:
     - theme: brand
-      text: Explore plugins
+      text: Browse plugins
       link: /plugins/
     - theme: alt
-      text: Get started
-      link: /getting-started/
+      text: Set up a plugin
+      link: /getting-started/installation
 features:
   - icon: ◈
-    title: A guide for every plugin
-    details: Find setup instructions, commands, permissions, configuration notes, and product-specific help.
-    link: /plugins/
-    linkText: Browse the plugin catalog
+    title: Start with your server
+    details: Each guide calls out the versions, dependencies, and setup details that matter before you install.
+    link: /getting-started/compatibility
+    linkText: Check compatibility
   - icon: ⌘
-    title: Searchable by design
-    details: Search the documentation instantly with VitePress local search—no account or external service needed.
-    link: /getting-started/
-    linkText: Start here
+    title: Find the answer you need
+    details: Search commands, permissions, and settings across the plugin guides.
+    link: /plugins/
+    linkText: Find a plugin
   - icon: ✦
-    title: Built for server teams
-    details: Practical guidance for administrators, clear dependency notes, and troubleshooting steps.
-    link: /troubleshooting
-    linkText: Solve an issue
+    title: Need a license?
+    details: We’ll walk you through getting one from the Lumen Studios Discord.
+    link: /getting-started/licensing
+    linkText: Get license help
 ---
+
+<div class="brand-banner">
+  <img src="/assets/lumen-banner.png" alt="Lumen Studios — purple banner" />
+</div>
 
 <div class="home-grid">
   <a class="home-card" href="/LumenDocs/plugins/">
-    <span class="home-card-kicker">PLUGIN CATALOG</span>
-    <strong>Find your next upgrade</strong>
-    <span>Explore economy, marketplace, moderation, PvP, and server utility plugins.</span>
-    <span class="home-card-arrow">Browse plugins <span aria-hidden="true">↗</span></span>
+    <span class="home-card-kicker">THE PLUGINS</span>
+    <strong>What are you setting up?</strong>
+    <span>Browse the plugin guides and find the one that fits your server.</span>
+    <span class="home-card-arrow">See all plugins <span aria-hidden="true">↗</span></span>
   </a>
   <a class="home-card" href="/LumenDocs/getting-started/installation">
-    <span class="home-card-kicker">QUICK START</span>
-    <strong>Install with confidence</strong>
-    <span>Follow a safe, repeatable plugin installation process for your server.</span>
-    <span class="home-card-arrow">Read the guide <span aria-hidden="true">↗</span></span>
+    <span class="home-card-kicker">FIRST TIME HERE?</span>
+    <strong>Start with the basics</strong>
+    <span>A few simple checks can save a lot of time when installing a plugin.</span>
+    <span class="home-card-arrow">Installation guide <span aria-hidden="true">↗</span></span>
   </a>
-  <a class="home-card" href="/LumenDocs/troubleshooting">
-    <span class="home-card-kicker">HELP & SUPPORT</span>
-    <strong>Get back in the game</strong>
-    <span>Check common configuration, dependency, permission, and startup issues.</span>
-    <span class="home-card-arrow">Troubleshoot <span aria-hidden="true">↗</span></span>
+  <a class="home-card" href="/LumenDocs/getting-started/licensing">
+    <span class="home-card-kicker">LICENSE SUPPORT</span>
+    <strong>We’ll help you get set up</strong>
+    <span>Join our Discord and open a license support ticket.</span>
+    <span class="home-card-arrow">Get a license <span aria-hidden="true">↗</span></span>
   </a>
 </div>
 
 <style>
+.brand-banner {
+  max-width: 1152px;
+  margin: -18px auto 38px;
+  padding: 0 24px;
+}
+.brand-banner img {
+  display: block;
+  width: 100%;
+  max-height: 340px;
+  object-fit: cover;
+  border: 1px solid rgba(185, 164, 220, .16);
+  border-radius: 16px;
+  box-shadow: 0 18px 60px rgba(58, 21, 132, .2);
+}
 .home-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -75,7 +93,7 @@ features:
   background: linear-gradient(145deg, rgba(25, 19, 36, .92), rgba(17, 13, 25, .92));
   color: inherit;
   text-decoration: none !important;
-  transition: border-color .18s ease, transform .18s ease;
+  transition: border-color 180ms ease, transform 180ms ease;
 }
 .home-card:hover {
   border-color: rgba(156, 115, 255, .52);
@@ -102,6 +120,8 @@ features:
   font-weight: 600;
 }
 @media (max-width: 760px) {
+  .brand-banner { margin-top: 0; margin-bottom: 28px; }
+  .brand-banner img { max-height: 240px; border-radius: 12px; }
   .home-grid { grid-template-columns: 1fr; margin-bottom: 48px; }
   .home-card { min-height: 160px; }
 }

@@ -1,39 +1,39 @@
-# Troubleshooting
+# Something not working?
 
-Use the server console and the plugin's own log messages as the source of truth. When asking for help, include the full error (as text), plugin version, server software/version, Java version, and relevant sanitized configuration. Remove player data and all secrets before sharing.
+Start with the server console; the first error is usually more useful than the last one. If you ask for help, include the plugin version, server software and version, Java version, and the full error as text. Remove player data and private credentials before sharing logs.
 
-## Plugin does not load
+## The plugin won’t start
 
-- Check the console for the first error, not only the final `Could not load` line.
-- Confirm the jar is in `plugins/`, is not corrupted, and matches the installed Java/server version.
-- Resolve missing hard dependencies and update optional dependencies only to versions compatible with your server.
-- Check YAML indentation and quoting. Restore a backup before regenerating a configuration file.
+- Look above the final `Could not load` line for the first error.
+- Make sure the jar is in `plugins/`, matches your server and Java versions, and finished downloading.
+- Install any required dependencies, and check that optional integrations support your server version.
+- Check YAML indentation and quotes. If you need to replace a config, save a copy first.
 
-## Commands or menus are unavailable
+## A command or menu is missing
 
-- Confirm the command spelling and permission node in the product guide.
-- Check the user's effective permissions with your permissions manager. Operator defaults vary by permission.
-- Verify optional integrations are enabled and available when the feature needs them. For example, market sales require an economy provider through Vault.
-- Restart after changing settings that are not documented as reloadable.
+- Double-check the command and permission in that plugin’s guide.
+- Check the player’s effective permissions. Some permissions default to operators; others are open to everyone.
+- If the feature uses another plugin, confirm that integration is installed and running. For example, marketplace sales need an economy provider through Vault.
+- Restart after changing settings unless the guide lists a reload command for them.
 
-## Economy or payments are not working
+## Payments aren’t going through
 
-- Check that Vault and a compatible economy provider are installed and enabled.
-- Verify the plugin that owns the command or GUI is configured to use the intended provider.
-- Review logs for transaction, provider, or storage errors. Do not manually edit a live database.
+- Make sure both Vault and an economy plugin are installed and enabled.
+- Check the server log for provider or transaction errors.
+- Don’t edit a database while the server is running.
 
-## Database or data problems
+## You’re having a data or database issue
 
-- Stop the server before making a copy of SQLite or YAML player data.
-- Restore only from a known-good backup and preserve the original files for diagnosis.
-- Do not delete database files as a first troubleshooting step; this can permanently remove balances, listings, history, or player progress.
+- Stop the server before copying SQLite or YAML data.
+- Restore from a known-good backup, and keep a copy of the current files in case they help diagnose the problem.
+- Don’t delete a database to see if it helps—it may contain balances, listings, history, or player progress.
 
 ## Product-specific checks
 
-- [Gladiator](/products/gladiator#troubleshooting): packet checks require a compatible PacketEvents release; protection heuristics and packet features have documented limitations.
-- [LumenAuction](/products/lumen-auction#troubleshooting): check Vault provider availability and make backups with the server stopped.
-- [LumenOrder](/products/lumen-order#troubleshooting): delivery and order creation need Vault plus an economy provider.
-- [LumenShards](/products/lumen-shards#troubleshooting): check private license configuration and the server IP allowlist without sharing credentials.
-- [LumenSpawners](/products/lumen-spawners#troubleshooting): confirm Paper is in use; selling requires Vault and an economy provider.
+- [Gladiator](/products/gladiator#troubleshooting): packet features need a compatible PacketEvents version.
+- [LumenAuction](/products/lumen-auction#troubleshooting): listings and purchases need Vault and an economy provider.
+- [LumenOrder](/products/lumen-order#troubleshooting): order creation and delivery also need an economy provider.
+- [LumenShards](/products/lumen-shards#troubleshooting): license setup includes a private key, plugin token, and server IP allowlist. [See the Discord license steps](/getting-started/licensing).
+- [LumenSpawners](/products/lumen-spawners#troubleshooting): the plugin targets Paper; selling needs Vault and an economy provider.
 
-For unresolved issues, use the support channel included with your product delivery. Never publish license keys, plugin tokens, passwords, private player data, or webhook URLs.
+Still stuck? [Join the Lumen Studios Discord](https://discord.gg/lumenstudios) for help. Never post license keys, plugin tokens, passwords, private player data, or webhook URLs.

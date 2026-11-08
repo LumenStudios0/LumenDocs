@@ -1,6 +1,6 @@
 # LumenSpawners
 
-LumenSpawners produces configured mob drops and item outputs virtually. It does not spawn mobs for production. Spawner data and stored output are persisted in SQLite.
+Build a spawner setup without filling your world with mobs. LumenSpawners produces configured drops and items virtually, and saves each spawner and its stored output in SQLite.
 
 ## Features
 
@@ -17,7 +17,7 @@ LumenSpawners produces configured mob drops and item outputs virtually. It does 
 3. Configure `plugins/LumenSpawners/config.yml` and `mobs.yml`, then restart or use `/vspawner reload`.
 4. Install Vault and a compatible economy provider only if you want to sell stored drops.
 
-Java 21 and Maven 3.9+ are required to build from source. SQLite JDBC is included in the plugin jar; Paper and Vault are not bundled.
+Building from source requires Java 21 and Maven 3.9 or newer. The jar includes SQLite JDBC, but not Paper or Vault.
 
 ## Commands and permissions
 
@@ -32,19 +32,19 @@ Java 21 and Maven 3.9+ are required to build from source. SQLite JDBC is include
 | `/vspawner leaderboard &lt;money\|drops\|xp&gt;` | None | View a leaderboard when enabled |
 | `/vspawner reload` | `lumenspawners.admin` | Reload configuration and spawner definitions |
 
-`lumenspawners.use` and `lumenspawners.sell` default to true. Admin and split permissions default to operators. Spawner ownership is enforced by default; breaking another player's spawner may also require `lumenspawners.break.others`.
+Players have `lumenspawners.use` and `lumenspawners.sell` by default. Admin and split permissions default to operators. Spawners belong to their owners by default; breaking another player’s spawner may also need `lumenspawners.break.others`.
 
 ## Configuration
 
 - `config.yml`: general settings, item-spawner definitions, rarities, feature toggles, and storage capacities.
 - `mobs.yml`: mob entity types, virtual drop tables, XP, and per-item sale prices.
 
-Selling, evolution, upgrades, and leaderboards are individually configurable; evolution, upgrades, and leaderboards are off by default. Selling requires `selling.enabled`, Vault, an economy provider, configured prices, and `lumenspawners.sell`. Mob drop tables are virtual independent chance rolls and do not reproduce vanilla loot context such as looting or world difficulty.
+You can switch selling, evolution, upgrades, and leaderboards on or off; evolution, upgrades, and leaderboards start disabled. Selling also needs `selling.enabled`, Vault, an economy provider, configured prices, and `lumenspawners.sell`. Mob drops use their own configured chance rolls, rather than vanilla loot rules such as looting or world difficulty.
 
 ## Troubleshooting
 
-- **Plugin is unsupported or fails to enable:** confirm the server is Paper and inspect the startup stack trace. Other server distributions are not claimed as supported.
-- **Spawner produces nothing:** check its type definition, production interval, enabled state, and storage capacity. Production pauses if the next cycle would exceed capacity.
-- **Sell button is missing:** enable selling, configure the spawner's prices, and verify Vault plus an economy provider are active.
-- **Player cannot manage a spawner:** check ownership settings and `lumenspawners.use`; breaking someone else's spawner has a separate permission.
-- **Compatibility question:** the project has not been live-tested across all Minecraft releases. Validate your exact server on a test instance before production.
+- **The plugin won’t start:** check the server is Paper and look at the first error in the startup log.
+- **A spawner isn’t producing:** check its type, interval, and storage. Production pauses when the next cycle won’t fit; it doesn’t throw items away.
+- **There’s no sell button:** turn on selling, set prices, and make sure Vault and an economy provider are running.
+- **A player can’t open or break a spawner:** check the owner setting and the relevant use or break permission.
+- **Not sure your server version is supported?:** test the exact server build first; not every release has been live-tested.

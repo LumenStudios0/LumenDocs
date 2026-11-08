@@ -1,6 +1,6 @@
 # LumenDuels
 
-LumenDuels provides player duels, matchmaking queues, arenas, kits, statistics, ranked play, Elo progression, leaderboards, and reward shop features. Optional integrations declared by the plugin include PlaceholderAPI, Vault, and WorldGuard.
+Build out your server’s PvP scene with duels, queues, arenas, kits, and ranked progression. LumenDuels also tracks Elo, ranks, leaderboards, and shop rewards. PlaceholderAPI, Vault, and WorldGuard are optional integrations.
 
 ## Features
 
@@ -10,7 +10,7 @@ LumenDuels provides player duels, matchmaking queues, arenas, kits, statistics, 
 - Configure editable kits and cosmetic effects.
 - Configure SQLite or MySQL storage in `config.yml`.
 
-The plugin descriptor declares API version 1.21. Confirm the supported server and Java versions for the exact plugin jar with its release notes.
+The plugin declares API version 1.21. Check the release notes that came with your jar for its exact server and Java requirements.
 
 ## Installation
 
@@ -47,12 +47,12 @@ The main command is `/duel`; `/duels` is its alias. The plugin descriptor advert
 | `shop.yml` | Elo shop categories, rewards, and messages |
 | `gui.yml` / `messages.yml` | Menu layout and player-facing text |
 
-Review cleanup behavior (inventory wiping and arena block restoration), ranked settings, and WorldGuard region requirements before opening queues to players.
+Before opening queues to players, check the cleanup options—especially inventory handling and arena block restoration—and make sure any required WorldGuard regions are set up.
 
 ## Troubleshooting
 
-- **A feature is missing:** check whether it is enabled in `config.yml` and whether its optional integration (PlaceholderAPI, Vault, or WorldGuard) is installed.
-- **Arena cannot be used:** validate world names, both spawn positions, arena enablement, supported duel types, and any configured WorldGuard region.
-- **Storage connection fails:** verify SQLite/MySQL selection and local database settings; keep credentials private and check startup logs.
-- **Player cannot use an admin action:** verify `lumen.duels.admin` and the specific command's permission check.
-- **Restore or cleanup behaves unexpectedly:** test on a copied world and verify duel cleanup options before using production arenas.
+- **Something isn’t showing up:** check its setting in `config.yml` and install the optional integration it needs, if any.
+- **Players can’t enter an arena:** check the world name, both spawn points, enabled state, supported duel types, and WorldGuard region.
+- **The database won’t connect:** confirm the selected SQLite/MySQL settings and read the startup log. Keep database passwords out of shared configs.
+- **An admin command is denied:** check `lumen.duels.admin` and the command’s own permission requirement.
+- **Arena cleanup looks wrong:** test on a copy of the world and check the cleanup settings before using live arenas.

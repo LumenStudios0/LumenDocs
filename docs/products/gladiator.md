@@ -1,6 +1,6 @@
 # Gladiator
 
-Gladiator provides configurable server-side security signals and a staff dashboard. It uses Bukkit events for many checks and optionally uses PacketEvents for packet masking and entity-attached sound suppression.
+Gladiator brings server-side security checks and staff tools together. Many checks use normal Bukkit events; packet masking and a few other features need a compatible PacketEvents install.
 
 ## Features
 
@@ -10,7 +10,7 @@ Gladiator provides configurable server-side security signals and a staff dashboa
 - Optional integrations for PacketEvents, Geyser/Floodgate, and Discord webhooks.
 - Read-only diagnostics and explicitly labelled test alerts.
 
-**Treat detections as signals, not proof.** Many checks are heuristics and can produce false positives. Packet masking is version-sensitive and does not guarantee protection from every modified client.
+**A detection is a signal, not proof.** Some checks are heuristics and can flag normal play. Packet masking also depends on the exact server and protocol version, so test it before relying on it.
 
 ## Installation
 
@@ -20,7 +20,7 @@ Gladiator provides configurable server-side security signals and a staff dashboa
 4. Configure `config.yml`, `anticheat.yml`, and `ores.yml`; run `/gladiator test` to inspect module and integration status.
 5. Tune alert thresholds and enforcement in staging before enabling punishments.
 
-Paper/Purpur also provide their own native Anti-Xray settings; those are configured per world and require a restart. They are separate from Gladiator.
+Paper and Purpur have their own native Anti-Xray settings. Configure those per world and restart the server; they’re separate from Gladiator.
 
 ## Commands and permissions
 
@@ -42,13 +42,13 @@ The punishment test can apply a real kick, ban, or temporary ban; permanent/dest
 - `anticheat.yml`: behavioral checks, thresholds, violation points, punishment settings, and client-brand behavior.
 - `ores.yml`: weighted mining-alert thresholds and ore definitions.
 
-Default `enforcement.mode: scored` alerts on signals and requires detections from distinct groups before a kick; `per-check` applies configured single-check responses. Tune carefully: client brand reports are spoofable, shared networks can affect address-based checks, and event heuristics are not universal cheat detection. Keep Discord webhook URLs private and use HTTPS.
+By default, `enforcement.mode: scored` alerts on signals and requires detections from distinct groups before a kick. `per-check` applies each check’s configured response on its own. Start with alerts and tune on a test server—client brands can be spoofed, shared networks can confuse address-based checks, and event heuristics can’t identify every cheat. Keep Discord webhook URLs private and use HTTPS.
 
 ## Troubleshooting
 
-- **Anti-xray or structure masking is unavailable:** install a compatible PacketEvents version and check startup/module diagnostics. The exact Minecraft protocol must be supported.
-- **Packet checks show no activity:** some counters need relevant traffic since startup; a zero count does not prove a feature is broken.
-- **Bedrock integration cannot identify players:** verify Geyser/Floodgate is installed and, behind a proxy, that Floodgate forwarding and keys are configured correctly.
-- **False positives:** use staff alerts first, tune thresholds, and avoid treating signals as conclusive evidence.
-- **Discord alerts fail:** verify the webhook is valid and enabled; `/gladiator test discord` sends an actual message. Never share the URL.
-- **Native Anti-Xray does not change immediately:** Paper/Purpur native per-world Anti-Xray is separate from Gladiator and requires a server restart.
+- **Masking isn’t available:** check that PacketEvents supports your exact server version, then run `/gladiator test` and review the startup log.
+- **A packet counter is still at zero:** it only counts relevant traffic since startup; nothing may have triggered it yet.
+- **Bedrock players aren’t recognized:** check Geyser/Floodgate and, if you use a proxy, its forwarding settings and shared key.
+- **A player was flagged unexpectedly:** begin with staff alerts and tune the threshold. A flag by itself isn’t proof of cheating.
+- **Discord alerts aren’t arriving:** run `/gladiator test discord` and check that the webhook is enabled. Keep its URL private.
+- **Paper Anti-Xray changes haven’t appeared:** Gladiator doesn’t control that setting; Paper/Purpur require a restart for their native configuration.

@@ -1,19 +1,19 @@
-# Getting started
+# First things first
 
-Welcome to the official Lumen Studios plugin documentation. Choose a product from the [plugin catalog](/plugins/) to find its specific requirements, command reference, configuration files, and feature details.
+New here? Start by choosing a plugin in the [catalog](/plugins/). Its guide has the details for that product—what it needs, how to install it, and which commands and settings you’ll use.
 
-## Before you install
+## A quick check before you install
 
-- Confirm the plugin's supported server software, Minecraft version, and Java runtime. These are product-specific; see [compatibility notes](/getting-started/compatibility).
-- Back up your server and plugin data before adding or updating a plugin.
-- Check dependencies such as Vault, an economy provider, PlaceholderAPI, or PacketEvents. Optional integrations may enable features that do not work without them.
-- Obtain plugin jars through the official delivery channel for your product. Do not treat source repositories or build output as a public download.
+- Check that the plugin supports your server version and Java version. The [compatibility guide](/getting-started/compatibility) puts the documented targets in one place.
+- Make a backup before installing or updating a plugin. It’s much easier to undo a change when you have one.
+- Look for dependencies in the product guide. Some features need another plugin—for example, Vault and an economy provider for payments.
+- Download the jar through the official channel for your product.
 
-## Choose a guide
+## Where to go next
 
 - [Install a plugin](/getting-started/installation)
-- [Check compatibility](/getting-started/compatibility)
-- [Browse plugins](/plugins/)
-- [Troubleshooting](/troubleshooting)
+- [Get a plugin license through Discord](/getting-started/licensing)
+- [Browse the plugins](/plugins/)
+- [Something not working?](/troubleshooting)
 
-> **Version note:** Plugin behavior and compatibility can change between releases. The product pages describe the documented implementation; always compare them with the release notes for the exact jar you run.
+The guides describe documented behavior, which can change between releases. If something in your jar doesn’t match a guide, check the notes for that release or ask us on [Discord](https://discord.gg/lumenstudios).

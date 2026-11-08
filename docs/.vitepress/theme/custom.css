@@ -33,6 +33,10 @@
   letter-spacing: -0.025em;
 }
 
+.VPNavBarTitle img.logo {
+  border-radius: 6px;
+}
+
 .VPNavBar .title,
 .VPNavBar .VPNavBarTitle {
   color: #f5f0ff;

@@ -1,6 +1,6 @@
 # LumenAuction
 
-LumenAuction is a persistent, GUI-based auction house for Minecraft servers. Listings, transaction history, expired-item storage, and audit entries are stored in SQLite.
+Give players one place to list items, browse the market, and pick up expired listings. LumenAuction keeps the marketplace and transaction history in SQLite, so listings are still there after a restart.
 
 ## Features
 
@@ -18,7 +18,7 @@ LumenAuction is a persistent, GUI-based auction house for Minecraft servers. Lis
 4. Review `plugins/LumenAuction/config.yml`; restart or run `/ah reload` after changes.
 5. Back up `plugins/LumenAuction/auction.db` only while the server is stopped.
 
-Without Vault and an economy provider, the plugin may load but listing and purchasing are unavailable.
+The auction house can load without Vault, but players won’t be able to list or buy until Vault and an economy provider are running.
 
 ## Commands and permissions
 
@@ -50,14 +50,14 @@ Duration and listing-limit permission tiers are configured under `permissions` i
 
 ## Configuration
 
-Edit `plugins/LumenAuction/config.yml`. It controls listing lifetime and limits, price bounds, fees and taxes, categories, blacklists/allowlists, menu layout and text, permission tiers, save intervals, and debug logging. Fees and taxes default to zero. Set `allowed-materials` to a non-empty list to restrict listings to that allowlist. Run `/ah reload` to apply supported edits.
+Most server-side choices live in `plugins/LumenAuction/config.yml`: listing limits and duration, prices, fees, taxes, allowed items, menu text, and permission tiers. Fees and taxes start at zero. To allow only certain items, add them to `allowed-materials`. Run `/ah reload` to apply supported changes.
 
 SQLite stores marketplace data in `auction.db`. Do not edit or copy it while the server is running. Use regular stopped-server backups.
 
 ## Troubleshooting
 
-- **Cannot list or buy:** verify that Vault and an active Vault economy provider are installed; check startup logs for provider discovery.
-- **Permission tier has no effect:** check the exact node configured in `permissions.duration-tiers` or `permissions.listing-limit-tiers`, then refresh the player's permissions.
-- **Item expired:** retrieve it from `/ah expired`; expired listings are associated with their original seller.
-- **Database issue:** stop the server before restoring a database backup. Do not delete `auction.db` unless you intend to reset marketplace state.
-- **Compatibility:** documented support is 1.21.6–1.21.11 on Bukkit-compatible servers with Java 21; verify your exact server build.
+- **Players can browse but not trade:** make sure both Vault and an economy provider are enabled, then check the server log for provider detection.
+- **A permission tier isn’t taking effect:** compare the granted node with `permissions.duration-tiers` or `permissions.listing-limit-tiers` and refresh the player’s permissions.
+- **A listing expired:** the seller can retrieve it with `/ah expired`.
+- **You need to restore the database:** stop the server first and restore a backup of `auction.db`. Deleting it resets marketplace data.
+- **Checking compatibility:** the documented target is Minecraft 1.21.6–1.21.11 on Bukkit-compatible servers with Java 21.

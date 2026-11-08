@@ -1,6 +1,6 @@
 # LumenShards
 
-LumenShards is a configurable shard currency plugin for Paper servers. AFK rewards, player payments, and shop purchases all use the same balance. It supports YAML or SQLite player storage and optional PlaceholderAPI integration.
+LumenShards gives your server one currency for AFK rewards, player payments, and shop purchases. Choose YAML or SQLite for player data, and add PlaceholderAPI if you want to show shard information elsewhere.
 
 ## Features
 
@@ -13,10 +13,10 @@ LumenShards is a configurable shard currency plugin for Paper servers. AFK rewar
 ## Installation
 
 1. Use Paper 1.21.6–1.21.11 with Java 21.
-2. Obtain the plugin jar and the private license credentials through the official product delivery channel.
-3. Install the jar in `plugins/` and start the server.
-4. Configure the license key and scoped plugin token locally in `plugins/LumenShards/config.yml`. Add the server's public egress IP to the license allowlist.
-5. Configure AFK, shop, and storage settings, then restart.
+2. [Request a license in the Lumen Studios Discord](/getting-started/licensing) and get the plugin jar through its official delivery channel.
+3. Put the jar in `plugins/` and start the server once to create the config files.
+4. Add the license key and scoped plugin token from staff to `plugins/LumenShards/config.yml`. Ask staff to add your server’s public egress IP to the license allowlist.
+5. Set up AFK rewards, the shop, and storage, then restart the server.
 
 **Never publish or share the license key or plugin token.** The license service validates the credentials over HTTPS. If it is temporarily unavailable, shard features remain disabled while validation retries. Invalid/revoked credentials are reported in the server log.
 
@@ -39,13 +39,13 @@ LumenShards is a configurable shard currency plugin for Paper servers. AFK rewar
 | `/shard version` | `shard.admin` / admin grant |
 | `/afk` | `lumenshards.afk` |
 
-The plugin also defines granular `lumenshards.admin.*` permissions and a `shard.alwaysearn` bypass. See the plugin permission definitions and your installed version's config before granting administrative access.
+The plugin also defines granular `lumenshards.admin.*` permissions and a `shard.alwaysearn` bypass. Check your installed version’s permission definitions before granting admin access.
 
 ## Configuration
 
 The data folder contains `config.yml`, `messages.yml`, `shop.yml`, `afk.yml`, and player storage. `config.yml` includes currency naming, starting balance, balance limits, storage type (`YAML` or `SQLITE`), permission settings, and licensing fields. Keep license fields private.
 
-`shop.yml` controls categories, prices, item rewards, and console/player purchase commands. Multi-item rewards are delivered only if the inventory has room before the shard cost is charged. `afk.yml` controls reward areas and timing. PlaceholderAPI identifiers include `%shard_balance%`, `%shard_afk_reward_time%`, `%shard_afk_reward_seconds%`, `%shard_afk_reward_amount%`, and `%shard_afk_reward_bonus%`.
+Set up the shop’s categories, prices, and rewards in `shop.yml`; rewards are only handed out when they fit in the player’s inventory, before shards are charged. `afk.yml` controls reward areas and timing. PlaceholderAPI values include `%shard_balance%`, `%shard_afk_reward_time%`, `%shard_afk_reward_seconds%`, `%shard_afk_reward_amount%`, and `%shard_afk_reward_bonus%`.
 
 ## Troubleshooting
 

@@ -1,6 +1,6 @@
 # LumenEconomy
 
-LumenEconomy provides a configurable server economy with balances, player payments, inventory selling, a searchable Worth browser, multiplier tiers, Power Tools, transaction history, leaderboards, and optional Vault and PlaceholderAPI integrations.
+Balances, payments, selling, and the Worth browser all use the same economy, so players can check an item’s value before selling it. You can also add multiplier tiers, Power Tools, history, leaderboards, and optional Vault or PlaceholderAPI integrations.
 
 ## Features
 
@@ -10,7 +10,7 @@ LumenEconomy provides a configurable server economy with balances, player paymen
 - Use configurable sell tools, menus, messages, transaction history, and leaderboards.
 - Expose a Vault economy and PlaceholderAPI integration when those plugins are installed.
 
-All selling surfaces use the same price and multiplier calculation. Currency and payment amounts use whole integer units; negative and fractional payment amounts are rejected.
+The same price and multiplier calculation is used whether a player sells from a command, tool, or menu. Currency uses whole units; negative and fractional payment amounts are rejected.
 
 ## Installation
 
@@ -19,7 +19,7 @@ All selling surfaces use the same price and multiplier calculation. Currency and
 3. Install Vault and a compatible economy consumer if needed; install PlaceholderAPI to use its placeholders.
 4. Restart after initial setup, or run `/lumeneco reload` for supported configuration changes.
 
-The documented build targets Paper API 1.21.4 and Java 21 bytecode. Compatibility with newer server releases and individual forks should be verified before production use.
+The documented build target is Paper API 1.21.4 with Java 21 bytecode. If you’re running something newer or a different fork, test it before moving to production.
 
 ## Commands and permissions
 
@@ -39,7 +39,7 @@ The documented build targets Paper API 1.21.4 and Java 21 bytecode. Compatibilit
 | `/lumeneco multiplier temporary &lt;value&gt; &lt;seconds&gt;` | Set a temporary global multiplier |
 | `/lumeneco tool &lt;sell-axe\|miner-pickaxe\|tree-chopper&gt; [player]` | Give a configured Power Tool |
 
-Admin command permissions are controlled by the plugin's permission configuration. Check the generated config and command feedback when permission access differs from your setup.
+Admin command access is controlled by the plugin’s permission settings. If a command is denied, check the generated config and the message shown in game.
 
 ## Configuration
 
@@ -52,7 +52,7 @@ Admin command permissions are controlled by the plugin's permission configuratio
 | `menus.yml` | GUI titles, slots, icons, controls, and menu text |
 | `tools.yml` | Power Tool enablement, appearance, permissions, abilities, and durability |
 
-Tune `prices.yml` before opening the economy to players. Blacklisted items can remain visible in Worth but are not paid out. Multipliers and persistent sale progress can be adjusted in their own file. Supported changes can be applied with `/lumeneco reload`.
+Set prices in `prices.yml` before players start selling. Blacklisted items can still appear in Worth, but won’t pay out. Multipliers and sale progress have their own file; use `/lumeneco reload` for supported changes.
 
 ## Troubleshooting
 

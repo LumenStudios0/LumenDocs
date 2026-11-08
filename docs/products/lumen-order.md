@@ -1,6 +1,6 @@
 # LumenOrder
 
-LumenOrder is a GUI-driven buy-order marketplace. A buyer posts an order for an item and unit price; another player delivers items and receives payment through Vault.
+With LumenOrder, players post what they want to buy and the price they’re offering. Other players deliver the items and get paid through Vault.
 
 ## Features
 
@@ -34,19 +34,19 @@ LumenOrder is a GUI-driven buy-order marketplace. A buyer posts an order for an 
 | `/order admin reload` | Reload settings | `lumenorder.admin.reload` |
 | `/order admin preset &lt;list\|apply &lt;name&gt; [confirm]&gt;` | List or apply a preset | `lumenorder.admin.reload` |
 
-Grant longer order duration or more slots by setting permission tiers under `permissions:` in the config, for example `lumenorder.slots.10: 10`. `lumenorder.limit.bypass` ignores order limits; `lumenorder.bypass.fees` bypasses fees. Permission node names are configurable.
+To give players more slots or longer-running orders, add permission tiers under `permissions:` in the config—for example, `lumenorder.slots.10: 10`. `lumenorder.limit.bypass` skips order limits, and `lumenorder.bypass.fees` skips fees. You can change the permission node names in the config.
 
 ## Configuration
 
-`config.yml` controls order limits, expiry, fees, price formatting, categories, GUI titles/buttons, sounds, permission tiers, and optional fake orders. Player-facing text is in `lang/en_us.yml`. Presets (`survival`, `skyblock`, and `pvp`) can be applied by an admin command; a backup is written first.
+The main options—limits, expiry, fees, price formatting, categories, menus, sounds, and fake orders—are in `config.yml`. Text players see is in `lang/en_us.yml`. You can apply the included `survival`, `skyblock`, or `pvp` preset with an admin command; the plugin backs up the config first.
 
 Escrow is on by default. Delivery moves items into the buyer's claim inventory; use `/order claim` to collect them. Interrupted or ambiguous transactions can be reviewed from the Admin GUI or resolved with the admin command. Storage is SQLite-only.
 
 ## Troubleshooting
 
-- **Cannot create or deliver:** ensure Vault and a working economy provider are enabled.
-- **Custom item order is refused:** install the relevant optional item/enchantment plugin and confirm the identifier is supported.
-- **Player cannot collect a delivery:** use `/order claim` or the GUI Claim button; claims remain available while offline.
-- **Transaction needs review:** open Admin GUI → Needs review, inspect the transaction, then resolve only after checking items and balances.
-- **Configuration does not apply:** use `/order admin reload` and review console warnings for invalid settings.
-- **Unsupported platform:** Folia is not supported; documented server families are Bukkit, Spigot, Paper, and Purpur.
+- **Orders can’t be created or delivered:** check that Vault and an economy plugin are both running.
+- **A custom item order is rejected:** make sure the required ItemsAdder, Nexo, or EcoEnchants plugin is installed and that the item or enchantment is supported.
+- **The buyer can’t find delivered items:** they’re held as claims; use `/order claim` or the Claim button, even if the buyer was offline.
+- **A transaction needs attention:** open Admin GUI → Needs review. Check the items and balances before resolving it.
+- **A config change didn’t apply:** run `/order admin reload` and check the console for warnings.
+- **Using Folia:** LumenOrder doesn’t support Folia. The documented platforms are Bukkit, Spigot, Paper, and Purpur.

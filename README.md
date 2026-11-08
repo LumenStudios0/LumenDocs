@@ -1,6 +1,6 @@
-# Lumen Studios Documentation
+# Lumen Studios Docs
 
-The official Lumen Studios documentation website, built with VitePress and deployed to GitHub Pages.
+The Lumen Studios plugin guides, built with VitePress. Read them at [lumenstudios0.github.io/LumenDocs](https://lumenstudios0.github.io/LumenDocs/).
 
 ## Local development
 
@@ -11,7 +11,7 @@ npm ci
 npm run docs:dev
 ```
 
-The local site is served at `http://localhost:5173/LumenDocs/`. Create a production build with:
+VitePress prints the local address when the dev server starts. Create and preview a production build with:
 
 ```sh
 npm run docs:build
@@ -20,10 +20,10 @@ npm run docs:preview
 
 ## Publishing
 
-Push changes to `main` or run the **Deploy documentation** workflow manually. GitHub Actions builds the site and publishes the generated artifact to GitHub Pages. In **Settings → Pages**, set the source to **GitHub Actions** if it is not already selected.
+Push changes to `main` or run **Deploy documentation** from the repository’s Actions tab. GitHub Actions builds the site and publishes it to GitHub Pages.
 
 The VitePress `base` is `/LumenDocs/`, matching this repository's GitHub Pages project-site URL. Update `docs/.vitepress/config.mts` if the repository name or hosting path changes.
 
-## Documentation contributions
+## Keeping guides accurate
 
-Product details are based on the corresponding Lumen Studios plugin repositories. Verify version-specific commands and compatibility against the plugin version installed on your server. Never add license keys, plugin tokens, database passwords, Discord webhooks, or other private credentials to this public repository.
+Commands and supported versions can vary by release, so check the notes that came with your jar. Need a license? Follow the [Discord license guide](https://lumenstudios0.github.io/LumenDocs/getting-started/licensing). Never add license keys, plugin tokens, database passwords, Discord webhooks, or other private credentials here.

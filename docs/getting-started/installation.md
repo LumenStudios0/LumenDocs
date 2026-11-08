@@ -1,22 +1,23 @@
-# Installation
+# Installing a plugin
 
-These steps apply to most Bukkit-family Minecraft plugins. Follow the individual [product guide](/plugins/) as well, because dependencies, licensing, data folders, and reload behavior differ.
+Most installs are straightforward. The exact requirements vary by plugin, so keep its [product guide](/plugins/) open as you go.
 
 ## Install a plugin
 
-1. Stop the server cleanly and create a backup of the world, server configuration, and existing plugin data.
-2. Verify the plugin jar is intended for your server software, Minecraft version, and Java runtime.
-3. Install required server-side dependencies first. Common examples include Vault plus an economy provider, or PacketEvents for packet-based features. Check the product guide for the exact requirements.
-4. Copy the plugin `.jar` into the server's `plugins/` directory. Do not unzip it or rename it unless the product instructions say to.
-5. Start the server and review the console for the plugin's enable message, dependency warnings, and configuration errors.
-6. Stop the server, edit the generated files in that plugin's data folder, then restart. Use a documented reload command only when the plugin supports it and the setting can be safely reloaded.
-7. Test the main player and administrator workflows on a staging server before deploying to production.
+1. Stop the server and make a backup of your world, server settings, and existing plugin data.
+2. Check the plugin’s guide for supported server and Java versions.
+3. Install any dependencies the guide calls out. For example, economy features may need Vault and an economy plugin.
+4. Put the plugin `.jar` in the server’s `plugins/` folder. Leave it as a jar—don’t unzip it.
+5. Start the server and watch the console for errors or missing dependencies.
+6. If the plugin needs a license, [request one through Discord](/getting-started/licensing).
+7. Stop the server to edit the config files the plugin generated, then start it again. Only use a reload command if the plugin guide says it’s supported.
+8. Try the main commands and features before opening things up to players.
 
 ## Updating
 
-1. Back up the current jar, configuration, and plugin data (including database files).
-2. Read the release notes for migration steps and compatibility changes.
-3. Replace the jar while the server is stopped. Keep the existing data folder unless the update guide explicitly requires a migration.
-4. Start the server and inspect logs before allowing normal player activity.
+1. Back up the current jar, config, and plugin data (including database files).
+2. Check the release notes for compatibility changes or migration steps.
+3. With the server stopped, replace the jar. Keep the existing data folder unless the update instructions say otherwise.
+4. Start the server and check the console before letting players back in.
 
-Never edit a plugin's SQLite database while the server is running. Keep license keys, plugin tokens, database passwords, and webhook URLs private; do not paste them into public issues or documentation.
+Don’t edit or copy a SQLite database while the server is running. Keep license keys, plugin tokens, passwords, and webhook URLs private. If setup gets stuck, ask for help in the [Lumen Studios Discord](https://discord.gg/lumenstudios)—just remove credentials before sharing logs.

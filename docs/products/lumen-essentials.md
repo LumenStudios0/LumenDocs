@@ -1,6 +1,6 @@
 # LumenEssentials
 
-LumenEssentials is a staff and moderation plugin with a staff dashboard, persistent moderation status and history, moderation commands, chat controls, player notes and requests, inventory snapshots, and a scoped player-data wipe workflow.
+LumenEssentials puts day-to-day staff work in one place: a dashboard, moderation commands, notes, assistance requests, chat tools, and inventory snapshots. The player-data wipe workflow is separate and deliberately permission-gated.
 
 ## Features
 
@@ -17,7 +17,7 @@ LumenEssentials is a staff and moderation plugin with a staff dashboard, persist
 3. Review `config.yml`, `wipe.yml`, and permission assignments before enabling staff workflows.
 4. Restart after installing any integration plugin.
 
-SQLite JDBC is included in the jar; the Paper API is not bundled.
+The SQLite driver is included in the jar. The Paper API is not, so your server needs to provide it.
 
 ## Commands and permissions
 
@@ -40,7 +40,7 @@ SQLite JDBC is included in the jar; the Paper API is not bundled.
 | `/playerwipe preview &lt;player&gt;` | Preview configured wipe selections |
 | `/playerwipe integrations`, `/playerwipe history <player>`, `/playerwipe reload` | Inspect, review, or reload wipe settings |
 
-Every command has permission checks; destructive and staff-management permissions default to operator or false. Important specific nodes include `lumenessentials.playerwipe`, `.preview`, `.admin`, `.history`, `lumenessentials.dashboard.stats`, `lumenessentials.audit.view`, and `lumenessentials.inventory-snapshot.restore`. See the plugin's permission definitions and grant only the actions each role needs.
+Commands check permissions individually. Destructive and staff-management access defaults to operators or disabled. Nodes to review include `lumenessentials.playerwipe`, `.preview`, `.admin`, `.history`, `lumenessentials.dashboard.stats`, `lumenessentials.audit.view`, and `lumenessentials.inventory-snapshot.restore`; give staff only the access they need.
 
 ## Configuration
 
@@ -50,12 +50,12 @@ Every command has permission checks; destructive and staff-management permission
 - `stashes.yml`: spawn-stash settings; this feature is disabled and not yet executable.
 - `wipe.yml`: preview/backup requirements, confirmations, integration detection, and database-adapter policy.
 
-Use `/playerwipe reload` to validate/reload settings; invalid values are logged, and active wipe sessions are invalidated. Review `wipe.yml` and backups before granting wipe access.
+Use `/playerwipe reload` to check and reload settings. Invalid values are reported in the console, and active wipe sessions are cleared. Read `wipe.yml` and confirm your backup process before granting anyone wipe access.
 
 ## Troubleshooting
 
-- **A dashboard action is absent:** dashboard entries are hidden unless the viewer has the relevant permission.
-- **Wipe does not start:** check `wipe.yml`, adapter status via `/playerwipe integrations`, preview/backup requirements, and the wipe permissions.
-- **Restore fails:** the target must be online, the staff member needs `lumenessentials.inventory-snapshot.restore`, and the typed confirmation must match.
-- **Chat logs or alt links raise privacy concerns:** chat logging can be disabled and is retained for a configured period. Alt-link tracking stores keyed address hashes, not raw addresses; its alerts are not proof of shared ownership.
-- **Reload is rejected:** inspect the console for invalid configuration values, then restore valid settings before retrying.
+- **A dashboard option is missing:** options only appear when your account has the permission for them.
+- **A wipe won’t begin:** check `wipe.yml`, the adapter report from `/playerwipe integrations`, and the preview, backup, and permission requirements.
+- **An inventory restore is denied:** the player must be online, you need `lumenessentials.inventory-snapshot.restore`, and the confirmation must match.
+- **Questions about chat logs or linked accounts:** chat logging can be turned off and has configurable retention. Alt-link alerts are only a signal; they don’t prove that accounts belong to the same person.
+- **Reload reports an error:** check the console for the setting it couldn’t validate, fix it, and try again.
