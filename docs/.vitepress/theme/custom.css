@@ -86,10 +86,6 @@
   color: var(--vp-c-brand-1);
 }
 
-.VPHome .VPFeatures {
-  max-width: 1152px;
-}
-
 .VPHome .VPFeatures .items {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -100,6 +96,7 @@
 
 .VPHome .VPFeatures .item {
   min-width: 0;
+  width: auto;
   padding: 0;
 }
 
