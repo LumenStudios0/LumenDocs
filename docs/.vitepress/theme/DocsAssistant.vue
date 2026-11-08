@@ -69,11 +69,39 @@ let musicMaster: GainNode | undefined
 let musicOscillators: OscillatorNode[] = []
 let musicTimer: number | undefined
 let musicChordIndex = 0
-const ambientChords = [
-  [196, 246.94, 293.66, 369.99],
-  [220, 261.63, 329.63, 392],
-  [174.61, 220, 261.63, 329.63],
-  [196, 246.94, 293.66, 392],
+let lastMusicTrack = -1
+let musicProgression: number[][] = []
+const ambientTracks = [
+  [
+    [196, 246.94, 293.66, 369.99],
+    [174.61, 220, 261.63, 349.23],
+    [146.83, 196, 246.94, 329.63],
+    [164.81, 220, 261.63, 329.63],
+  ],
+  [
+    [220, 261.63, 329.63, 392],
+    [196, 246.94, 293.66, 392],
+    [164.81, 220, 261.63, 349.23],
+    [174.61, 220, 293.66, 349.23],
+  ],
+  [
+    [174.61, 220, 261.63, 329.63],
+    [196, 246.94, 293.66, 349.23],
+    [146.83, 196, 246.94, 293.66],
+    [164.81, 220, 261.63, 329.63],
+  ],
+  [
+    [261.63, 329.63, 392, 493.88],
+    [220, 261.63, 329.63, 440],
+    [196, 246.94, 329.63, 392],
+    [220, 293.66, 349.23, 440],
+  ],
+  [
+    [196, 246.94, 293.66, 392],
+    [220, 261.63, 329.63, 392],
+    [174.61, 220, 293.66, 349.23],
+    [164.81, 220, 261.63, 329.63],
+  ],
 ]
 
 function findSections(question: string): DocSection[] {
@@ -182,6 +210,12 @@ function startAmbientMusic() {
   const now = audioContext.currentTime
   const filter = audioContext.createBiquadFilter()
   musicMaster = audioContext.createGain()
+  const availableTracks = ambientTracks
+    .map((_, index) => index)
+    .filter(index => index !== lastMusicTrack)
+  const trackIndex = availableTracks[Math.floor(Math.random() * availableTracks.length)]
+  lastMusicTrack = trackIndex
+  musicProgression = ambientTracks[trackIndex]
   filter.type = 'lowpass'
   filter.frequency.setValueAtTime(700, now)
   musicMaster.gain.setValueAtTime(0.0001, now)
@@ -189,7 +223,7 @@ function startAmbientMusic() {
   filter.connect(musicMaster)
   musicMaster.connect(audioContext.destination)
 
-  for (const [index, frequency] of ambientChords[0].entries()) {
+  for (const [index, frequency] of musicProgression[0].entries()) {
     const tone = audioContext.createOscillator()
     const voice = audioContext.createGain()
     tone.type = 'sine'
@@ -205,8 +239,8 @@ function startAmbientMusic() {
   musicChordIndex = 0
   musicTimer = window.setInterval(() => {
     if (!audioContext) return
-    musicChordIndex = (musicChordIndex + 1) % ambientChords.length
-    const chord = ambientChords[musicChordIndex]
+    musicChordIndex = (musicChordIndex + 1) % musicProgression.length
+    const chord = musicProgression[musicChordIndex]
     const changeAt = audioContext.currentTime
     musicOscillators.forEach((tone, index) => {
       tone.frequency.cancelScheduledValues(changeAt)
