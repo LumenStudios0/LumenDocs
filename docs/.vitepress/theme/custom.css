@@ -42,6 +42,17 @@
   --lumen-feature-bg: linear-gradient(145deg, rgba(25, 19, 36, 0.92), rgba(17, 13, 25, 0.92));
 }
 
+.dark body {
+  background-image:
+    radial-gradient(ellipse at 8% 18%, rgba(91, 43, 171, 0.16), transparent 38%),
+    radial-gradient(ellipse at 92% 64%, rgba(65, 36, 123, 0.14), transparent 42%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 900' preserveAspectRatio='none'%3E%3Cpath d='M-80 620 C160 500 300 770 560 640 S940 520 1180 650 S1450 770 1530 610' fill='none' stroke='%237b3ff2' stroke-opacity='.20' stroke-width='2'/%3E%3Cpath d='M-80 660 C160 540 310 810 570 680 S940 560 1180 690 S1450 810 1530 650' fill='none' stroke='%23a986ff' stroke-opacity='.12' stroke-width='1.5'/%3E%3Cpath d='M-80 205 C150 100 310 310 570 200 S930 110 1160 220 S1430 300 1530 180' fill='none' stroke='%237b3ff2' stroke-opacity='.10' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-attachment: fixed, fixed, fixed;
+  background-position: center, center, center;
+  background-repeat: no-repeat;
+  background-size: cover, cover, 100% 100vh;
+}
+
 .VPNavBarTitle .title {
   font-weight: 700;
   letter-spacing: -0.025em;
