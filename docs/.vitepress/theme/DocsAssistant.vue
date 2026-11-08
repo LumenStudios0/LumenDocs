@@ -63,45 +63,94 @@ const searching = ref(false)
 const hasQuestion = computed(() => answers.value.length > 0)
 const clickSounds = ref(true)
 const ambientMusic = ref(false)
+const activeMusicTrack = ref('')
 const assistantEndpoint = import.meta.env.VITE_DOCS_ASSISTANT_ENDPOINT
 let audioContext: AudioContext | undefined
 let musicMaster: GainNode | undefined
+let musicFilter: BiquadFilterNode | undefined
 let musicOscillators: OscillatorNode[] = []
+let musicSources: AudioScheduledSourceNode[] = []
 let musicTimer: number | undefined
 let musicChordIndex = 0
 let lastMusicTrack = -1
-let musicProgression: number[][] = []
-const ambientTracks = [
-  [
+let activeTrack: AmbientTrack | undefined
+
+interface AmbientTrack {
+  name: string
+  chords: number[][]
+  waveform: OscillatorType
+  filterFrequency: number
+  texture?: {
+    filter: BiquadFilterType
+    frequency: number
+    volume: number
+    pulse?: number
+  }
+  sparkle?: number[]
+}
+
+const ambientTracks: AmbientTrack[] = [
+  {
+    name: 'Tides',
+    waveform: 'sine',
+    filterFrequency: 560,
+    texture: { filter: 'lowpass', frequency: 420, volume: 0.035, pulse: 0.016 },
+    chords: [
     [196, 246.94, 293.66, 369.99],
     [174.61, 220, 261.63, 349.23],
     [146.83, 196, 246.94, 329.63],
     [164.81, 220, 261.63, 329.63],
-  ],
-  [
+    ],
+  },
+  {
+    name: 'Mountain Wind',
+    waveform: 'triangle',
+    filterFrequency: 390,
+    texture: { filter: 'lowpass', frequency: 280, volume: 0.07, pulse: 0.045 },
+    chords: [
     [220, 261.63, 329.63, 392],
     [196, 246.94, 293.66, 392],
     [164.81, 220, 261.63, 349.23],
     [174.61, 220, 293.66, 349.23],
-  ],
-  [
+    ],
+  },
+  {
+    name: 'Forest',
+    waveform: 'sine',
+    filterFrequency: 1100,
+    texture: { filter: 'bandpass', frequency: 850, volume: 0.018, pulse: 0.012 },
+    sparkle: [587.33, 659.25, 783.99, 880],
+    chords: [
     [174.61, 220, 261.63, 329.63],
     [196, 246.94, 293.66, 349.23],
     [146.83, 196, 246.94, 293.66],
     [164.81, 220, 261.63, 329.63],
-  ],
-  [
+    ],
+  },
+  {
+    name: 'Rain',
+    waveform: 'sine',
+    filterFrequency: 760,
+    texture: { filter: 'highpass', frequency: 1450, volume: 0.045 },
+    chords: [
     [261.63, 329.63, 392, 493.88],
     [220, 261.63, 329.63, 440],
     [196, 246.94, 329.63, 392],
     [220, 293.66, 349.23, 440],
-  ],
-  [
+    ],
+  },
+  {
+    name: 'Starlight',
+    waveform: 'sine',
+    filterFrequency: 1800,
+    sparkle: [783.99, 880, 987.77, 1174.66, 1318.51],
+    chords: [
     [196, 246.94, 293.66, 392],
     [220, 261.63, 329.63, 392],
     [174.61, 220, 293.66, 349.23],
     [164.81, 220, 261.63, 329.63],
-  ],
+    ],
+  },
 ]
 
 function findSections(question: string): DocSection[] {
@@ -208,45 +257,97 @@ function startAmbientMusic() {
   void audioContext.resume()
 
   const now = audioContext.currentTime
-  const filter = audioContext.createBiquadFilter()
-  musicMaster = audioContext.createGain()
   const availableTracks = ambientTracks
     .map((_, index) => index)
     .filter(index => index !== lastMusicTrack)
   const trackIndex = availableTracks[Math.floor(Math.random() * availableTracks.length)]
+  activeTrack = ambientTracks[trackIndex]
+  activeMusicTrack.value = activeTrack.name
   lastMusicTrack = trackIndex
-  musicProgression = ambientTracks[trackIndex]
-  filter.type = 'lowpass'
-  filter.frequency.setValueAtTime(700, now)
+
+  musicFilter = audioContext.createBiquadFilter()
+  musicMaster = audioContext.createGain()
+  musicFilter.type = 'lowpass'
+  musicFilter.frequency.setValueAtTime(activeTrack.filterFrequency, now)
   musicMaster.gain.setValueAtTime(0.0001, now)
   musicMaster.gain.linearRampToValueAtTime(0.022, now + 2.5)
-  filter.connect(musicMaster)
+  musicFilter.connect(musicMaster)
   musicMaster.connect(audioContext.destination)
 
-  for (const [index, frequency] of musicProgression[0].entries()) {
+  for (const [index, frequency] of activeTrack.chords[0].entries()) {
     const tone = audioContext.createOscillator()
     const voice = audioContext.createGain()
-    tone.type = 'sine'
+    tone.type = activeTrack.waveform
     tone.frequency.setValueAtTime(frequency, now)
     tone.detune.setValueAtTime(index % 2 === 0 ? -2 : 2, now)
     voice.gain.setValueAtTime(0.12, now)
     tone.connect(voice)
-    voice.connect(filter)
+    voice.connect(musicFilter)
     tone.start(now)
     musicOscillators.push(tone)
+    musicSources.push(tone)
+  }
+
+  if (activeTrack.texture) {
+    const noiseBuffer = audioContext.createBuffer(1, audioContext.sampleRate * 2, audioContext.sampleRate)
+    const samples = noiseBuffer.getChannelData(0)
+    for (let index = 0; index < samples.length; index += 1) {
+      samples[index] = Math.random() * 2 - 1
+    }
+
+    const texture = audioContext.createBufferSource()
+    const textureFilter = audioContext.createBiquadFilter()
+    const textureVolume = audioContext.createGain()
+    texture.buffer = noiseBuffer
+    texture.loop = true
+    textureFilter.type = activeTrack.texture.filter
+    textureFilter.frequency.setValueAtTime(activeTrack.texture.frequency, now)
+    textureVolume.gain.setValueAtTime(activeTrack.texture.volume, now)
+    texture.connect(textureFilter)
+    textureFilter.connect(textureVolume)
+    textureVolume.connect(musicMaster)
+    texture.start(now)
+    musicSources.push(texture)
+
+    if (activeTrack.texture.pulse) {
+      const swell = audioContext.createOscillator()
+      const swellDepth = audioContext.createGain()
+      swell.type = 'sine'
+      swell.frequency.setValueAtTime(activeTrack.name === 'Forest' ? 0.18 : 0.08, now)
+      swellDepth.gain.setValueAtTime(activeTrack.texture.pulse, now)
+      swell.connect(swellDepth)
+      swellDepth.connect(textureVolume.gain)
+      swell.start(now)
+      musicSources.push(swell)
+    }
   }
 
   musicChordIndex = 0
   musicTimer = window.setInterval(() => {
-    if (!audioContext) return
-    musicChordIndex = (musicChordIndex + 1) % musicProgression.length
-    const chord = musicProgression[musicChordIndex]
+    if (!audioContext || !activeTrack) return
+    musicChordIndex = (musicChordIndex + 1) % activeTrack.chords.length
+    const chord = activeTrack.chords[musicChordIndex]
     const changeAt = audioContext.currentTime
     musicOscillators.forEach((tone, index) => {
       tone.frequency.cancelScheduledValues(changeAt)
       tone.frequency.setTargetAtTime(chord[index], changeAt, 0.8)
     })
-  }, 4500)
+
+    if (activeTrack.sparkle?.length) {
+      const sparkle = audioContext.createOscillator()
+      const sparkleVolume = audioContext.createGain()
+      const note = activeTrack.sparkle[Math.floor(Math.random() * activeTrack.sparkle.length)]
+      sparkle.type = 'sine'
+      sparkle.frequency.setValueAtTime(note, changeAt)
+      sparkleVolume.gain.setValueAtTime(0.0001, changeAt)
+      sparkleVolume.gain.linearRampToValueAtTime(0.018, changeAt + 0.12)
+      sparkleVolume.gain.exponentialRampToValueAtTime(0.0001, changeAt + 2.2)
+      sparkle.connect(sparkleVolume)
+      sparkleVolume.connect(musicFilter!)
+      sparkle.start(changeAt)
+      sparkle.stop(changeAt + 2.25)
+    }
+  }, activeTrack.name === 'Rain' ? 6000 : 4500)
 }
 
 function stopAmbientMusic() {
@@ -258,9 +359,13 @@ function stopAmbientMusic() {
   musicMaster.gain.cancelScheduledValues(now)
   musicMaster.gain.setValueAtTime(musicMaster.gain.value, now)
   musicMaster.gain.linearRampToValueAtTime(0.0001, now + 1.2)
-  for (const tone of musicOscillators) tone.stop(now + 1.25)
+  for (const source of musicSources) source.stop(now + 1.25)
   musicOscillators = []
+  musicSources = []
   musicMaster = undefined
+  musicFilter = undefined
+  activeTrack = undefined
+  activeMusicTrack.value = ''
 }
 
 function toggleAmbientMusic() {
@@ -287,7 +392,7 @@ onUnmounted(() => {
   document.removeEventListener('click', playClickSound, true)
   window.removeEventListener('keydown', onKeydown)
   window.clearInterval(musicTimer)
-  for (const tone of musicOscillators) tone.stop()
+  for (const source of musicSources) source.stop()
   void audioContext?.close()
 })
 </script>
@@ -318,9 +423,9 @@ onUnmounted(() => {
       v-if="!open"
       class="assistant-sound assistant-music"
       type="button"
-      :aria-label="ambientMusic ? 'Turn off peaceful theme music' : 'Turn on peaceful theme music'"
+      :aria-label="ambientMusic ? `Turn off ${activeMusicTrack} music` : 'Play a random ambient soundscape'"
       :aria-pressed="ambientMusic"
-      :title="ambientMusic ? 'Turn off peaceful theme music' : 'Turn on peaceful theme music'"
+      :title="ambientMusic ? `Now playing: ${activeMusicTrack} (click to stop)` : 'Play a random ambient soundscape'"
       @click="toggleAmbientMusic"
     >
       {{ ambientMusic ? '♫' : '♬' }}
@@ -344,9 +449,9 @@ onUnmounted(() => {
           <button
             class="assistant-sound assistant-music"
             type="button"
-            :aria-label="ambientMusic ? 'Turn off peaceful theme music' : 'Turn on peaceful theme music'"
+            :aria-label="ambientMusic ? `Turn off ${activeMusicTrack} music` : 'Play a random ambient soundscape'"
             :aria-pressed="ambientMusic"
-            :title="ambientMusic ? 'Turn off peaceful theme music' : 'Turn on peaceful theme music'"
+            :title="ambientMusic ? `Now playing: ${activeMusicTrack} (click to stop)` : 'Play a random ambient soundscape'"
             @click="toggleAmbientMusic"
           >
             {{ ambientMusic ? '♫' : '♬' }}
