@@ -1,0 +1,99 @@
+:root {
+  --vp-c-brand-1: #9c73ff;
+  --vp-c-brand-2: #8757f5;
+  --vp-c-brand-3: #7b3ff2;
+  --vp-c-brand-soft: rgba(123, 63, 242, 0.16);
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(110deg, #c0a3ff 5%, #8d5cff 56%, #7b3ff2 100%);
+  --vp-home-hero-image-background-image: radial-gradient(ellipse at center, rgba(123, 63, 242, 0.22), transparent 68%);
+  --vp-home-hero-image-filter: blur(40px);
+  --vp-button-brand-bg: #7b3ff2;
+  --vp-button-brand-hover-bg: #8d5cff;
+  --vp-button-brand-active-bg: #6a2bd7;
+  --vp-c-bg: #0d0a14;
+  --vp-c-bg-alt: #110d19;
+  --vp-c-bg-elv: #17121f;
+  --vp-c-bg-soft: #17121f;
+}
+
+.dark {
+  --vp-c-bg: #0d0a14;
+  --vp-c-bg-alt: #110d19;
+  --vp-c-bg-elv: #17121f;
+  --vp-c-bg-soft: #17121f;
+  --vp-c-divider: rgba(185, 164, 220, 0.12);
+  --vp-c-gutter: #0d0a14;
+  --vp-c-text-1: #f5f0ff;
+  --vp-c-text-2: #b6adc5;
+  --vp-c-text-3: #877d98;
+}
+
+.VPNavBarTitle .title {
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+.VPNavBar .title,
+.VPNavBar .VPNavBarTitle {
+  color: #f5f0ff;
+}
+
+.VPHome .VPHero .name {
+  letter-spacing: -0.055em;
+}
+
+.VPHome .VPHero .text {
+  max-width: 720px;
+  letter-spacing: -0.035em;
+}
+
+.VPHome .VPHero .tagline {
+  max-width: 590px;
+  color: #b6adc5;
+}
+
+.VPHome .VPHero .image-container {
+  transform: scale(1.05);
+}
+
+.VPHome .VPFeature {
+  border: 1px solid rgba(185, 164, 220, 0.13);
+  border-radius: 14px;
+  background: linear-gradient(145deg, rgba(25, 19, 36, 0.92), rgba(17, 13, 25, 0.92));
+  transition: border-color 180ms ease, transform 180ms ease;
+}
+
+.VPHome .VPFeature:hover {
+  border-color: rgba(156, 115, 255, 0.48);
+  transform: translateY(-2px);
+}
+
+.VPHome .VPFeature .icon {
+  color: #a986ff;
+}
+
+.VPHome .VPFeatures {
+  max-width: 1152px;
+}
+
+.VPHome .VPHomeFeatures {
+  padding-top: 20px;
+}
+
+.VPDoc .content-container {
+  max-width: 820px;
+}
+
+.VPDoc a {
+  text-underline-offset: 3px;
+}
+
+.VPBadge {
+  border-color: rgba(156, 115, 255, 0.3);
+}
+
+@media (max-width: 640px) {
+  .VPHome .VPHero .image-container {
+    transform: scale(0.9);
+  }
+}
