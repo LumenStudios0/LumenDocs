@@ -3,7 +3,7 @@ main = "worker/chat.js"
 compatibility_date = "2026-11-08"
 
 [vars]
-ALLOWED_ORIGIN = "https://lumenstudios0.github.io"
+ALLOWED_ORIGIN = "https://lumenstudio.fyi"
 
 [[ratelimits]]
 name = "ASSISTANT_LIMITER"
