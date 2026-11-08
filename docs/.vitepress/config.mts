@@ -202,10 +202,6 @@ export default defineConfig({
     socialLinks: [
       { icon: 'github', link: 'https://github.com/LumenStudios0' },
     ],
-    editLink: {
-      pattern: 'https://github.com/LumenStudios0/LumenDocs/edit/main/docs/:path',
-      text: 'Edit this page on GitHub',
-    },
     footer: {
       message: 'Here to help you get your server running.',
       copyright: 'Copyright © Lumen Studios',

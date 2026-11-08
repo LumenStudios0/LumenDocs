@@ -39,6 +39,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Build site
+        env:
+          VITE_DOCS_ASSISTANT_ENDPOINT: ${{ vars.DOCS_ASSISTANT_ENDPOINT }}
         run: npm run docs:build
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

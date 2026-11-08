@@ -12,6 +12,11 @@ interface DocSection {
 interface Answer {
   question: string
   results: DocSection[]
+  reply: string
+}
+
+interface AssistantApiResponse {
+  answer?: unknown
 }
 
 const sourceFiles = import.meta.glob('../../**/*.md', {
@@ -57,6 +62,8 @@ const input = ref<HTMLInputElement | null>(null)
 const searching = ref(false)
 const hasQuestion = computed(() => answers.value.length > 0)
 const clickSounds = ref(true)
+const discordNotice = ref(false)
+const assistantEndpoint = import.meta.env.VITE_DOCS_ASSISTANT_ENDPOINT
 let audioContext: AudioContext | undefined
 
 function findSections(question: string): DocSection[] {
@@ -79,12 +86,40 @@ function findSections(question: string): DocSection[] {
     .map(result => result.section)
 }
 
-function askQuestion() {
+async function askQuestion() {
   const question = query.value.trim()
   if (!question || searching.value) return
 
   searching.value = true
-  answers.value.push({ question, results: findSections(question) })
+  const results = findSections(question)
+  let reply = results.length
+    ? `I found ${results.length === 1 ? 'a useful guide' : 'some useful sections'} for that. Open the links below for step-by-step details.`
+    : 'I couldn’t find a close match in the docs. Try including the plugin name or a specific command, or ask for help in our Discord.'
+
+  if (assistantEndpoint) {
+    try {
+      const response = await fetch(assistantEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question,
+          context: results.map(result => ({ title: result.title, text: result.text.slice(0, 1200) })),
+        }),
+      })
+      if (!response.ok) throw new Error(`Assistant request failed with status ${response.status}`)
+
+      const payload = await response.json() as AssistantApiResponse
+      if (typeof payload.answer !== 'string' || payload.answer.trim().length === 0) {
+        throw new Error('Assistant returned an empty answer')
+      }
+      reply = payload.answer.trim()
+    } catch (error) {
+      console.error('Lumen Docs Assistant request failed:', error)
+      reply = 'The AI assistant is temporarily unavailable. Here are the closest matching guides instead.'
+    }
+  }
+
+  answers.value.push({ question, results, reply })
   query.value = ''
   searching.value = false
 }
@@ -103,19 +138,24 @@ function playClickSound(event: MouseEvent) {
 
   audioContext ??= new AudioContextConstructor()
   void audioContext.resume()
-  const oscillator = audioContext.createOscillator()
-  const volume = audioContext.createGain()
   const now = audioContext.currentTime
 
-  oscillator.type = 'sine'
-  oscillator.frequency.setValueAtTime(740, now)
-  volume.gain.setValueAtTime(0.0001, now)
-  volume.gain.exponentialRampToValueAtTime(0.025, now + 0.006)
-  volume.gain.exponentialRampToValueAtTime(0.0001, now + 0.035)
-  oscillator.connect(volume)
-  volume.connect(audioContext.destination)
-  oscillator.start(now)
-  oscillator.stop(now + 0.04)
+  const playTone = (frequency: number, start: number, duration: number, peak: number) => {
+    const oscillator = audioContext!.createOscillator()
+    const volume = audioContext!.createGain()
+    oscillator.type = 'sine'
+    oscillator.frequency.setValueAtTime(frequency, now + start)
+    volume.gain.setValueAtTime(0.0001, now + start)
+    volume.gain.exponentialRampToValueAtTime(peak, now + start + 0.005)
+    volume.gain.exponentialRampToValueAtTime(0.0001, now + start + duration)
+    oscillator.connect(volume)
+    volume.connect(audioContext!.destination)
+    oscillator.start(now + start)
+    oscillator.stop(now + start + duration + 0.005)
+  }
+
+  playTone(520, 0, 0.075, 0.022)
+  playTone(880, 0.012, 0.06, 0.012)
 }
 
 function toggleClickSounds() {
@@ -170,6 +210,20 @@ onUnmounted(() => {
     >
       {{ clickSounds ? '♪' : '♩' }}
     </button>
+    <button
+      v-if="!open"
+      class="discord-login-button"
+      type="button"
+      aria-label="Log in with Discord"
+      @click="discordNotice = !discordNotice"
+    >
+      <span class="discord-login-icon" aria-hidden="true">◉</span>
+      <span>Log in with Discord</span>
+    </button>
+    <div v-if="discordNotice && !open" class="discord-login-notice" role="status">
+      Discord sign-in is a placeholder for now. The button will be connected when login is set up.
+      <button type="button" aria-label="Dismiss Discord sign-in notice" @click="discordNotice = false">×</button>
+    </div>
 
     <section v-if="open" class="assistant-panel" aria-label="Lumen Docs Assistant">
       <header class="assistant-header">
@@ -178,6 +232,15 @@ onUnmounted(() => {
           <span>Answers from the published guides</span>
         </div>
         <div class="assistant-header-actions">
+          <button
+            class="discord-login-button assistant-discord-login"
+            type="button"
+            aria-label="Log in with Discord"
+            @click="discordNotice = !discordNotice"
+          >
+            <span class="discord-login-icon" aria-hidden="true">◉</span>
+            <span>Log in with Discord</span>
+          </button>
           <button
             class="assistant-sound"
             type="button"
@@ -190,6 +253,10 @@ onUnmounted(() => {
           <button class="assistant-close" type="button" aria-label="Close assistant" @click="open = false">×</button>
         </div>
       </header>
+      <p v-if="discordNotice" class="discord-login-inline-notice" role="status">
+        Discord sign-in isn’t connected yet.
+        <button type="button" aria-label="Dismiss Discord sign-in notice" @click="discordNotice = false">×</button>
+      </p>
 
       <div class="assistant-conversation" aria-live="polite">
         <p v-if="!hasQuestion" class="assistant-welcome">
@@ -197,11 +264,7 @@ onUnmounted(() => {
         </p>
         <article v-for="(answer, index) in answers" :key="`${index}-${answer.question}`" class="assistant-answer">
           <p class="assistant-question">{{ answer.question }}</p>
-          <p v-if="answer.results.length" class="assistant-response">Here are the closest matches in the docs:</p>
-          <p v-else class="assistant-response">
-            I couldn’t find a close match. Try a plugin name or a specific topic, or ask for help in
-            <a href="https://discord.gg/lumenstudios" target="_blank" rel="noreferrer">our Discord</a>.
-          </p>
+          <p class="assistant-response">{{ answer.reply }}</p>
           <a
             v-for="result in answer.results"
             :key="result.href"
@@ -224,9 +287,11 @@ onUnmounted(() => {
           aria-label="Ask a question about Lumen plugins"
           autocomplete="off"
         >
-        <button type="submit" :disabled="!query.trim() || searching">Ask</button>
+        <button type="submit" :disabled="!query.trim() || searching">{{ searching ? 'Thinking…' : 'Ask' }}</button>
       </form>
-      <p class="assistant-note">Searches these docs locally; your question isn’t sent to an AI service.</p>
+      <p class="assistant-note">
+        {{ assistantEndpoint ? 'Questions and matching guide excerpts are sent to DeepSeek for replies.' : 'Local guide search is active. AI replies need a secure backend.' }}
+      </p>
     </section>
   </div>
 </template>

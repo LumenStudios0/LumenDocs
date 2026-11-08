@@ -1,0 +1,11 @@
+name = "lumen-docs-assistant"
+main = "worker/chat.js"
+compatibility_date = "2026-11-08"
+
+[vars]
+ALLOWED_ORIGIN = "https://lumenstudios0.github.io"
+
+[[ratelimits]]
+name = "ASSISTANT_LIMITER"
+namespace_id = "1001"
+simple = { limit = 10, period = 60 }
