@@ -71,6 +71,7 @@ let musicFilter: BiquadFilterNode | undefined
 let musicOscillators: OscillatorNode[] = []
 let musicSources: AudioScheduledSourceNode[] = []
 let musicTimer: number | undefined
+let rainTimer: number | undefined
 let musicChordIndex = 0
 let lastMusicTrack = -1
 let activeTrack: AmbientTrack | undefined
@@ -86,7 +87,15 @@ interface AmbientTrack {
     volume: number
     pulse?: number
   }
-  sparkle?: number[]
+  rain?: boolean
+  notes?: {
+    frequencies: number[]
+    waveform: OscillatorType
+    volume: number
+    attack: number
+    decay: number
+    partials?: { ratio: number; level: number }[]
+  }
 }
 
 const ambientTracks: AmbientTrack[] = [
@@ -116,10 +125,16 @@ const ambientTracks: AmbientTrack[] = [
   },
   {
     name: 'Forest',
-    waveform: 'sine',
+    waveform: 'triangle',
     filterFrequency: 1100,
     texture: { filter: 'bandpass', frequency: 850, volume: 0.018, pulse: 0.012 },
-    sparkle: [587.33, 659.25, 783.99, 880],
+    notes: {
+      frequencies: [587.33, 659.25, 783.99, 880],
+      waveform: 'triangle',
+      volume: 0.055,
+      attack: 0.04,
+      decay: 0.9,
+    },
     chords: [
     [174.61, 220, 261.63, 329.63],
     [196, 246.94, 293.66, 349.23],
@@ -131,7 +146,7 @@ const ambientTracks: AmbientTrack[] = [
     name: 'Rain',
     waveform: 'sine',
     filterFrequency: 760,
-    texture: { filter: 'highpass', frequency: 1450, volume: 0.045 },
+    rain: true,
     chords: [
     [261.63, 329.63, 392, 493.88],
     [220, 261.63, 329.63, 440],
@@ -143,7 +158,17 @@ const ambientTracks: AmbientTrack[] = [
     name: 'Starlight',
     waveform: 'sine',
     filterFrequency: 1800,
-    sparkle: [783.99, 880, 987.77, 1174.66, 1318.51],
+    notes: {
+      frequencies: [783.99, 880, 987.77, 1174.66, 1318.51],
+      waveform: 'sine',
+      volume: 0.12,
+      attack: 0.08,
+      decay: 2.8,
+      partials: [
+        { ratio: 2.01, level: 0.3 },
+        { ratio: 3.92, level: 0.08 },
+      ],
+    },
     chords: [
     [196, 246.94, 293.66, 392],
     [220, 261.63, 329.63, 392],
@@ -322,6 +347,30 @@ function startAmbientMusic() {
     }
   }
 
+  if (activeTrack.rain) {
+    const playRaindrop = () => {
+      if (!audioContext || !musicMaster || activeTrack?.name !== 'Rain') return
+
+      const dropAt = audioContext.currentTime
+      const drop = audioContext.createOscillator()
+      const dropVolume = audioContext.createGain()
+      drop.type = 'sine'
+      drop.frequency.setValueAtTime(1150 + Math.random() * 850, dropAt)
+      drop.frequency.exponentialRampToValueAtTime(520 + Math.random() * 300, dropAt + 0.11)
+      dropVolume.gain.setValueAtTime(0.0001, dropAt)
+      dropVolume.gain.exponentialRampToValueAtTime(0.16, dropAt + 0.004)
+      dropVolume.gain.exponentialRampToValueAtTime(0.0001, dropAt + 0.12)
+      drop.connect(dropVolume)
+      dropVolume.connect(musicMaster)
+      drop.start(dropAt)
+      drop.stop(dropAt + 0.13)
+
+      rainTimer = window.setTimeout(playRaindrop, 260 + Math.random() * 720)
+    }
+
+    rainTimer = window.setTimeout(playRaindrop, 300)
+  }
+
   musicChordIndex = 0
   musicTimer = window.setInterval(() => {
     if (!audioContext || !activeTrack) return
@@ -333,21 +382,26 @@ function startAmbientMusic() {
       tone.frequency.setTargetAtTime(chord[index], changeAt, 0.8)
     })
 
-    if (activeTrack.sparkle?.length) {
-      const sparkle = audioContext.createOscillator()
-      const sparkleVolume = audioContext.createGain()
-      const note = activeTrack.sparkle[Math.floor(Math.random() * activeTrack.sparkle.length)]
-      sparkle.type = 'sine'
-      sparkle.frequency.setValueAtTime(note, changeAt)
-      sparkleVolume.gain.setValueAtTime(0.0001, changeAt)
-      sparkleVolume.gain.linearRampToValueAtTime(0.018, changeAt + 0.12)
-      sparkleVolume.gain.exponentialRampToValueAtTime(0.0001, changeAt + 2.2)
-      sparkle.connect(sparkleVolume)
-      sparkleVolume.connect(musicFilter!)
-      sparkle.start(changeAt)
-      sparkle.stop(changeAt + 2.25)
+    if (activeTrack.notes) {
+      const instrument = activeTrack.notes
+      const frequency = instrument.frequencies[Math.floor(Math.random() * instrument.frequencies.length)]
+      const partials = [{ ratio: 1, level: 1 }, ...(instrument.partials ?? [])]
+
+      for (const partial of partials) {
+        const note = audioContext.createOscillator()
+        const noteVolume = audioContext.createGain()
+        note.type = instrument.waveform
+        note.frequency.setValueAtTime(frequency * partial.ratio, changeAt)
+        noteVolume.gain.setValueAtTime(0.0001, changeAt)
+        noteVolume.gain.linearRampToValueAtTime(instrument.volume * partial.level, changeAt + instrument.attack)
+        noteVolume.gain.exponentialRampToValueAtTime(0.0001, changeAt + instrument.decay)
+        note.connect(noteVolume)
+        noteVolume.connect(musicFilter!)
+        note.start(changeAt)
+        note.stop(changeAt + instrument.decay + 0.05)
+      }
     }
-  }, activeTrack.name === 'Rain' ? 6000 : 4500)
+  }, 4500)
 }
 
 function stopAmbientMusic() {
@@ -355,6 +409,8 @@ function stopAmbientMusic() {
 
   window.clearInterval(musicTimer)
   musicTimer = undefined
+  window.clearTimeout(rainTimer)
+  rainTimer = undefined
   const now = audioContext.currentTime
   musicMaster.gain.cancelScheduledValues(now)
   musicMaster.gain.setValueAtTime(musicMaster.gain.value, now)
@@ -392,6 +448,7 @@ onUnmounted(() => {
   document.removeEventListener('click', playClickSound, true)
   window.removeEventListener('keydown', onKeydown)
   window.clearInterval(musicTimer)
+  window.clearTimeout(rainTimer)
   for (const source of musicSources) source.stop()
   void audioContext?.close()
 })
