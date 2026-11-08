@@ -67,6 +67,14 @@ const assistantEndpoint = import.meta.env.VITE_DOCS_ASSISTANT_ENDPOINT
 let audioContext: AudioContext | undefined
 let musicMaster: GainNode | undefined
 let musicOscillators: OscillatorNode[] = []
+let musicTimer: number | undefined
+let musicChordIndex = 0
+const ambientChords = [
+  [196, 246.94, 293.66, 369.99],
+  [220, 261.63, 329.63, 392],
+  [174.61, 220, 261.63, 329.63],
+  [196, 246.94, 293.66, 392],
+]
 
 function findSections(question: string): DocSection[] {
   const terms = question.toLowerCase().match(/[a-z0-9][a-z0-9-]*/g) ?? []
@@ -181,23 +189,37 @@ function startAmbientMusic() {
   filter.connect(musicMaster)
   musicMaster.connect(audioContext.destination)
 
-  for (const [frequency, detune] of [[174.61, -2], [220, 1], [261.63, -1], [329.63, 2]]) {
+  for (const [index, frequency] of ambientChords[0].entries()) {
     const tone = audioContext.createOscillator()
     const voice = audioContext.createGain()
     tone.type = 'sine'
     tone.frequency.setValueAtTime(frequency, now)
-    tone.detune.setValueAtTime(detune, now)
+    tone.detune.setValueAtTime(index % 2 === 0 ? -2 : 2, now)
     voice.gain.setValueAtTime(0.12, now)
     tone.connect(voice)
     voice.connect(filter)
     tone.start(now)
     musicOscillators.push(tone)
   }
+
+  musicChordIndex = 0
+  musicTimer = window.setInterval(() => {
+    if (!audioContext) return
+    musicChordIndex = (musicChordIndex + 1) % ambientChords.length
+    const chord = ambientChords[musicChordIndex]
+    const changeAt = audioContext.currentTime
+    musicOscillators.forEach((tone, index) => {
+      tone.frequency.cancelScheduledValues(changeAt)
+      tone.frequency.setTargetAtTime(chord[index], changeAt, 0.8)
+    })
+  }, 4500)
 }
 
 function stopAmbientMusic() {
   if (!audioContext || !musicMaster) return
 
+  window.clearInterval(musicTimer)
+  musicTimer = undefined
   const now = audioContext.currentTime
   musicMaster.gain.cancelScheduledValues(now)
   musicMaster.gain.setValueAtTime(musicMaster.gain.value, now)
@@ -230,6 +252,7 @@ onMounted(() => {
 onUnmounted(() => {
   document.removeEventListener('click', playClickSound, true)
   window.removeEventListener('keydown', onKeydown)
+  window.clearInterval(musicTimer)
   for (const tone of musicOscillators) tone.stop()
   void audioContext?.close()
 })
