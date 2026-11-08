@@ -62,7 +62,6 @@ const input = ref<HTMLInputElement | null>(null)
 const searching = ref(false)
 const hasQuestion = computed(() => answers.value.length > 0)
 const clickSounds = ref(true)
-const discordNotice = ref(false)
 const assistantEndpoint = import.meta.env.VITE_DOCS_ASSISTANT_ENDPOINT
 let audioContext: AudioContext | undefined
 
@@ -210,21 +209,6 @@ onUnmounted(() => {
     >
       {{ clickSounds ? '♪' : '♩' }}
     </button>
-    <button
-      v-if="!open"
-      class="discord-login-button"
-      type="button"
-      aria-label="Log in with Discord"
-      @click="discordNotice = !discordNotice"
-    >
-      <span class="discord-login-icon" aria-hidden="true">◉</span>
-      <span>Log in with Discord</span>
-    </button>
-    <div v-if="discordNotice && !open" class="discord-login-notice" role="status">
-      Discord sign-in is a placeholder for now. The button will be connected when login is set up.
-      <button type="button" aria-label="Dismiss Discord sign-in notice" @click="discordNotice = false">×</button>
-    </div>
-
     <section v-if="open" class="assistant-panel" aria-label="Lumen Docs Assistant">
       <header class="assistant-header">
         <div>
@@ -232,15 +216,6 @@ onUnmounted(() => {
           <span>Answers from the published guides</span>
         </div>
         <div class="assistant-header-actions">
-          <button
-            class="discord-login-button assistant-discord-login"
-            type="button"
-            aria-label="Log in with Discord"
-            @click="discordNotice = !discordNotice"
-          >
-            <span class="discord-login-icon" aria-hidden="true">◉</span>
-            <span>Log in with Discord</span>
-          </button>
           <button
             class="assistant-sound"
             type="button"
@@ -253,10 +228,6 @@ onUnmounted(() => {
           <button class="assistant-close" type="button" aria-label="Close assistant" @click="open = false">×</button>
         </div>
       </header>
-      <p v-if="discordNotice" class="discord-login-inline-notice" role="status">
-        Discord sign-in isn’t connected yet.
-        <button type="button" aria-label="Dismiss Discord sign-in notice" @click="discordNotice = false">×</button>
-      </p>
 
       <div class="assistant-conversation" aria-live="polite">
         <p v-if="!hasQuestion" class="assistant-welcome">

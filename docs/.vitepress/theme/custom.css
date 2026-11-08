@@ -56,6 +56,27 @@
   color: var(--lumen-nav-title);
 }
 
+.VPNavBarSocialLinks .VPSocialLink[aria-label="Log in with Discord"] {
+  width: auto;
+  gap: 7px;
+  padding: 0 10px;
+  border: 1px solid var(--lumen-card-border);
+  border-radius: 999px;
+  color: var(--vp-c-text-1);
+  font-size: 12px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.VPNavBarSocialLinks .VPSocialLink[aria-label="Log in with Discord"]::after {
+  content: "Log in";
+}
+
+.VPNavBarSocialLinks .VPSocialLink[aria-label="Log in with Discord"]:hover {
+  border-color: var(--vp-c-brand-1);
+  color: var(--vp-c-brand-1);
+}
+
 .VPHome .VPHero .name {
   letter-spacing: -0.055em;
 }
@@ -398,71 +419,6 @@
   color: var(--vp-c-brand-1);
 }
 
-.discord-login-button {
-  display: inline-flex;
-  min-height: 42px;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 0 12px;
-  border: 1px solid var(--lumen-card-border);
-  border-radius: 999px;
-  background: var(--vp-c-bg);
-  color: var(--vp-c-text-1);
-  cursor: pointer;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.discord-login-button:hover {
-  border-color: var(--vp-c-brand-1);
-  color: var(--vp-c-brand-1);
-}
-
-.discord-login-icon {
-  color: var(--vp-c-brand-1);
-  font-size: 16px;
-  line-height: 1;
-}
-
-.discord-login-notice {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 10px);
-  width: min(300px, calc(100vw - 24px));
-  padding: 14px 40px 14px 14px;
-  border: 1px solid var(--lumen-card-border);
-  border-radius: 12px;
-  background: var(--vp-c-bg);
-  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.3);
-  color: var(--vp-c-text-2);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.discord-login-notice button,
-.discord-login-inline-notice button {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 24px;
-  height: 24px;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--vp-c-text-2);
-  cursor: pointer;
-  font: inherit;
-  font-size: 18px;
-}
-
-.discord-login-notice button:hover,
-.discord-login-inline-notice button:hover {
-  color: var(--vp-c-text-1);
-}
-
 .assistant-panel {
   display: flex;
   width: min(390px, calc(100vw - 32px));
@@ -515,11 +471,6 @@
   height: 34px;
 }
 
-.assistant-discord-login {
-  min-height: 34px;
-  padding: 0 9px;
-}
-
 .assistant-close {
   font-size: 23px;
   line-height: 1;
@@ -532,16 +483,6 @@
   gap: 14px;
   overflow-y: auto;
   padding: 16px;
-}
-
-.discord-login-inline-notice {
-  position: relative;
-  margin: 0;
-  padding: 9px 36px 9px 14px;
-  border-bottom: 1px solid var(--lumen-card-border);
-  background: var(--vp-c-bg-soft);
-  color: var(--lumen-card-muted);
-  font-size: 11px;
 }
 
 .assistant-welcome,
@@ -698,20 +639,6 @@
     height: min(560px, calc(100dvh - 24px));
   }
 
-  .discord-login-button {
-    width: 42px;
-    min-height: 42px;
-    padding: 0;
-  }
-
-  .discord-login-button > span:not(.discord-login-icon) {
-    display: none;
-  }
-
-  .assistant-discord-login {
-    width: 34px;
-    min-height: 34px;
-  }
 }
 
 @media (max-width: 420px) {
