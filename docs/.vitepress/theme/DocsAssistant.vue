@@ -62,8 +62,11 @@ const input = ref<HTMLInputElement | null>(null)
 const searching = ref(false)
 const hasQuestion = computed(() => answers.value.length > 0)
 const clickSounds = ref(true)
+const ambientMusic = ref(false)
 const assistantEndpoint = import.meta.env.VITE_DOCS_ASSISTANT_ENDPOINT
 let audioContext: AudioContext | undefined
+let musicMaster: GainNode | undefined
+let musicOscillators: OscillatorNode[] = []
 
 function findSections(question: string): DocSection[] {
   const terms = question.toLowerCase().match(/[a-z0-9][a-z0-9-]*/g) ?? []
@@ -161,6 +164,55 @@ function toggleClickSounds() {
   }
 }
 
+function startAmbientMusic() {
+  const AudioContextConstructor = window.AudioContext
+  if (!AudioContextConstructor) return
+
+  audioContext ??= new AudioContextConstructor()
+  void audioContext.resume()
+
+  const now = audioContext.currentTime
+  const filter = audioContext.createBiquadFilter()
+  musicMaster = audioContext.createGain()
+  filter.type = 'lowpass'
+  filter.frequency.setValueAtTime(700, now)
+  musicMaster.gain.setValueAtTime(0.0001, now)
+  musicMaster.gain.linearRampToValueAtTime(0.018, now + 2.5)
+  filter.connect(musicMaster)
+  musicMaster.connect(audioContext.destination)
+
+  for (const [frequency, detune] of [[174.61, -2], [220, 1], [261.63, -1], [329.63, 2]]) {
+    const tone = audioContext.createOscillator()
+    const voice = audioContext.createGain()
+    tone.type = 'sine'
+    tone.frequency.setValueAtTime(frequency, now)
+    tone.detune.setValueAtTime(detune, now)
+    voice.gain.setValueAtTime(0.12, now)
+    tone.connect(voice)
+    voice.connect(filter)
+    tone.start(now)
+    musicOscillators.push(tone)
+  }
+}
+
+function stopAmbientMusic() {
+  if (!audioContext || !musicMaster) return
+
+  const now = audioContext.currentTime
+  musicMaster.gain.cancelScheduledValues(now)
+  musicMaster.gain.setValueAtTime(musicMaster.gain.value, now)
+  musicMaster.gain.linearRampToValueAtTime(0.0001, now + 1.2)
+  for (const tone of musicOscillators) tone.stop(now + 1.25)
+  musicOscillators = []
+  musicMaster = undefined
+}
+
+function toggleAmbientMusic() {
+  ambientMusic.value = !ambientMusic.value
+  if (ambientMusic.value) startAmbientMusic()
+  else stopAmbientMusic()
+}
+
 function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') open.value = false
 }
@@ -178,6 +230,7 @@ onMounted(() => {
 onUnmounted(() => {
   document.removeEventListener('click', playClickSound, true)
   window.removeEventListener('keydown', onKeydown)
+  for (const tone of musicOscillators) tone.stop()
   void audioContext?.close()
 })
 </script>
@@ -204,6 +257,17 @@ onUnmounted(() => {
     >
       {{ clickSounds ? '♪' : '♩' }}
     </button>
+    <button
+      v-if="!open"
+      class="assistant-sound assistant-music"
+      type="button"
+      :aria-label="ambientMusic ? 'Turn off peaceful theme music' : 'Turn on peaceful theme music'"
+      :aria-pressed="ambientMusic"
+      :title="ambientMusic ? 'Turn off peaceful theme music' : 'Turn on peaceful theme music'"
+      @click="toggleAmbientMusic"
+    >
+      {{ ambientMusic ? '♫' : '♬' }}
+    </button>
     <section v-if="open" class="assistant-panel" aria-label="Lumen Docs Assistant">
       <header class="assistant-header">
         <div>
@@ -219,6 +283,16 @@ onUnmounted(() => {
             @click="toggleClickSounds"
           >
             {{ clickSounds ? '♪' : '♩' }}
+          </button>
+          <button
+            class="assistant-sound assistant-music"
+            type="button"
+            :aria-label="ambientMusic ? 'Turn off peaceful theme music' : 'Turn on peaceful theme music'"
+            :aria-pressed="ambientMusic"
+            :title="ambientMusic ? 'Turn off peaceful theme music' : 'Turn on peaceful theme music'"
+            @click="toggleAmbientMusic"
+          >
+            {{ ambientMusic ? '♫' : '♬' }}
           </button>
           <button class="assistant-close" type="button" aria-label="Close assistant" @click="open = false">×</button>
         </div>

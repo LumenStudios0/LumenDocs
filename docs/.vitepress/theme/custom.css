@@ -471,6 +471,12 @@
   color: var(--vp-c-brand-1);
 }
 
+.assistant-music[aria-pressed="true"] {
+  border-color: var(--vp-c-brand-1);
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1);
+}
+
 .assistant-panel {
   display: flex;
   width: min(390px, calc(100vw - 32px));
