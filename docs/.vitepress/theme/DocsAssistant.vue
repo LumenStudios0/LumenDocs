@@ -138,23 +138,44 @@ function playClickSound(event: MouseEvent) {
   audioContext ??= new AudioContextConstructor()
   void audioContext.resume()
   const now = audioContext.currentTime
-
-  const playTone = (frequency: number, start: number, duration: number, peak: number) => {
-    const oscillator = audioContext!.createOscillator()
-    const volume = audioContext!.createGain()
-    oscillator.type = 'sine'
-    oscillator.frequency.setValueAtTime(frequency, now + start)
-    volume.gain.setValueAtTime(0.0001, now + start)
-    volume.gain.exponentialRampToValueAtTime(peak, now + start + 0.005)
-    volume.gain.exponentialRampToValueAtTime(0.0001, now + start + duration)
-    oscillator.connect(volume)
-    volume.connect(audioContext!.destination)
-    oscillator.start(now + start)
-    oscillator.stop(now + start + duration + 0.005)
+  const duration = 0.055
+  const noiseBuffer = audioContext.createBuffer(
+    1,
+    Math.ceil(audioContext.sampleRate * duration),
+    audioContext.sampleRate,
+  )
+  const noise = noiseBuffer.getChannelData(0)
+  for (let index = 0; index < noise.length; index += 1) {
+    noise[index] = Math.random() * 2 - 1
   }
 
-  playTone(520, 0, 0.075, 0.022)
-  playTone(880, 0.012, 0.06, 0.012)
+  const tick = audioContext.createBufferSource()
+  const tickFilter = audioContext.createBiquadFilter()
+  const tickVolume = audioContext.createGain()
+  tick.buffer = noiseBuffer
+  tickFilter.type = 'highpass'
+  tickFilter.frequency.setValueAtTime(1600, now)
+  tickVolume.gain.setValueAtTime(0.0001, now)
+  tickVolume.gain.exponentialRampToValueAtTime(0.018, now + 0.003)
+  tickVolume.gain.exponentialRampToValueAtTime(0.0001, now + duration)
+  tick.connect(tickFilter)
+  tickFilter.connect(tickVolume)
+  tickVolume.connect(audioContext.destination)
+  tick.start(now)
+  tick.stop(now + duration)
+
+  const thump = audioContext.createOscillator()
+  const thumpVolume = audioContext.createGain()
+  thump.type = 'triangle'
+  thump.frequency.setValueAtTime(190, now)
+  thump.frequency.exponentialRampToValueAtTime(85, now + 0.075)
+  thumpVolume.gain.setValueAtTime(0.0001, now)
+  thumpVolume.gain.exponentialRampToValueAtTime(0.035, now + 0.004)
+  thumpVolume.gain.exponentialRampToValueAtTime(0.0001, now + 0.085)
+  thump.connect(thumpVolume)
+  thumpVolume.connect(audioContext.destination)
+  thump.start(now)
+  thump.stop(now + 0.09)
 }
 
 function toggleClickSounds() {
