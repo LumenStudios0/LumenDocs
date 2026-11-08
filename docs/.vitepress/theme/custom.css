@@ -107,6 +107,38 @@ body::before {
   color: var(--lumen-nav-title);
 }
 
+.lumen-history-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 12px;
+}
+
+.lumen-history-controls button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid var(--lumen-card-border);
+  border-radius: 8px;
+  background: var(--lumen-card-bg);
+  color: var(--vp-c-text-1);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+  transition: border-color 160ms ease, color 160ms ease, opacity 160ms ease;
+}
+
+.lumen-history-controls button:not(:disabled):hover {
+  border-color: var(--vp-c-brand-1);
+  color: var(--vp-c-brand-1);
+}
+
+.lumen-history-controls button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .VPNavBarSocialLinks .VPSocialLink[aria-label="Log in with Discord"] {
   width: auto;
   gap: 7px;

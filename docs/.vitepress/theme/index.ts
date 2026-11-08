@@ -1,5 +1,5 @@
 import DefaultTheme from 'vitepress/theme'
-import { h, defineComponent, onUnmounted } from 'vue'
+import { h, defineComponent, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vitepress'
 import DocsAssistant from './DocsAssistant.vue'
 import './custom.css'
@@ -10,11 +10,26 @@ export default {
     setup() {
       const router = useRouter()
       const previousRouteChanged = router.onAfterRouteChange
+      const canGoBack = ref(false)
+      const canGoForward = ref(false)
+      let traversingHistory = false
       let currentPath = router.route.path
       let slideFromLeft = true
 
+      const handlePopState = () => {
+        traversingHistory = true
+        canGoForward.value = true
+        canGoBack.value = window.history.length > 1
+      }
+
       const animatePage = async (nextPath: string) => {
         await previousRouteChanged?.(nextPath)
+        if (traversingHistory) {
+          traversingHistory = false
+        } else {
+          canGoForward.value = false
+        }
+        canGoBack.value = window.history.length > 1
         if (nextPath === currentPath) return
         currentPath = nextPath
 
@@ -32,9 +47,32 @@ export default {
       }
 
       router.onAfterRouteChange = animatePage
-      onUnmounted(() => { router.onAfterRouteChange = previousRouteChanged })
+      onMounted(() => {
+        canGoBack.value = window.history.length > 1
+        window.addEventListener('popstate', handlePopState)
+      })
+      onUnmounted(() => {
+        router.onAfterRouteChange = previousRouteChanged
+        window.removeEventListener('popstate', handlePopState)
+      })
 
       return () => h(DefaultTheme.Layout, null, {
+        'nav-bar-content-after': () => h('div', { class: 'lumen-history-controls' }, [
+          h('button', {
+            type: 'button',
+            disabled: !canGoBack.value,
+            'aria-label': 'Go back',
+            title: 'Go back',
+            onClick: () => window.history.back(),
+          }, '<-'),
+          h('button', {
+            type: 'button',
+            disabled: !canGoForward.value,
+            'aria-label': 'Go forward',
+            title: 'Go forward',
+            onClick: () => window.history.forward(),
+          }, '->'),
+        ]),
         'layout-bottom': () => h(DocsAssistant),
       })
     },
