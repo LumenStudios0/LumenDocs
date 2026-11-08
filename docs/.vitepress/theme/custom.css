@@ -540,9 +540,15 @@
 .assistant-welcome,
 .assistant-response {
   margin: 0;
-  color: var(--lumen-card-muted);
-  font-size: 13px;
-  line-height: 1.55;
+  color: var(--vp-c-text-1);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.65;
+}
+
+.assistant-welcome {
+  color: var(--vp-c-text-2);
+  font-weight: 500;
 }
 
 .assistant-answer {
@@ -560,7 +566,8 @@
   border-radius: 12px 12px 2px 12px;
   background: var(--vp-c-brand-soft);
   color: var(--vp-c-text-1);
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 600;
   line-height: 1.45;
 }
 

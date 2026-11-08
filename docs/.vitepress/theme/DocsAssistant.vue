@@ -81,7 +81,7 @@ function findSections(question: string): DocSection[] {
   return ranked
     .filter(result => result.score > 0)
     .sort((a, b) => b.score - a.score)
-    .slice(0, 3)
+    .slice(0, 5)
     .map(result => result.section)
 }
 
@@ -102,7 +102,7 @@ async function askQuestion() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question,
-          context: results.map(result => ({ title: result.title, text: result.text.slice(0, 1200) })),
+          context: results.slice(0, 5).map(result => ({ title: result.title, text: result.text.slice(0, 1800) })),
         }),
       })
       if (!response.ok) throw new Error(`Assistant request failed with status ${response.status}`)

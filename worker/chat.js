@@ -63,16 +63,16 @@ export default {
     }
 
     const question = typeof payload?.question === 'string' ? payload.question.trim() : ''
-    const context = Array.isArray(payload?.context) ? payload.context.slice(0, 3) : []
+    const context = Array.isArray(payload?.context) ? payload.context.slice(0, 5) : []
     if (!question || question.length > 1000) {
       return respond({ error: 'Question must be between 1 and 1000 characters' }, 400, origin)
     }
 
     const excerpts = context
       .filter(item => typeof item?.title === 'string' && typeof item?.text === 'string')
-      .map(item => `## ${item.title.slice(0, 100)}\n${item.text.slice(0, 1200)}`)
+      .map(item => `## ${item.title.slice(0, 100)}\n${item.text.slice(0, 1800)}`)
       .join('\n\n')
-      .slice(0, 4000)
+      .slice(0, 8500)
 
     let upstream
     try {
@@ -89,7 +89,7 @@ export default {
           messages: [
             {
               role: 'system',
-              content: 'You are the Lumen Studios Minecraft plugin documentation assistant. Answer clearly and naturally using only the supplied documentation excerpts. For troubleshooting, give safe, practical checks in order. Never invent commands, permissions, versions, or configuration keys. If the excerpts do not answer the question, say what information is missing and direct the user to https://discord.gg/lumenstudios.',
+              content: 'You are the Lumen Studios documentation assistant for Minecraft server owners and administrators. Help them install, configure, and troubleshoot Lumen Studios plugins in the context of their server. Use the supplied official documentation excerpts as the source of truth, and prefer concrete steps, commands, permissions, configuration paths, dependencies, and compatibility details from those excerpts. Each plugin can have different platform and version requirements; never assume the user’s server fork, Minecraft version, Java version, installed plugins, or configuration unless they tell you. If a recommendation depends on those details, ask for them or explain what to check. Never invent commands, permissions, versions, configuration keys, product behavior, or server details. For troubleshooting, give safe, practical checks in order and suggest testing changes on a backup or non-production server when appropriate. Keep answers focused and easy to scan. If the supplied documentation does not answer the question, be clear about the gap and direct the user to https://discord.gg/lumenstudios for help from the team.',
             },
             { role: 'user', content: `Documentation excerpts:\n${excerpts || '(No matching excerpts found.)'}\n\nQuestion:\n${question}` },
           ],
