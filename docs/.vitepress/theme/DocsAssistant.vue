@@ -155,7 +155,7 @@ function playClickSound(event: MouseEvent) {
   tone.frequency.setValueAtTime(330, now)
   tone.frequency.exponentialRampToValueAtTime(220, now + 0.09)
   volume.gain.setValueAtTime(0.0001, now)
-  volume.gain.exponentialRampToValueAtTime(0.006, now + 0.012)
+  volume.gain.exponentialRampToValueAtTime(0.009, now + 0.012)
   volume.gain.exponentialRampToValueAtTime(0.0001, now + 0.1)
   tone.connect(volume)
   volume.connect(audioContext.destination)
@@ -185,7 +185,7 @@ function startAmbientMusic() {
   filter.type = 'lowpass'
   filter.frequency.setValueAtTime(700, now)
   musicMaster.gain.setValueAtTime(0.0001, now)
-  musicMaster.gain.linearRampToValueAtTime(0.018, now + 2.5)
+  musicMaster.gain.linearRampToValueAtTime(0.022, now + 2.5)
   filter.connect(musicMaster)
   musicMaster.connect(audioContext.destination)
 
