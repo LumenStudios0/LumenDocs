@@ -206,6 +206,7 @@ export default defineConfig({
         text: 'Reference',
         items: [
           { text: 'Changelogs', link: '/changelogs/' },
+          { text: 'Recent product updates', link: '/changelogs/updates' },
           { text: 'Keyboard shortcuts', link: '/keyboard-shortcuts' },
         ],
       },

@@ -628,6 +628,8 @@ body::before {
 }
 
 .assistant-panel {
+  position: relative;
+  isolation: isolate;
   display: flex;
   width: min(390px, calc(100vw - 32px));
   height: min(560px, calc(100dvh - 40px));
@@ -636,7 +638,22 @@ body::before {
   border: 1px solid var(--lumen-card-border);
   border-radius: 16px;
   background: var(--vp-c-bg);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35), 0 0 24px rgba(123, 63, 242, 0.2);
+  animation: assistant-aura 7s ease-in-out infinite alternate;
+}
+
+.assistant-panel::before {
+  position: absolute;
+  z-index: -1;
+  inset: -18px;
+  border-radius: 28px;
+  background:
+    radial-gradient(ellipse at 15% 50%, rgba(123, 63, 242, 0.32), transparent 56%),
+    radial-gradient(ellipse at 85% 50%, rgba(169, 134, 255, 0.24), transparent 54%);
+  content: "";
+  filter: blur(18px);
+  opacity: 0.8;
+  pointer-events: none;
 }
 
 .assistant-header {
@@ -685,12 +702,51 @@ body::before {
 }
 
 .assistant-conversation {
+  position: relative;
+  isolation: isolate;
   display: flex;
   flex: 1;
   flex-direction: column;
   gap: 14px;
   overflow-y: auto;
   padding: 16px;
+}
+
+.assistant-conversation::before {
+  position: absolute;
+  z-index: -1;
+  inset: -20% -60%;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 900 600' preserveAspectRatio='none'%3E%3Cpath d='M-50 180 C100 80 220 280 380 175 S650 90 950 190' fill='none' stroke='%237b3ff2' stroke-opacity='.34' stroke-width='3'/%3E%3Cpath d='M-50 210 C110 110 230 310 390 205 S660 120 950 220' fill='none' stroke='%23a986ff' stroke-opacity='.24' stroke-width='2'/%3E%3Cpath d='M-50 470 C120 370 260 560 430 455 S700 375 950 480' fill='none' stroke='%237b3ff2' stroke-opacity='.25' stroke-width='2'/%3E%3C/svg%3E");
+  background-position: center;
+  background-size: 100% 100%;
+  content: "";
+  opacity: 0.6;
+  pointer-events: none;
+  animation: assistant-wave-drift 16s ease-in-out infinite alternate;
+}
+
+.assistant-conversation > * {
+  position: relative;
+}
+
+@keyframes assistant-aura {
+  from {
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35), 0 0 18px rgba(123, 63, 242, 0.16);
+  }
+
+  to {
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35), 0 0 34px rgba(169, 134, 255, 0.35);
+  }
+}
+
+@keyframes assistant-wave-drift {
+  from {
+    transform: translate3d(-5%, -2%, 0);
+  }
+
+  to {
+    transform: translate3d(5%, 2%, 0);
+  }
 }
 
 .assistant-welcome,
@@ -891,6 +947,11 @@ body::before {
 
 @media (prefers-reduced-motion: reduce) {
   body::before {
+    animation: none;
+  }
+
+  .assistant-panel,
+  .assistant-conversation::before {
     animation: none;
   }
 

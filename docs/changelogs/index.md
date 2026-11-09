@@ -2,6 +2,8 @@
 
 Release notes can change with each plugin update. Use the official BuiltByBit resource pages below to check the latest release, update notes, and version-specific installation guidance. This documentation does not reproduce release history that may be out of date.
 
+[Browse recently collected updates](/changelogs/updates) · The update feed is refreshed automatically every 10 minutes when the official listings are reachable.
+
 <div class="changelog-grid">
   <a href="https://builtbybit.com/resources/lumenauction.132967/" target="_blank" rel="noreferrer"><strong>LumenAuction</strong><span>Open official resource and release notes ↗</span></a>
   <a href="https://builtbybit.com/resources/gladiator.132519/" target="_blank" rel="noreferrer"><strong>Gladiator</strong><span>Open official resource and release notes ↗</span></a>
