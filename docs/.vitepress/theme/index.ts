@@ -20,6 +20,8 @@ export default {
       let ambientWeatherTimer: number | undefined
       const ambientWeatherTimers: number[] = []
       let balloonPopTimer: number | undefined
+      let sunExplosionAudio: AudioContext | undefined
+      let sunExplosionCleanupTimer: number | undefined
       const minecraftToast = ref('')
       let minecraftToastTimer: number | undefined
       let phraseBuffer = ''
@@ -141,6 +143,63 @@ export default {
         }, 25000 + Math.random() * 20000)
       }
 
+      const playSunExplosion = () => {
+        if (!window.AudioContext) return
+
+        try {
+          sunExplosionAudio = new AudioContext()
+          const context = sunExplosionAudio
+          const now = context.currentTime
+          const master = context.createGain()
+          master.gain.setValueAtTime(0.42, now)
+          master.connect(context.destination)
+
+          const boom = context.createOscillator()
+          const boomVolume = context.createGain()
+          boom.type = 'triangle'
+          boom.frequency.setValueAtTime(78, now)
+          boom.frequency.exponentialRampToValueAtTime(24, now + 1.8)
+          boomVolume.gain.setValueAtTime(0.0001, now)
+          boomVolume.gain.exponentialRampToValueAtTime(0.8, now + 0.035)
+          boomVolume.gain.exponentialRampToValueAtTime(0.0001, now + 2.6)
+          boom.connect(boomVolume)
+          boomVolume.connect(master)
+          boom.start(now)
+          boom.stop(now + 2.65)
+
+          const noiseBuffer = context.createBuffer(1, context.sampleRate * 2.5, context.sampleRate)
+          const samples = noiseBuffer.getChannelData(0)
+          for (let index = 0; index < samples.length; index += 1) {
+            samples[index] = (Math.random() * 2 - 1) * (1 - index / samples.length)
+          }
+
+          const blast = context.createBufferSource()
+          const blastFilter = context.createBiquadFilter()
+          const blastVolume = context.createGain()
+          blast.buffer = noiseBuffer
+          blastFilter.type = 'lowpass'
+          blastFilter.frequency.setValueAtTime(1800, now)
+          blastFilter.frequency.exponentialRampToValueAtTime(110, now + 2.3)
+          blastVolume.gain.setValueAtTime(0.0001, now)
+          blastVolume.gain.exponentialRampToValueAtTime(0.48, now + 0.025)
+          blastVolume.gain.exponentialRampToValueAtTime(0.0001, now + 2.35)
+          blast.connect(blastFilter)
+          blastFilter.connect(blastVolume)
+          blastVolume.connect(master)
+          blast.start(now)
+          blast.stop(now + 2.4)
+
+          sunExplosionCleanupTimer = window.setTimeout(() => {
+            void context.close().catch(error => {
+              console.error('Unable to close sun explosion audio:', error)
+            })
+            sunExplosionAudio = undefined
+          }, 3000)
+        } catch (error) {
+          console.error('Unable to play sun explosion sound:', error)
+        }
+      }
+
       const handleSkyClick = () => {
         const root = document.documentElement
         if (root.classList.contains('lumen-sun-exploded') || root.classList.contains('lumen-moon-flooded')) return
@@ -150,7 +209,10 @@ export default {
           if (moonClicks === 10) root.classList.add('lumen-moon-flooded')
         } else {
           sunClicks += 1
-          if (sunClicks === 10) root.classList.add('lumen-sun-exploded')
+          if (sunClicks === 10) {
+            root.classList.add('lumen-sun-exploded')
+            playSunExplosion()
+          }
         }
       }
 
@@ -228,6 +290,8 @@ export default {
         window.clearTimeout(ambientWeatherTimer)
         window.clearTimeout(minecraftToastTimer)
         window.clearTimeout(balloonPopTimer)
+        window.clearTimeout(sunExplosionCleanupTimer)
+        void sunExplosionAudio?.close()
         ambientWeatherTimers.forEach(timer => window.clearTimeout(timer))
         document.documentElement.classList.remove(
           'lumen-minecraft',
@@ -275,9 +339,16 @@ export default {
             h('span', { class: 'lumen-tide-wave lumen-tide-wave-2' }),
           ]),
           h('div', { class: 'lumen-banana-sky', 'aria-hidden': 'true' },
-            Array.from({ length: 24 }, (_, index) =>
-              h('span', { class: `lumen-falling-banana lumen-falling-banana-${index + 1}` }, '🍌'),
-            ),
+            [
+              ...Array.from({ length: 24 }, (_, index) =>
+                h('span', { class: `lumen-falling-banana lumen-falling-banana-${index + 1}` }, '🍌'),
+              ),
+              ...Array.from({ length: 18 }, (_, index) =>
+                h('span', { class: `lumen-falling-monkey lumen-falling-monkey-${index + 1}` }, [
+                  h('span', { class: 'lumen-monkey-eyes' }),
+                ]),
+              ),
+            ],
           ),
           h('div', { class: 'lumen-minecraft-sky', 'aria-hidden': 'true' },
             Array.from({ length: 18 }, (_, index) =>
