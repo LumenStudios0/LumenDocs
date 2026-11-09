@@ -311,6 +311,11 @@ function focusInput() {
   requestAnimationFrame(() => input.value?.focus())
 }
 
+function useSuggestedQuestion(question: string) {
+  query.value = question
+  input.value?.focus()
+}
+
 function playClickSound(event: MouseEvent) {
   if (!clickSounds.value || !(event.target instanceof Element)) return
   if (!event.target.closest('a, button, [role="button"], summary')) return
@@ -620,9 +625,10 @@ onUnmounted(() => {
     </button>
     <section v-if="open" class="assistant-panel" aria-label="Lumen Docs Assistant">
       <header class="assistant-header">
-        <div>
-          <strong>Lumen Docs Assistant</strong>
-          <span>Answers from the published guides</span>
+        <span class="assistant-brand-mark" aria-hidden="true">✦</span>
+        <div class="assistant-title">
+          <strong>Lumen Assistant</strong>
+          <span>Plugin guide answers</span>
         </div>
         <div class="assistant-header-actions">
           <button
@@ -649,9 +655,16 @@ onUnmounted(() => {
       </header>
 
       <div ref="conversation" class="assistant-conversation" aria-live="polite">
-        <p v-if="!hasQuestion" class="assistant-welcome">
-          What are you setting up? Ask about commands, permissions, versions, configuration, or troubleshooting.
-        </p>
+        <div v-if="!hasQuestion" class="assistant-welcome">
+          <span class="assistant-eyebrow">LUMEN STUDIOS</span>
+          <h2>How can I help?</h2>
+          <p>Get quick answers from our plugin guides.</p>
+          <div class="assistant-suggestions" aria-label="Suggested questions">
+            <button type="button" @click="useSuggestedQuestion('How do I install a plugin?')">Install a plugin</button>
+            <button type="button" @click="useSuggestedQuestion('Show me the available commands and permissions')">Commands &amp; permissions</button>
+            <button type="button" @click="useSuggestedQuestion('How do I configure a plugin?')">Configuration help</button>
+          </div>
+        </div>
         <article v-for="(answer, index) in answers" :key="`${index}-${answer.question}`" class="assistant-answer">
           <p class="assistant-question">{{ answer.question }}</p>
           <p class="assistant-response">{{ answer.reply }}</p>
