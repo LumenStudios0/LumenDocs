@@ -336,6 +336,11 @@ function openBugReport() {
   bugReportSent.value = false
 }
 
+function showBugReport() {
+  openBugReport()
+  open.value = true
+}
+
 function getBugReportEndpoint() {
   if (!assistantEndpoint) return ''
 
@@ -661,6 +666,19 @@ onUnmounted(() => {
     >
       <span class="assistant-spark" aria-hidden="true">✦</span>
       <span>Ask the docs</span>
+    </button>
+    <button
+      v-if="!open"
+      class="assistant-report-launcher"
+      type="button"
+      aria-label="Report a plugin bug"
+      @click="showBugReport"
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M12 8v9M8.5 10 5 7.5M15.5 10 19 7.5M8 13H4.5M16 13h3.5M9 5.5 7.5 3M15 5.5 16.5 3M8 17l-2 2M16 17l2 2" />
+        <path d="M8 11a4 4 0 0 1 8 0v5a4 4 0 0 1-8 0zM10 6h4" />
+      </svg>
+      <span>Report a bug</span>
     </button>
     <button
       v-if="!open"

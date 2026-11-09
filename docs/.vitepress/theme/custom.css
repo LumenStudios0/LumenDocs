@@ -568,6 +568,7 @@ body::before {
 }
 
 .assistant-launcher,
+.assistant-report-launcher,
 .assistant-sound,
 .assistant-close,
 .assistant-form button {
@@ -595,6 +596,46 @@ body::before {
 .assistant-launcher:hover {
   transform: translateY(-2px);
   background: #6b32df;
+}
+
+.assistant-report-launcher {
+  display: inline-flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 15px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  background: linear-gradient(135deg, #c73c69, #a92d58);
+  box-shadow: 0 8px 24px rgba(140, 32, 75, 0.28);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: background-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.assistant-report-launcher:hover {
+  transform: translateY(-2px);
+  background: linear-gradient(135deg, #d74776, #b63260);
+  box-shadow: 0 10px 28px rgba(140, 32, 75, 0.38);
+}
+
+.assistant-report-launcher svg {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.assistant-report-launcher:focus-visible {
+  outline: 2px solid #f59ab4;
+  outline-offset: 3px;
 }
 
 .assistant-spark {
@@ -1204,6 +1245,13 @@ body::before {
     font-size: 13px;
   }
 
+  .assistant-report-launcher {
+    min-height: 44px;
+    gap: 6px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+
   .assistant-panel {
     width: calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right));
     height: min(600px, calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
@@ -1230,6 +1278,27 @@ body::before {
     min-height: 148px;
   }
 
+  .lumen-assistant {
+    gap: 5px;
+  }
+
+  .assistant-launcher {
+    gap: 6px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+
+  .assistant-report-launcher {
+    gap: 4px;
+    padding: 0 8px;
+    font-size: 11px;
+  }
+
+  .assistant-sound {
+    width: 36px;
+    height: 36px;
+  }
+
   .VPHome .VPFeature {
     height: auto;
   }
@@ -1246,6 +1315,7 @@ body::before {
   }
 
   .assistant-suggestions button,
+  .assistant-report-launcher,
   .assistant-close,
   .assistant-popover-enter-active,
   .assistant-popover-leave-active {
