@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg">
+  <symbol id="lantern" viewBox="0 0 96 128">
+    <path d="M47 4h2v13h-2z" fill="#f3d9a1"/>
+    <path d="M48 13c-4-7-11-7-14-2 5 0 8 3 10 7" fill="none" stroke="#73a96d" stroke-linecap="round" stroke-width="2"/>
+    <path d="M26 27 48 18l22 9 10 22-6 44-26 20-26-20-6-44z" fill="#f0a74e" stroke="#8f563e" stroke-linejoin="round" stroke-width="3"/>
+    <path d="m29 31 19-8 19 8-7 12H36z" fill="#ffd47a" stroke="#a76343" stroke-width="2"/>
+    <path d="M20 49h56M20 90h56" fill="none" stroke="#a76343" stroke-width="3"/>
+    <path d="M26 51h44v37H26z" fill="#ffca63"/>
+    <path d="M32 54h32v29H32z" fill="#fff1a8" opacity=".8"/>
+    <path d="M43 57h10v22H43z" fill="#fff9d8" opacity=".9"/>
+    <path d="m24 94 24 17 24-17-24 7z" fill="#cf7645" stroke="#8f563e" stroke-linejoin="round" stroke-width="2"/>
+    <path d="M43 119h10v5H43z" fill="#8f563e"/>
+    <path d="M18 48h60M22 91h52" stroke="#ffe0a2" stroke-linecap="round" stroke-width="2"/>
+  </symbol>
+  <symbol id="sun" viewBox="0 0 128 128">
+    <defs>
+      <radialGradient id="sun-core">
+        <stop stop-color="#fff9c7"/>
+        <stop offset=".62" stop-color="#ffd36f"/>
+        <stop offset="1" stop-color="#ff9e54"/>
+      </radialGradient>
+    </defs>
+    <circle cx="64" cy="64" r="31" fill="url(#sun-core)"/>
+    <g fill="none" stroke="#ffce72" stroke-linecap="round" stroke-width="7">
+      <path d="M64 7v17M64 104v17M7 64h17M104 64h17M24 24l12 12M92 92l12 12M104 24 92 36M36 92l-12 12"/>
+    </g>
+    <circle cx="54" cy="59" r="2.8" fill="#8d654c"/>
+    <circle cx="74" cy="59" r="2.8" fill="#8d654c"/>
+    <path d="M55 72q9 9 18 0" fill="none" stroke="#8d654c" stroke-linecap="round" stroke-width="3"/>
+  </symbol>
+  <symbol id="moon" viewBox="0 0 128 128">
+    <path d="M91 91A48 48 0 0 1 43 18a50 50 0 1 0 68 64 48 48 0 0 1-20 9Z" fill="#e9e2ff" stroke="#a995d6" stroke-width="3"/>
+    <circle cx="45" cy="77" r="5" fill="#d0c2ef"/>
+    <circle cx="67" cy="94" r="3.5" fill="#d0c2ef"/>
+    <path d="M83 47h4v11h-4zM79 51h12v4H79z" fill="#fff8d6"/>
+  </symbol>
+  <symbol id="cloud" viewBox="0 0 220 120">
+    <path d="M44 96c-21 0-35-14-35-32 0-17 13-31 31-32 8-20 26-31 47-27 17 3 29 15 34 31 22-6 46 8 49 30 18-3 39 8 41 25 3 19-12 34-34 34H45Z" fill="#f7fbff" stroke="#b8cce8" stroke-linejoin="round" stroke-width="5"/>
+    <path d="M39 87c8-13 22-17 35-12M108 38c14 2 23 11 27 24M159 80c15-6 31 0 39 12" fill="none" stroke="#fff" stroke-linecap="round" stroke-width="7" opacity=".9"/>
+  </symbol>
+</svg>

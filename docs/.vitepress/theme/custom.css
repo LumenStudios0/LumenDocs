@@ -1451,6 +1451,46 @@ html.lumen-track-tides .lumen-tide-wave {
   --lumen-track-color: #8dffd0;
 }
 
+.lumen-track-tides {
+  --lumen-track-glow: rgba(81, 170, 255, 0.24);
+  --lumen-track-color: #93dcff;
+}
+
+.lumen-track-mountain-wind {
+  --lumen-track-glow: rgba(187, 217, 255, 0.22);
+  --lumen-track-color: #d3e8ff;
+}
+
+.lumen-track-forest {
+  --lumen-track-glow: rgba(95, 220, 137, 0.2);
+  --lumen-track-color: #a7f3b4;
+}
+
+.lumen-track-rain {
+  --lumen-track-glow: rgba(89, 143, 217, 0.2);
+  --lumen-track-color: #a9ccff;
+}
+
+.lumen-track-starlight {
+  --lumen-track-glow: rgba(157, 125, 255, 0.24);
+  --lumen-track-color: #d3c5ff;
+}
+
+.lumen-track-banana-jungle {
+  --lumen-track-glow: rgba(255, 212, 65, 0.2);
+  --lumen-track-color: #ffe66d;
+}
+
+.lumen-track-creeper-rave {
+  --lumen-track-glow: rgba(78, 239, 118, 0.2);
+  --lumen-track-color: #a2ff8a;
+}
+
+.lumen-track-cretaceous-sunrise {
+  --lumen-track-glow: rgba(255, 139, 79, 0.22);
+  --lumen-track-color: #ffd08c;
+}
+
 .lumen-track-visuals {
   position: absolute;
   z-index: 1;
@@ -1689,17 +1729,345 @@ html.lumen-track-hidden-signal .lumen-track-visuals::after {
   animation: lumen-track-scan 3.2s steps(4, end) infinite;
 }
 
+html[class*="lumen-track-"] .lumen-track-visuals {
+  display: block;
+}
+
+.lumen-track-horizon {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 50% 77%, rgba(255, 202, 137, 0.12), transparent 48%),
+    linear-gradient(180deg, rgba(255, 224, 179, 0.015), transparent 72%);
+  transition: background 3s ease;
+}
+
+.lumen-track-horizon::before {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(16, 13, 35, 0.48), transparent 56%),
+    radial-gradient(ellipse at 76% 18%, rgba(133, 103, 221, 0.14), transparent 52%);
+  content: "";
+  opacity: 0;
+  transition: opacity 3s ease;
+}
+
+html.dark .lumen-track-horizon {
+  background:
+    radial-gradient(ellipse at 50% 77%, rgba(123, 80, 207, 0.16), transparent 48%),
+    linear-gradient(180deg, rgba(15, 11, 34, 0.14), transparent 72%);
+}
+
+html.dark .lumen-track-horizon::before {
+  opacity: 1;
+}
+
+.lumen-track-horizon::after {
+  position: absolute;
+  right: -8%;
+  bottom: -7%;
+  left: -8%;
+  height: 25%;
+  border-radius: 50% 50% 0 0;
+  background: linear-gradient(180deg, rgba(134, 117, 153, 0.06), rgba(90, 73, 118, 0.16));
+  content: "";
+  filter: blur(2px);
+  transition: background 2s ease;
+}
+
+.lumen-track-sun,
+.lumen-track-moon {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  width: clamp(72px, 13vw, 154px);
+  height: auto;
+  will-change: transform, opacity;
+  transition:
+    transform 4.8s cubic-bezier(0.2, 0.72, 0.22, 1),
+    opacity 3.6s ease,
+    filter 3.6s ease;
+}
+
+.lumen-track-sun {
+  left: 18%;
+  transform: translate3d(-50%, -50%, 0);
+  filter: drop-shadow(0 0 28px rgba(255, 194, 104, 0.36));
+  opacity: 0.78;
+}
+
+.lumen-track-moon {
+  left: 76%;
+  transform: translate3d(-50%, 125vh, 0);
+  opacity: 0;
+  filter: drop-shadow(0 0 26px rgba(181, 151, 255, 0.32));
+}
+
+html.dark .lumen-track-sun {
+  transform: translate3d(-50%, 125vh, 0);
+  opacity: 0;
+  filter: drop-shadow(0 0 8px rgba(255, 194, 104, 0.12));
+}
+
+html.dark .lumen-track-moon {
+  transform: translate3d(-50%, -50%, 0);
+  opacity: 0.78;
+  filter: drop-shadow(0 0 30px rgba(181, 151, 255, 0.42));
+}
+
+.lumen-track-cloud {
+  position: absolute;
+  z-index: 1;
+  width: clamp(90px, 17vw, 220px);
+  height: auto;
+  opacity: 0.46;
+  filter: drop-shadow(0 8px 18px rgba(107, 141, 188, 0.12));
+  animation: lumen-track-cloud-drift 42s ease-in-out infinite alternate;
+  transition: opacity 2s ease, filter 2s ease;
+}
+
+.lumen-track-cloud-1 { top: 31%; left: 12%; }
+.lumen-track-cloud-2 { top: 45%; left: 67%; animation-delay: -18s; }
+.lumen-track-cloud-3 { top: 64%; left: 39%; width: clamp(68px, 11vw, 140px); animation-delay: -30s; opacity: 0.28; }
+
+.dark .lumen-track-cloud {
+  opacity: 0.06;
+  filter: brightness(0.55) saturate(0.7);
+}
+
+.lumen-track-star {
+  position: absolute;
+  z-index: 1;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #f5edff;
+  box-shadow: 0 0 10px 2px rgba(203, 180, 255, 0.7);
+  opacity: 0;
+  transition: opacity 2.5s ease;
+}
+
+.dark .lumen-track-star {
+  opacity: 0.72;
+  animation: lumen-track-star-twinkle 3s ease-in-out infinite alternate;
+}
+
+.lumen-track-star-1 { top: 19%; left: 16%; }
+.lumen-track-star-2 { top: 29%; left: 43%; animation-delay: -1s; }
+.lumen-track-star-3 { top: 12%; left: 58%; animation-delay: -2s; }
+.lumen-track-star-4 { top: 42%; left: 83%; animation-delay: -0.5s; }
+.lumen-track-star-5 { top: 57%; left: 23%; animation-delay: -1.5s; }
+.lumen-track-star-6 { top: 24%; left: 91%; animation-delay: -2.5s; }
+.lumen-track-star-7 { top: 67%; left: 61%; animation-delay: -0.8s; }
+.lumen-track-star-8 { top: 38%; left: 34%; animation-delay: -1.8s; }
+
+.lumen-track-lantern {
+  position: absolute;
+  z-index: 2;
+  top: 112%;
+  width: clamp(32px, 4vw, 55px);
+  height: auto;
+  opacity: 0;
+  animation-iteration-count: infinite;
+  filter: drop-shadow(0 0 14px rgba(255, 174, 76, 0.68));
+}
+
+.lumen-track-lantern-1 { left: 9%; --lantern-sway: -22px; animation-delay: -4s; animation-duration: 27s; }
+.lumen-track-lantern-2 { left: 25%; --lantern-sway: 18px; animation-delay: -17s; animation-duration: 32s; }
+.lumen-track-lantern-3 { left: 43%; --lantern-sway: -14px; animation-delay: -10s; animation-duration: 29s; }
+.lumen-track-lantern-4 { left: 62%; --lantern-sway: 22px; animation-delay: -23s; animation-duration: 34s; }
+.lumen-track-lantern-5 { left: 78%; --lantern-sway: -18px; animation-delay: -7s; animation-duration: 30s; }
+.lumen-track-lantern-6 { left: 91%; --lantern-sway: 16px; animation-delay: -20s; animation-duration: 36s; }
+
+html[class*="lumen-track-"] .lumen-track-particle {
+  animation: lumen-track-particle-drift 7s ease-in-out infinite;
+}
+
+html.lumen-track-paper-lanterns .lumen-track-lantern {
+  animation-name: lumen-track-lantern-rise;
+}
+
+.dark.lumen-track-paper-lanterns .lumen-track-lantern {
+  filter: drop-shadow(0 0 21px rgba(255, 174, 76, 0.9));
+}
+
+html.lumen-track-spawn-at-dusk .lumen-track-horizon,
+html.lumen-track-last-light .lumen-track-horizon {
+  background:
+    radial-gradient(ellipse at 50% 63%, rgba(255, 177, 108, 0.3), transparent 34%),
+    linear-gradient(180deg, rgba(176, 134, 203, 0.12), rgba(255, 142, 106, 0.11) 63%, rgba(76, 56, 114, 0.14));
+}
+
+html.dark.lumen-track-spawn-at-dusk .lumen-track-horizon,
+html.dark.lumen-track-last-light .lumen-track-horizon {
+  background:
+    radial-gradient(ellipse at 50% 63%, rgba(255, 121, 105, 0.22), transparent 34%),
+    linear-gradient(180deg, rgba(37, 29, 69, 0.12), rgba(167, 83, 106, 0.12) 63%, rgba(24, 18, 45, 0.2));
+}
+
+html.lumen-track-cloudsave .lumen-track-cloud,
+html.lumen-track-mountain-wind .lumen-track-cloud {
+  opacity: 0.68;
+  animation-duration: 24s;
+}
+
+html.lumen-track-cloudsave .lumen-track-cloud-2,
+html.lumen-track-mountain-wind .lumen-track-cloud-2 {
+  animation-direction: alternate-reverse;
+}
+
+html.lumen-track-forest .lumen-track-horizon::after {
+  background:
+    repeating-linear-gradient(105deg, transparent 0 13%, rgba(101, 209, 137, 0.06) 13.2% 13.45%, transparent 13.7% 25%),
+    linear-gradient(180deg, rgba(36, 110, 63, 0.04), rgba(23, 86, 54, 0.2));
+  animation: lumen-track-canopy-sway 12s ease-in-out infinite alternate;
+}
+
+html.lumen-track-mossy-steps .lumen-track-particle {
+  width: 10px;
+  height: 7px;
+  border-radius: 0 85% 0 85%;
+  background: linear-gradient(135deg, #d5f09b, #5fb876);
+  box-shadow: 0 0 10px rgba(122, 218, 129, 0.48);
+  animation-name: lumen-track-leaf-fall;
+  animation-duration: 9s;
+}
+
+html.lumen-track-dustlight .lumen-track-particle {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #ffe1aa;
+  box-shadow: 0 0 8px 2px rgba(255, 202, 125, 0.58);
+  animation-duration: 11s;
+}
+
+html.lumen-track-glasshouse .lumen-track-visuals::after {
+  background:
+    linear-gradient(110deg, transparent 16%, rgba(142, 255, 255, 0.1) 23%, transparent 30%),
+    linear-gradient(72deg, transparent 55%, rgba(180, 161, 255, 0.12) 63%, transparent 71%);
+  transform: translateX(-8%);
+  animation: lumen-track-prism-shift 14s ease-in-out infinite alternate;
+}
+
+html.lumen-track-soft-focus .lumen-track-visuals::before {
+  background:
+    radial-gradient(ellipse at 22% 64%, rgba(255, 198, 226, 0.2), transparent 45%),
+    radial-gradient(ellipse at 78% 34%, rgba(180, 159, 255, 0.19), transparent 52%);
+  filter: blur(28px);
+}
+
+html.lumen-track-blue-hour .lumen-track-horizon::after,
+html.lumen-track-starlight .lumen-track-horizon::after {
+  background: linear-gradient(180deg, rgba(39, 49, 108, 0.04), rgba(38, 40, 100, 0.2));
+}
+
+html.lumen-track-tonka .lumen-track-visuals::after {
+  background: linear-gradient(105deg, transparent 20%, rgba(255, 186, 91, 0.18) 49%, transparent 76%);
+  animation: lumen-track-light-sweep 8s ease-in-out infinite;
+}
+
+html.lumen-track-cavern-memo .lumen-track-horizon::after {
+  background:
+    linear-gradient(135deg, transparent 56%, rgba(95, 193, 255, 0.12) 56.4% 57%, transparent 57.4%),
+    linear-gradient(45deg, transparent 48%, rgba(154, 131, 255, 0.12) 48.4% 49%, transparent 49.4%),
+    linear-gradient(180deg, rgba(25, 96, 155, 0.04), rgba(35, 83, 144, 0.2));
+}
+
+html.lumen-track-opium-1 .lumen-track-horizon,
+html.lumen-track-opium-2 .lumen-track-horizon {
+  background: radial-gradient(ellipse at 50% 48%, var(--lumen-track-glow), transparent 55%);
+}
+
+html.lumen-track-opium-1 .lumen-track-horizon::after,
+html.lumen-track-opium-2 .lumen-track-horizon::after {
+  background:
+    repeating-linear-gradient(180deg, transparent 0 8px, rgba(255, 255, 255, 0.035) 9px 10px),
+    linear-gradient(90deg, rgba(8, 5, 15, 0.34), transparent 28% 72%, rgba(8, 5, 15, 0.34));
+}
+
+html.lumen-track-banana-jungle .lumen-track-horizon::after {
+  background:
+    radial-gradient(ellipse at 22% 80%, rgba(106, 181, 74, 0.2), transparent 42%),
+    radial-gradient(ellipse at 80% 75%, rgba(237, 199, 58, 0.18), transparent 40%);
+}
+
+html.lumen-track-creeper-rave .lumen-track-horizon::after {
+  border-radius: 0;
+  background:
+    linear-gradient(rgba(99, 255, 110, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(99, 255, 110, 0.07) 1px, transparent 1px),
+    radial-gradient(ellipse at 50% 90%, rgba(44, 219, 80, 0.16), transparent 55%);
+  background-size: 24px 24px, 24px 24px, 100% 100%;
+}
+
+html.lumen-track-cretaceous-sunrise .lumen-track-horizon {
+  background:
+    radial-gradient(ellipse at 68% 66%, rgba(255, 190, 102, 0.33), transparent 34%),
+    linear-gradient(180deg, rgba(233, 147, 107, 0.12), rgba(73, 124, 109, 0.12));
+}
+
+@keyframes lumen-track-canopy-sway {
+  from { transform: translateX(-2%) scaleY(0.96); }
+  to { transform: translateX(2%) scaleY(1.04); }
+}
+
+@keyframes lumen-track-leaf-fall {
+  0%, 100% { opacity: 0; transform: translate3d(-12px, -6px, 0) rotate(-35deg); }
+  35%, 75% { opacity: 0.82; }
+  50% { transform: translate3d(22px, 42px, 0) rotate(55deg); }
+}
+
+@keyframes lumen-track-prism-shift {
+  from { opacity: 0.16; transform: translateX(-8%); }
+  to { opacity: 0.58; transform: translateX(8%); }
+}
+
+@keyframes lumen-track-lantern-rise {
+  0% { opacity: 0; transform: translate3d(0, 0, 0) rotate(-5deg); }
+  12% { opacity: 0.92; }
+  76% { opacity: 0.78; }
+  100% { opacity: 0; transform: translate3d(var(--lantern-sway), -130vh, 0) rotate(5deg); }
+}
+
+@keyframes lumen-track-cloud-drift {
+  from { transform: translate3d(-12px, 0, 0); }
+  to { transform: translate3d(18px, -8px, 0); }
+}
+
+@keyframes lumen-track-star-twinkle {
+  from { opacity: 0.3; transform: scale(0.75); }
+  to { opacity: 0.9; transform: scale(1.25); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .lumen-track-visuals::before,
   .lumen-track-visuals::after,
   .lumen-track-aurora,
-  .lumen-track-particle {
+  .lumen-track-particle,
+  .lumen-track-cloud,
+  .lumen-track-lantern,
+  .lumen-track-star,
+  .lumen-track-horizon::before,
+  .lumen-track-horizon::after {
     animation: none !important;
+  }
+
+  .lumen-track-horizon,
+  .lumen-track-horizon::before,
+  .lumen-track-horizon::after {
+    transition: none;
   }
 
   .lumen-track-visuals::before { opacity: 0.35; }
   .lumen-track-aurora { opacity: 0.18; }
   .lumen-track-particle { opacity: 0.45; }
+  .lumen-track-lantern { top: 48%; opacity: 0.7; }
+  .lumen-track-sun,
+  .lumen-track-moon { transition: none; }
 }
 
 .VPNavBarTitle .title {

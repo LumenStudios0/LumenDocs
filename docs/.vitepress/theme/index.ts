@@ -637,6 +637,27 @@ export default {
             h('span', { class: 'lumen-tide-wave lumen-tide-wave-1' }),
             h('span', { class: 'lumen-tide-wave lumen-tide-wave-2' }),
             h('div', { class: 'lumen-track-visuals', 'aria-hidden': 'true' }, [
+              h('div', { class: 'lumen-track-horizon' }, [
+                h('svg', { class: 'lumen-track-sun', viewBox: '0 0 128 128', focusable: 'false' }, [
+                  h('use', { href: '/assets/soundtrack-sprites.svg#sun' }),
+                ]),
+                h('svg', { class: 'lumen-track-moon', viewBox: '0 0 128 128', focusable: 'false' }, [
+                  h('use', { href: '/assets/soundtrack-sprites.svg#moon' }),
+                ]),
+                ...Array.from({ length: 3 }, (_, index) =>
+                  h('svg', { class: `lumen-track-cloud lumen-track-cloud-${index + 1}`, viewBox: '0 0 220 120', focusable: 'false' }, [
+                    h('use', { href: '/assets/soundtrack-sprites.svg#cloud' }),
+                  ]),
+                ),
+                ...Array.from({ length: 8 }, (_, index) =>
+                  h('span', { class: `lumen-track-star lumen-track-star-${index + 1}` }),
+                ),
+                ...Array.from({ length: 6 }, (_, index) =>
+                  h('svg', { class: `lumen-track-lantern lumen-track-lantern-${index + 1}`, viewBox: '0 0 96 128', focusable: 'false' }, [
+                    h('use', { href: '/assets/soundtrack-sprites.svg#lantern' }),
+                  ]),
+                ),
+              ]),
               ...Array.from({ length: 3 }, (_, index) =>
                 h('span', { class: `lumen-track-aurora lumen-track-aurora-${index + 1}` }),
               ),
