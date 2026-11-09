@@ -22,6 +22,8 @@ export default {
       let balloonPopTimer: number | undefined
       let sunExplosionAudio: AudioContext | undefined
       let sunExplosionCleanupTimer: number | undefined
+      const defaultFavicon = '/assets/lumen-logo.png'
+      const bananaFavicon = '/assets/banana-logo.svg'
       const minecraftToast = ref('')
       let minecraftToastTimer: number | undefined
       let phraseBuffer = ''
@@ -41,6 +43,7 @@ export default {
         if (enabled && bananaModeEnabled) {
           root.classList.remove('lumen-banana')
           bananaModeEnabled = false
+          updateFavicon(false)
         }
         window.dispatchEvent(new CustomEvent('lumen-theme-mode-change'))
         minecraftToast.value = enabled ? 'Minecraft mode enabled' : 'Minecraft mode disabled'
@@ -53,6 +56,7 @@ export default {
         const enabled = !root.classList.contains('lumen-banana')
         root.classList.toggle('lumen-banana', enabled)
         bananaModeEnabled = enabled
+        updateFavicon(enabled)
         if (enabled && minecraftModeEnabled) {
           root.classList.remove('lumen-minecraft')
           minecraftModeEnabled = false
@@ -61,6 +65,13 @@ export default {
         minecraftToast.value = enabled ? '🍌 Banana mode! 🍌' : 'Banana mode off'
         window.clearTimeout(minecraftToastTimer)
         minecraftToastTimer = window.setTimeout(() => { minecraftToast.value = '' }, 2400)
+      }
+
+      const updateFavicon = (banana: boolean) => {
+        document.querySelectorAll<HTMLLinkElement>('link[rel~="icon"]').forEach(icon => {
+          icon.href = banana ? bananaFavicon : defaultFavicon
+          icon.type = banana ? 'image/svg+xml' : 'image/png'
+        })
       }
 
       const handleBalloonPop = (event: MouseEvent) => {
@@ -301,6 +312,7 @@ export default {
           'lumen-weather-balloon-event',
           'lumen-balloon-popped',
         )
+        updateFavicon(false)
       })
 
       return () => h(DefaultTheme.Layout, null, {
@@ -375,8 +387,12 @@ export default {
           h('button', {
             class: 'lumen-pixel-moon',
             type: 'button',
-            'aria-label': 'Sun or moon: click 10 times for a surprise',
-            title: 'Click 10 times for a surprise',
+            'aria-label': bananaModeEnabled
+              ? 'Banana: click 10 times for a surprise'
+              : 'Sun or moon: click 10 times for a surprise',
+            title: bananaModeEnabled
+              ? 'Click the banana 10 times for a surprise'
+              : 'Click 10 times for a surprise',
             onClick: handleSkyClick,
           }),
         ],

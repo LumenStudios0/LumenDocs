@@ -1075,6 +1075,7 @@ onUnmounted(() => {
             <svg viewBox="0 0 100 100" focusable="false">
               <path d="M37 18h25L45 58h31L57 78H23z" />
             </svg>
+            <span class="assistant-banana-mark">🍌</span>
           </span>
           <div class="assistant-title">
             <strong>Lumen Assistant</strong>
