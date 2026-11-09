@@ -210,36 +210,19 @@ export default {
         if (dinoEggsFound.value === 3) startDinosaurCountdown()
       }
 
-      const resumeDinosaurEvent = () => {
+      const resetDinosaurEventOnPageLoad = () => {
         const root = document.documentElement
-        if (completedDinosaurEvent()) {
-          root.classList.add('lumen-dino-extinction', 'lumen-dino-soundtrack')
-          return
-        }
+        root.classList.remove(
+          'lumen-dino-countdown',
+          'lumen-dino-lockdown',
+          'lumen-dino-extinction',
+          'lumen-dino-soundtrack',
+        )
         try {
-          const deadline = Number(localStorage.getItem('lumen-dino-countdown-deadline'))
-          if (deadline > 0) {
-            root.classList.add('lumen-dino-countdown', 'lumen-dino-soundtrack')
-            const tick = () => {
-              dinoCountdown.value = Math.max(0, Math.ceil((deadline - Date.now()) / 1000))
-              if (dinoCountdown.value > 0) return
-              window.clearInterval(dinosaurCountdownTimer)
-              dinosaurCountdownTimer = undefined
-              root.classList.remove('lumen-dino-countdown')
-              root.classList.add('lumen-dino-lockdown')
-              localStorage.removeItem('lumen-dino-countdown-deadline')
-              localStorage.setItem('lumen-dino-extinction', 'true')
-              void registerDinosaurDiscoverer()
-              dinosaurLockdownTimer = window.setTimeout(() => {
-                root.classList.remove('lumen-dino-lockdown')
-                root.classList.add('lumen-dino-extinction')
-              }, 3400)
-            }
-            tick()
-            if (dinoCountdown.value > 0) dinosaurCountdownTimer = window.setInterval(tick, 200)
-          }
+          localStorage.removeItem('lumen-dino-countdown-deadline')
+          localStorage.removeItem('lumen-dino-extinction')
         } catch (error) {
-          console.error('Unable to resume dinosaur countdown:', error)
+          console.error('Unable to reset dinosaur event after page load:', error)
         }
       }
 
@@ -579,11 +562,11 @@ export default {
       router.onAfterRouteChange = animatePage
       onMounted(() => {
         canGoBack.value = window.history.length > 1
+        resetDinosaurEventOnPageLoad()
         dinosaurEggPages = selectDinosaurEggPages()
         readFoundEggs().forEach(path => foundEggPages.add(path))
         dinoEggsFound.value = foundEggPages.size
         refreshDinosaurEgg()
-        resumeDinosaurEvent()
         window.addEventListener('popstate', handlePopState)
         window.addEventListener('keydown', handleSecretKeys)
         window.addEventListener('pointermove', handlePointerMove)
