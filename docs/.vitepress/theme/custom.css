@@ -1950,6 +1950,36 @@ html.lumen-track-tides .lumen-tide-wave {
   gap: 7px;
 }
 
+.assistant-track-picker {
+  display: flex;
+  min-height: 54px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 20px;
+  border-bottom: 1px solid rgba(169, 134, 255, 0.14);
+  color: var(--vp-c-text-2);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.assistant-track-picker select {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 34px 0 11px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 10px;
+  background: var(--vp-c-bg);
+  color: var(--vp-c-text-1);
+  font: inherit;
+  font-weight: 600;
+}
+
+.assistant-track-picker select:focus-visible {
+  outline: 2px solid var(--vp-c-brand-1);
+  outline-offset: 2px;
+}
+
 .assistant-volume-control {
   display: inline-flex;
   min-height: 36px;

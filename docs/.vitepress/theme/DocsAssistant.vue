@@ -91,6 +91,7 @@ const clickSounds = ref(true)
 const ambientMusic = ref(false)
 const musicVolume = ref(35)
 const activeMusicTrack = ref('')
+const selectedMusicTrack = ref('')
 const assistantEndpoint = import.meta.env.VITE_DOCS_ASSISTANT_ENDPOINT
 let audioContext: AudioContext | undefined
 let musicMaster: GainNode | undefined
@@ -148,7 +149,7 @@ interface AmbientTrack {
   }
   rain?: boolean
   notes?: {
-    frequencies: number[]
+    frequencies: (number | null)[]
     waveform: OscillatorType
     volume: number
     attack: number
@@ -309,6 +310,225 @@ const ambientTracks: AmbientTrack[] = [
     ],
   },
   {
+    name: 'Opium',
+    description: 'An original dark trap instrumental with cavernous sub pulses, sparse minor-key synth stabs, and a slow, heavy pocket.',
+    masterVolume: 0.095,
+    pad: false,
+    waveform: 'sawtooth',
+    filterFrequency: 680,
+    chordInterval: 6400,
+    chordVolume: 0.08,
+    texture: { filter: 'lowpass', frequency: 190, volume: 0.018, pulse: 0.012 },
+    rhythm: {
+      steps: [55, null, null, 55, null, 65.41, null, null, 49, null, 55, null, null, 73.42, null, null],
+      stepMs: 300,
+      volume: 0.09,
+      decay: 0.2,
+      waveform: 'sine',
+    },
+    notes: {
+      frequencies: [146.83, 164.81, 174.61, 164.81, 220, 196, 146.83, 164.81],
+      waveform: 'sawtooth',
+      volume: 0.045,
+      attack: 0.008,
+      decay: 0.32,
+      interval: 600,
+    },
+    chords: [
+      [73.42, 110, 146.83],
+      [65.41, 98, 130.81],
+      [82.41, 123.47, 164.81],
+      [55, 82.41, 110],
+    ],
+  },
+  {
+    name: 'Tonka',
+    description: 'An original, high-energy trap instrumental with rubbery bass hits, bright bent synth tones, and a quick offbeat bounce.',
+    masterVolume: 0.09,
+    pad: false,
+    waveform: 'square',
+    filterFrequency: 2600,
+    chordInterval: 3200,
+    chordVolume: 0.07,
+    rhythm: {
+      steps: [65.41, null, 98, null, 73.42, 110, null, 82.41, null, 123.47, 73.42, null, 98, null, 65.41, 110],
+      stepMs: 180,
+      volume: 0.075,
+      decay: 0.13,
+      waveform: 'triangle',
+    },
+    notes: {
+      frequencies: [329.63, 392, 493.88, 440, 587.33, 493.88, 392, 659.25, 523.25, 440, 587.33, 493.88],
+      waveform: 'sawtooth',
+      volume: 0.055,
+      attack: 0.004,
+      decay: 0.15,
+      interval: 225,
+      partials: [{ ratio: 2, level: 0.12 }],
+    },
+    chords: [
+      [82.41, 164.81, 246.94],
+      [73.42, 146.83, 220],
+      [98, 196, 293.66],
+      [65.41, 130.81, 196],
+    ],
+  },
+  {
+    name: 'Glasshouse',
+    description: 'A clear, delicate original soundscape of high glassy notes over widely spaced, warm chords.',
+    masterVolume: 0.05,
+    waveform: 'sine',
+    filterFrequency: 3200,
+    chordInterval: 7600,
+    chordVolume: 0.075,
+    pad: false,
+    rhythm: {
+      steps: [null, 523.25, null, null, 659.25, null, null, null, 587.33, null, null, 783.99],
+      stepMs: 530,
+      volume: 0.025,
+      decay: 1.4,
+      waveform: 'sine',
+      partials: [{ ratio: 2.01, level: 0.32 }, { ratio: 3.92, level: 0.09 }],
+    },
+    notes: {
+      frequencies: [1046.5, 783.99, 987.77, 1318.51, 880, 1174.66, 987.77],
+      waveform: 'sine',
+      volume: 0.08,
+      attack: 0.015,
+      decay: 1.8,
+      interval: 1850,
+      partials: [{ ratio: 2.01, level: 0.35 }, { ratio: 3.92, level: 0.1 }],
+    },
+    chords: [
+      [130.81, 196, 261.63, 392],
+      [146.83, 220, 293.66, 440],
+      [110, 164.81, 246.94, 369.99],
+      [123.47, 185, 246.94, 369.99],
+    ],
+  },
+  {
+    name: 'Dustlight',
+    description: 'A mellow, tape-warm original groove with muted organ tones and a lazy, lightly swung pulse.',
+    masterVolume: 0.052,
+    waveform: 'triangle',
+    filterFrequency: 920,
+    chordInterval: 5800,
+    chordVolume: 0.065,
+    texture: { filter: 'lowpass', frequency: 680, volume: 0.012, pulse: 0.01 },
+    rhythm: {
+      steps: [130.81, null, null, 196, null, 146.83, null, null, 174.61, null, 220, null],
+      stepMs: 410,
+      volume: 0.036,
+      decay: 0.3,
+      waveform: 'triangle',
+      filter: 'lowpass',
+      filterFrequency: 540,
+    },
+    notes: {
+      frequencies: [261.63, null, 329.63, 293.66, null, 392, 329.63, null, 293.66, 349.23],
+      waveform: 'triangle',
+      volume: 0.07,
+      attack: 0.035,
+      decay: 0.48,
+      interval: 615,
+    },
+    chords: [
+      [130.81, 164.81, 196, 246.94],
+      [110, 146.83, 174.61, 220],
+      [146.83, 174.61, 220, 261.63],
+      [123.47, 155.56, 185, 233.08],
+    ],
+  },
+  {
+    name: 'Blue Hour',
+    description: 'A calm, open-ended original night piece with low rounded tones and occasional distant, breathy notes.',
+    masterVolume: 0.048,
+    pad: false,
+    waveform: 'sine',
+    filterFrequency: 1050,
+    chordInterval: 9600,
+    chordVolume: 0.06,
+    texture: { filter: 'lowpass', frequency: 360, volume: 0.014, pulse: 0.012 },
+    rhythm: {
+      steps: [73.42, null, null, null, null, 82.41, null, null, null, null, 65.41, null],
+      stepMs: 820,
+      volume: 0.042,
+      decay: 1.1,
+      waveform: 'sine',
+    },
+    notes: {
+      frequencies: [220, null, 293.66, null, 261.63, 196, null, 329.63],
+      waveform: 'triangle',
+      volume: 0.04,
+      attack: 0.2,
+      decay: 2.4,
+      interval: 2600,
+    },
+    chords: [
+      [110, 164.81, 220, 293.66],
+      [98, 146.83, 196, 261.63],
+      [123.47, 185, 246.94, 329.63],
+      [87.31, 130.81, 174.61, 261.63],
+    ],
+  },
+  {
+    name: 'Paper Lanterns',
+    description: 'A gentle original music-box waltz with rounded plucks, a lilting triple pulse, and soft low notes.',
+    masterVolume: 0.05,
+    waveform: 'triangle',
+    filterFrequency: 2400,
+    chordInterval: 5400,
+    chordVolume: 0.055,
+    rhythm: {
+      steps: [196, null, 392, null, 293.66, null, 392, null, 174.61, null, 349.23, null],
+      stepMs: 500,
+      volume: 0.022,
+      decay: 0.3,
+      waveform: 'sine',
+      partials: [{ ratio: 2, level: 0.18 }],
+    },
+    notes: {
+      frequencies: [523.25, 659.25, 783.99, 659.25, 587.33, 392, 493.88, 587.33, 659.25],
+      waveform: 'sine',
+      volume: 0.075,
+      attack: 0.025,
+      decay: 0.82,
+      interval: 500,
+      partials: [{ ratio: 2, level: 0.2 }, { ratio: 3, level: 0.06 }],
+    },
+    chords: [
+      [130.81, 196, 261.63],
+      [146.83, 220, 293.66],
+      [164.81, 246.94, 329.63],
+      [110, 164.81, 220],
+    ],
+  },
+  {
+    name: 'Soft Focus',
+    description: 'A slow, warm original synth meditation with hazy sustained chords and a sparse, low heartbeat.',
+    masterVolume: 0.047,
+    waveform: 'triangle',
+    filterFrequency: 520,
+    chordInterval: 11000,
+    chordVolume: 0.105,
+    rhythm: {
+      steps: [55, null, null, null, 55, null, null, null],
+      stepMs: 1100,
+      volume: 0.032,
+      decay: 0.9,
+      waveform: 'sine',
+      filter: 'lowpass',
+      filterFrequency: 190,
+    },
+    texture: { filter: 'lowpass', frequency: 240, volume: 0.025, pulse: 0.018 },
+    chords: [
+      [130.81, 196, 261.63, 329.63],
+      [110, 164.81, 220, 293.66],
+      [146.83, 220, 293.66, 369.99],
+      [123.47, 185, 246.94, 311.13],
+    ],
+  },
+  {
     name: 'Hidden Signal',
     description: 'A rare, original little melody drifting through a soft, dreamlike synth.',
     secret: true,
@@ -422,6 +642,7 @@ const ambientTracks: AmbientTrack[] = [
 const ambientTrackClasses = ambientTracks.map(track =>
   `lumen-track-${track.name.toLowerCase().replace(/\s+/g, '-')}`,
 )
+const selectableAmbientTracks = ambientTracks.filter(track => !track.secret && !track.modeOnly)
 
 function setAmbientTrackEffect(trackName?: string) {
   const root = document.documentElement
@@ -627,6 +848,18 @@ function updateMusicVolume() {
   musicOutput.gain.setTargetAtTime(musicVolume.value / 100 * 3, audioContext.currentTime, 0.025)
 }
 
+function handleMusicTrackSelection() {
+  if (!ambientMusic.value || !audioContext) return
+  stopAmbientMusic(0.12)
+  try {
+    startAmbientMusic()
+  } catch (error) {
+    console.error('Unable to switch ambient music:', error)
+    ambientMusic.value = false
+    activeMusicTrack.value = ''
+  }
+}
+
 function startAmbientMusic() {
   if (!audioContext || audioContext.state !== 'running') {
     throw new Error('The audio context is not running.')
@@ -640,7 +873,11 @@ function startAmbientMusic() {
   const isBananaMode = document.documentElement.classList.contains('lumen-banana')
   const isMinecraftMode = document.documentElement.classList.contains('lumen-minecraft')
   const isDinosaurMode = document.documentElement.classList.contains('lumen-dino-soundtrack')
-  const playSecretTrack = !isBananaMode && !isMinecraftMode && !isDinosaurMode && Math.random() < 0.01
+  const selectedTrackIndex = ambientTracks.findIndex(track =>
+    track.name === selectedMusicTrack.value && !track.secret && !track.modeOnly,
+  )
+  const playSecretTrack = selectedTrackIndex < 0 &&
+    !isBananaMode && !isMinecraftMode && !isDinosaurMode && Math.random() < 0.01
   const availableTracks = ambientTracks
     .map((_, index) => index)
     .filter(index => !ambientTracks[index].secret && !ambientTracks[index].modeOnly && index !== lastMusicTrack)
@@ -648,7 +885,9 @@ function startAmbientMusic() {
     ? isDinosaurMode ? dinosaurTrackIndex : isBananaMode ? bananaTrackIndex : minecraftTrackIndex
     : playSecretTrack
       ? secretTrackIndex
-      : availableTracks[Math.floor(Math.random() * availableTracks.length)]
+      : selectedTrackIndex >= 0
+        ? selectedTrackIndex
+        : availableTracks[Math.floor(Math.random() * availableTracks.length)]
   if (trackIndex < 0) throw new Error('No ambient music tracks are available.')
   activeTrack = ambientTracks[trackIndex]
   activeMusicTrack.value = activeTrack.name
@@ -903,6 +1142,7 @@ function startAmbientMusic() {
         ? Math.floor(Math.random() * instrument.frequencies.length)
         : musicNoteIndex % instrument.frequencies.length]
       musicNoteIndex += 1
+      if (frequency === null) return
       const partials = [{ ratio: 1, level: 1 }, ...(instrument.partials ?? [])]
 
       for (const partial of partials) {
@@ -1128,9 +1368,9 @@ onUnmounted(() => {
       v-if="!open"
       class="assistant-sound assistant-music"
       type="button"
-      :aria-label="ambientMusic ? `Turn off ${activeMusicTrack} music` : 'Play a random ambient soundscape'"
+      :aria-label="ambientMusic ? `Turn off ${activeMusicTrack} music` : selectedMusicTrack ? `Play ${selectedMusicTrack} soundtrack` : 'Play a random ambient soundscape'"
       :aria-pressed="ambientMusic"
-      :title="ambientMusic ? `Now playing: ${activeMusicTrack} (click to stop)` : 'Play a random ambient soundscape'"
+      :title="ambientMusic ? `Now playing: ${activeMusicTrack} (click to stop)` : selectedMusicTrack ? `Play ${selectedMusicTrack} soundtrack` : 'Play a random ambient soundscape'"
       @click="toggleAmbientMusic"
     >
       {{ ambientMusic ? '♫' : '♬' }}
@@ -1176,9 +1416,9 @@ onUnmounted(() => {
               <button
                 class="assistant-sound assistant-music"
                 type="button"
-                :aria-label="ambientMusic ? `Turn off ${activeMusicTrack} music` : 'Play a random ambient soundscape'"
+                :aria-label="ambientMusic ? `Turn off ${activeMusicTrack} music` : selectedMusicTrack ? `Play ${selectedMusicTrack} soundtrack` : 'Play a random ambient soundscape'"
                 :aria-pressed="ambientMusic"
-                :title="ambientMusic ? `Now playing: ${activeMusicTrack} (click to stop)` : 'Play a random ambient soundscape'"
+                :title="ambientMusic ? `Now playing: ${activeMusicTrack} (click to stop)` : selectedMusicTrack ? `Play ${selectedMusicTrack} soundtrack` : 'Play a random ambient soundscape'"
                 @click="toggleAmbientMusic"
               >
                 {{ ambientMusic ? '♫' : '♬' }}
@@ -1191,6 +1431,25 @@ onUnmounted(() => {
             </button>
           </div>
         </header>
+
+        <label class="assistant-track-picker">
+          <span>Soundtrack</span>
+          <select
+            v-model="selectedMusicTrack"
+            aria-label="Select ambient soundtrack"
+            @change="handleMusicTrackSelection"
+          >
+            <option value="">Random ambient tracks</option>
+            <option
+              v-for="track in selectableAmbientTracks"
+              :key="track.name"
+              :value="track.name"
+              :title="track.description"
+            >
+              {{ track.name }}
+            </option>
+          </select>
+        </label>
 
         <div ref="conversation" class="assistant-conversation" aria-live="polite">
           <template v-if="assistantView === 'chat'">
