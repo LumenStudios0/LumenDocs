@@ -100,6 +100,7 @@ let musicTimer: number | undefined
 let noteTimer: number | undefined
 let rainTimer: number | undefined
 let monkeyTimer: number | undefined
+let minecraftTimer: number | undefined
 let musicChordIndex = 0
 let musicNoteIndex = 0
 let lastMusicTrack = -1
@@ -114,9 +115,10 @@ interface AmbientTrack {
   name: string
   description: string
   secret?: boolean
-  modeOnly?: boolean
+  modeOnly?: 'banana' | 'minecraft'
   chaotic?: boolean
   monkeyCalls?: boolean
+  creeperEffects?: boolean
   chords: number[][]
   waveform: OscillatorType
   filterFrequency: number
@@ -264,7 +266,7 @@ const ambientTracks: AmbientTrack[] = [
   {
     name: 'Banana Jungle',
     description: 'A chaotic original jungle jam with chattery, cartoonish synth-monkey calls.',
-    modeOnly: true,
+    modeOnly: 'banana',
     chaotic: true,
     monkeyCalls: true,
     waveform: 'square',
@@ -284,6 +286,31 @@ const ambientTracks: AmbientTrack[] = [
       [110, 220, 329.63, 440],
       [87.31, 174.61, 261.63, 523.25],
       [123.47, 246.94, 369.99, 493.88],
+    ],
+  },
+  {
+    name: 'Creeper Rave',
+    description: 'An original blocky synth track with hissy risers and rumbling pixel-blast effects.',
+    modeOnly: 'minecraft',
+    chaotic: true,
+    creeperEffects: true,
+    waveform: 'square',
+    filterFrequency: 4200,
+    chordInterval: 210,
+    chordVolume: 0.045,
+    notes: {
+      frequencies: [82.41, 164.81, 246.94, 329.63, 392, 311.13, 493.88, 196],
+      waveform: 'square',
+      volume: 0.13,
+      attack: 0.004,
+      decay: 0.16,
+      interval: 135,
+    },
+    chords: [
+      [82.41, 164.81, 246.94, 329.63],
+      [73.42, 146.83, 220, 293.66],
+      [87.31, 174.61, 261.63, 349.23],
+      [65.41, 130.81, 196, 261.63],
     ],
   },
 ]
@@ -493,15 +520,17 @@ function startAmbientMusic() {
   }
 
   const now = audioContext.currentTime
-  const bananaTrackIndex = ambientTracks.findIndex(track => track.modeOnly)
+  const bananaTrackIndex = ambientTracks.findIndex(track => track.modeOnly === 'banana')
+  const minecraftTrackIndex = ambientTracks.findIndex(track => track.modeOnly === 'minecraft')
   const secretTrackIndex = ambientTracks.findIndex(track => track.secret)
   const isBananaMode = document.documentElement.classList.contains('lumen-banana')
-  const playSecretTrack = !isBananaMode && Math.random() < 0.01
+  const isMinecraftMode = document.documentElement.classList.contains('lumen-minecraft')
+  const playSecretTrack = !isBananaMode && !isMinecraftMode && Math.random() < 0.01
   const availableTracks = ambientTracks
     .map((_, index) => index)
     .filter(index => !ambientTracks[index].secret && !ambientTracks[index].modeOnly && index !== lastMusicTrack)
-  const trackIndex = isBananaMode
-    ? bananaTrackIndex
+  const trackIndex = isBananaMode || isMinecraftMode
+    ? isBananaMode ? bananaTrackIndex : minecraftTrackIndex
     : playSecretTrack
       ? secretTrackIndex
       : availableTracks[Math.floor(Math.random() * availableTracks.length)]
@@ -628,6 +657,59 @@ function startAmbientMusic() {
     monkeyTimer = window.setTimeout(playMonkeyCalls, 500)
   }
 
+  if (activeTrack.creeperEffects) {
+    const playCreeperEffect = () => {
+      if (!audioContext || !musicMaster || activeTrack?.name !== 'Creeper Rave') return
+
+      const effectAt = audioContext.currentTime
+      const hissDuration = 0.42 + Math.random() * 0.42
+      const noiseBuffer = audioContext.createBuffer(1, Math.ceil(audioContext.sampleRate * hissDuration), audioContext.sampleRate)
+      const samples = noiseBuffer.getChannelData(0)
+      for (let index = 0; index < samples.length; index += 1) {
+        samples[index] = (Math.random() * 2 - 1) * (0.7 + 0.3 * Math.sin(index / samples.length * Math.PI))
+      }
+
+      const hiss = audioContext.createBufferSource()
+      const hissFilter = audioContext.createBiquadFilter()
+      const hissVolume = audioContext.createGain()
+      hiss.buffer = noiseBuffer
+      hissFilter.type = 'bandpass'
+      hissFilter.frequency.setValueAtTime(900, effectAt)
+      hissFilter.frequency.exponentialRampToValueAtTime(4200 + Math.random() * 1600, effectAt + hissDuration)
+      hissFilter.Q.setValueAtTime(0.7, effectAt)
+      hissVolume.gain.setValueAtTime(0.0001, effectAt)
+      hissVolume.gain.exponentialRampToValueAtTime(0.2, effectAt + hissDuration * 0.8)
+      hissVolume.gain.exponentialRampToValueAtTime(0.0001, effectAt + hissDuration)
+      hiss.connect(hissFilter)
+      hissFilter.connect(hissVolume)
+      hissVolume.connect(musicMaster)
+      hiss.start(effectAt)
+      hiss.stop(effectAt + hissDuration)
+      hiss.onended = () => { musicSources = musicSources.filter(source => source !== hiss) }
+      musicSources.push(hiss)
+
+      const blastAt = effectAt + hissDuration + 0.03
+      const blast = audioContext.createOscillator()
+      const blastVolume = audioContext.createGain()
+      blast.type = 'sawtooth'
+      blast.frequency.setValueAtTime(110 + Math.random() * 45, blastAt)
+      blast.frequency.exponentialRampToValueAtTime(28, blastAt + 0.48)
+      blastVolume.gain.setValueAtTime(0.0001, blastAt)
+      blastVolume.gain.exponentialRampToValueAtTime(0.48, blastAt + 0.018)
+      blastVolume.gain.exponentialRampToValueAtTime(0.0001, blastAt + 0.58)
+      blast.connect(blastVolume)
+      blastVolume.connect(musicMaster)
+      blast.start(blastAt)
+      blast.stop(blastAt + 0.6)
+      blast.onended = () => { musicSources = musicSources.filter(source => source !== blast) }
+      musicSources.push(blast)
+
+      minecraftTimer = window.setTimeout(playCreeperEffect, 1200 + Math.random() * 1900)
+    }
+
+    minecraftTimer = window.setTimeout(playCreeperEffect, 700)
+  }
+
   musicChordIndex = 0
   musicTimer = window.setInterval(() => {
     if (!audioContext || !activeTrack) return
@@ -674,19 +756,14 @@ function startAmbientMusic() {
   setAmbientTrackEffect(activeTrack.name)
 }
 
-function handleBananaModeChange(event: Event) {
-  const enabled = (event as CustomEvent<{ enabled: boolean }>).detail.enabled
+function handleThemeModeChange() {
   if (!ambientMusic.value || !audioContext) return
   stopAmbientMusic(0.12)
-  if (!enabled) {
-    ambientMusic.value = false
-    return
-  }
   try {
     startAmbientMusic()
     ambientMusic.value = true
   } catch (error) {
-    console.error('Unable to switch to Banana Jungle music:', error)
+    console.error('Unable to switch theme music:', error)
     ambientMusic.value = false
     activeMusicTrack.value = ''
   }
@@ -704,6 +781,8 @@ function stopAmbientMusic(fadeDuration = 1.2) {
   rainTimer = undefined
   window.clearTimeout(monkeyTimer)
   monkeyTimer = undefined
+  window.clearTimeout(minecraftTimer)
+  minecraftTimer = undefined
   const now = audioContext.currentTime
   musicMaster.gain.cancelScheduledValues(now)
   musicMaster.gain.setValueAtTime(musicMaster.gain.value, now)
@@ -778,19 +857,20 @@ onMounted(() => {
   }
   document.addEventListener('click', playClickSound, true)
   document.addEventListener('pointerdown', resumeAmbientMusic, true)
-  window.addEventListener('lumen-banana-mode-change', handleBananaModeChange)
+  window.addEventListener('lumen-theme-mode-change', handleThemeModeChange)
   window.addEventListener('keydown', onKeydown)
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', playClickSound, true)
   document.removeEventListener('pointerdown', resumeAmbientMusic, true)
-  window.removeEventListener('lumen-banana-mode-change', handleBananaModeChange)
+  window.removeEventListener('lumen-theme-mode-change', handleThemeModeChange)
   window.removeEventListener('keydown', onKeydown)
   window.clearInterval(musicTimer)
   window.clearInterval(noteTimer)
   window.clearTimeout(rainTimer)
   window.clearTimeout(monkeyTimer)
+  window.clearTimeout(minecraftTimer)
   for (const source of musicSources) source.stop()
   void audioContext?.close()
   setAmbientTrackEffect()

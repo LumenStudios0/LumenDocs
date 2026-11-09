@@ -224,6 +224,93 @@ body::before {
   filter: hue-rotate(70deg) saturate(0.65);
 }
 
+.lumen-minecraft body {
+  background-color: #b69a67;
+  background-image:
+    linear-gradient(rgba(67, 45, 28, 0.12) 2px, transparent 2px),
+    linear-gradient(90deg, rgba(67, 45, 28, 0.12) 2px, transparent 2px),
+    repeating-linear-gradient(0deg, #a9885d 0 42px, #896742 42px 58px, #ae8f61 58px 100px);
+  background-size: 32px 32px, 32px 32px, 100% 160px;
+}
+
+.lumen-minecraft.dark body {
+  background-color: #34291e;
+  background-image:
+    linear-gradient(rgba(0, 0, 0, 0.18) 2px, transparent 2px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.18) 2px, transparent 2px),
+    repeating-linear-gradient(0deg, #483522 0 42px, #352719 42px 58px, #513c26 58px 100px);
+}
+
+.lumen-minecraft .home-card,
+.lumen-minecraft .plugin-card,
+.lumen-minecraft .VPHome .VPFeature .box,
+.lumen-minecraft .VPDoc .content-container {
+  border: 2px solid rgba(89, 61, 36, 0.48);
+  background-image:
+    linear-gradient(135deg, rgba(235, 206, 156, 0.13) 25%, transparent 25%),
+    linear-gradient(315deg, rgba(67, 44, 27, 0.1) 25%, transparent 25%);
+  background-size: 24px 24px;
+}
+
+.lumen-minecraft.dark .home-card,
+.lumen-minecraft.dark .plugin-card,
+.lumen-minecraft.dark .VPHome .VPFeature .box,
+.lumen-minecraft.dark .VPDoc .content-container {
+  border-color: rgba(209, 169, 113, 0.35);
+}
+
+.lumen-minecraft-sky {
+  position: fixed;
+  z-index: 3;
+  inset: 0;
+  overflow: hidden;
+  display: none;
+  pointer-events: none;
+}
+
+.lumen-minecraft .lumen-minecraft-sky {
+  display: block;
+}
+
+.lumen-dirt-block {
+  position: absolute;
+  width: clamp(30px, 4vw, 56px);
+  aspect-ratio: 1;
+  border: 3px solid rgba(52, 36, 24, 0.58);
+  background:
+    linear-gradient(0deg, rgba(65, 43, 26, 0.38) 0 21%, transparent 21%),
+    linear-gradient(90deg, transparent 0 18%, rgba(232, 198, 139, 0.28) 18% 31%, transparent 31% 63%, rgba(78, 123, 51, 0.84) 63% 100%),
+    linear-gradient(180deg, #639947 0 26%, #795335 26% 100%);
+  box-shadow: inset 0 0 0 2px rgba(245, 220, 167, 0.16), 5px 6px 0 rgba(43, 33, 24, 0.22);
+  opacity: 0;
+  image-rendering: pixelated;
+  animation: lumen-dirt-float 7s ease-in-out infinite;
+}
+
+@keyframes lumen-dirt-float {
+  0%, 100% { opacity: 0.22; transform: translateY(8px) rotate(-4deg); }
+  50% { opacity: 0.76; transform: translateY(-12px) rotate(4deg); }
+}
+
+.lumen-dirt-block-1 { top: 16%; left: 8%; animation-delay: -1s; }
+.lumen-dirt-block-2 { top: 31%; left: 22%; animation-delay: -4s; }
+.lumen-dirt-block-3 { top: 66%; left: 12%; animation-delay: -2s; }
+.lumen-dirt-block-4 { top: 78%; left: 29%; animation-delay: -5.2s; }
+.lumen-dirt-block-5 { top: 23%; left: 43%; animation-delay: -3.1s; }
+.lumen-dirt-block-6 { top: 58%; left: 48%; animation-delay: -1.7s; }
+.lumen-dirt-block-7 { top: 12%; left: 67%; animation-delay: -4.7s; }
+.lumen-dirt-block-8 { top: 37%; left: 82%; animation-delay: -2.6s; }
+.lumen-dirt-block-9 { top: 73%; left: 72%; animation-delay: -5.8s; }
+.lumen-dirt-block-10 { top: 86%; left: 91%; animation-delay: -3.8s; }
+.lumen-dirt-block-11 { top: 48%; left: 3%; animation-delay: -6s; }
+.lumen-dirt-block-12 { top: 7%; left: 31%; animation-delay: -2.4s; }
+.lumen-dirt-block-13 { top: 88%; left: 52%; animation-delay: -4.4s; }
+.lumen-dirt-block-14 { top: 55%; left: 93%; animation-delay: -1.3s; }
+.lumen-dirt-block-15 { top: 5%; left: 89%; animation-delay: -3.4s; }
+.lumen-dirt-block-16 { top: 42%; left: 34%; animation-delay: -5.3s; }
+.lumen-dirt-block-17 { top: 71%; left: 39%; animation-delay: -2.2s; }
+.lumen-dirt-block-18 { top: 29%; left: 58%; animation-delay: -6.4s; }
+
 .lumen-mode-toast {
   position: fixed;
   z-index: 120;

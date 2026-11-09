@@ -40,6 +40,7 @@ export default {
           root.classList.remove('lumen-banana')
           bananaModeEnabled = false
         }
+        window.dispatchEvent(new CustomEvent('lumen-theme-mode-change'))
         minecraftToast.value = enabled ? 'Minecraft mode enabled' : 'Minecraft mode disabled'
         window.clearTimeout(minecraftToastTimer)
         minecraftToastTimer = window.setTimeout(() => { minecraftToast.value = '' }, 2400)
@@ -54,7 +55,7 @@ export default {
           root.classList.remove('lumen-minecraft')
           minecraftModeEnabled = false
         }
-        window.dispatchEvent(new CustomEvent('lumen-banana-mode-change', { detail: { enabled } }))
+        window.dispatchEvent(new CustomEvent('lumen-theme-mode-change'))
         minecraftToast.value = enabled ? '🍌 Banana mode! 🍌' : 'Banana mode off'
         window.clearTimeout(minecraftToastTimer)
         minecraftToastTimer = window.setTimeout(() => { minecraftToast.value = '' }, 2400)
@@ -276,6 +277,11 @@ export default {
           h('div', { class: 'lumen-banana-sky', 'aria-hidden': 'true' },
             Array.from({ length: 24 }, (_, index) =>
               h('span', { class: `lumen-falling-banana lumen-falling-banana-${index + 1}` }, '🍌'),
+            ),
+          ),
+          h('div', { class: 'lumen-minecraft-sky', 'aria-hidden': 'true' },
+            Array.from({ length: 18 }, (_, index) =>
+              h('span', { class: `lumen-dirt-block lumen-dirt-block-${index + 1}` }),
             ),
           ),
           h('span', { class: 'lumen-banana-cursor', 'aria-hidden': 'true' }, '🍌'),
