@@ -2,6 +2,12 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { withBase } from 'vitepress'
 
+declare global {
+  interface Window {
+    webkitAudioContext?: typeof AudioContext
+  }
+}
+
 interface DocSection {
   title: string
   text: string
@@ -84,6 +90,11 @@ let musicChordIndex = 0
 let musicNoteIndex = 0
 let lastMusicTrack = -1
 let activeTrack: AmbientTrack | undefined
+let musicStarting = false
+
+function getAudioContextConstructor() {
+  return window.AudioContext ?? window.webkitAudioContext
+}
 
 interface AmbientTrack {
   name: string
@@ -304,11 +315,16 @@ function playClickSound(event: MouseEvent) {
   if (!clickSounds.value || !(event.target instanceof Element)) return
   if (!event.target.closest('a, button, [role="button"], summary')) return
 
-  const AudioContextConstructor = window.AudioContext
+  const AudioContextConstructor = getAudioContextConstructor()
   if (!AudioContextConstructor) return
 
   audioContext ??= new AudioContextConstructor()
-  void audioContext.resume()
+  if (audioContext.state !== 'running') {
+    void audioContext.resume().catch(error => {
+      console.error('Unable to resume click sounds:', error)
+    })
+    return
+  }
   const now = audioContext.currentTime
   const tone = audioContext.createOscillator()
   const volume = audioContext.createGain()
@@ -334,11 +350,9 @@ function toggleClickSounds() {
 }
 
 function startAmbientMusic() {
-  const AudioContextConstructor = window.AudioContext
-  if (!AudioContextConstructor) return
-
-  audioContext ??= new AudioContextConstructor()
-  void audioContext.resume()
+  if (!audioContext || audioContext.state !== 'running') {
+    throw new Error('The audio context is not running.')
+  }
 
   const now = audioContext.currentTime
   const availableTracks = ambientTracks
@@ -495,10 +509,38 @@ function stopAmbientMusic() {
   activeMusicTrack.value = ''
 }
 
-function toggleAmbientMusic() {
-  ambientMusic.value = !ambientMusic.value
-  if (ambientMusic.value) startAmbientMusic()
-  else stopAmbientMusic()
+async function toggleAmbientMusic() {
+  if (ambientMusic.value) {
+    ambientMusic.value = false
+    stopAmbientMusic()
+    return
+  }
+  if (musicStarting) return
+
+  musicStarting = true
+  try {
+    const AudioContextConstructor = getAudioContextConstructor()
+    if (!AudioContextConstructor) throw new Error('Web Audio is not supported by this browser.')
+
+    audioContext ??= new AudioContextConstructor()
+    await audioContext.resume()
+    startAmbientMusic()
+    ambientMusic.value = true
+  } catch (error) {
+    console.error('Unable to start ambient music:', error)
+    ambientMusic.value = false
+    activeMusicTrack.value = ''
+  } finally {
+    musicStarting = false
+  }
+}
+
+function resumeAmbientMusic() {
+  if (!ambientMusic.value || !audioContext || audioContext.state === 'running') return
+
+  void audioContext.resume().catch(error => {
+    console.error('Unable to resume ambient music:', error)
+  })
 }
 
 function onKeydown(event: KeyboardEvent) {
@@ -527,11 +569,13 @@ onMounted(() => {
     clickSounds.value = true
   }
   document.addEventListener('click', playClickSound, true)
+  document.addEventListener('pointerdown', resumeAmbientMusic, true)
   window.addEventListener('keydown', onKeydown)
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', playClickSound, true)
+  document.removeEventListener('pointerdown', resumeAmbientMusic, true)
   window.removeEventListener('keydown', onKeydown)
   window.clearInterval(musicTimer)
   window.clearInterval(noteTimer)
