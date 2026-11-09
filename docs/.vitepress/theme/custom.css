@@ -790,6 +790,7 @@ html.lumen-weather-meteors .lumen-weather-sky,
 html.lumen-track-starlight .lumen-weather-sky,
 html.lumen-weather-rain .lumen-weather-sky,
 html.lumen-weather-balloon-event .lumen-weather-sky,
+html.lumen-balloon-popped .lumen-weather-sky,
 html.lumen-track-rain .lumen-weather-sky,
 html.lumen-track-mountain-wind .lumen-weather-sky,
 html.lumen-track-forest .lumen-weather-sky,
@@ -977,8 +978,23 @@ html:not(.dark).lumen-weather-rain .lumen-rain-drop {
   bottom: -16%;
   width: 42px;
   height: 132px;
+  padding: 0;
+  border: 0;
+  background: transparent;
   opacity: 0;
   pointer-events: none;
+  cursor: pointer;
+  animation: none;
+}
+
+html.lumen-weather-balloon-event .lumen-weather-balloon {
+  pointer-events: auto;
+}
+
+.lumen-weather-balloon:focus-visible {
+  border-radius: 50%;
+  outline: 2px solid #c95778;
+  outline-offset: 4px;
 }
 
 .lumen-weather-balloon::before {
@@ -1025,6 +1041,74 @@ html:not(.dark).lumen-weather-rain .lumen-rain-drop {
 html:not(.dark).lumen-weather-balloon-event .lumen-weather-balloon {
   animation: lumen-balloon-rise 14s cubic-bezier(0.3, 0.05, 0.65, 1) both;
 }
+
+html.lumen-balloon-popped .lumen-weather-balloon {
+  pointer-events: none;
+  animation: lumen-balloon-pop 220ms ease-out both;
+}
+
+@keyframes lumen-balloon-pop {
+  0% { opacity: 1; transform: scale(1); }
+  55% { opacity: 1; transform: scale(1.7); }
+  100% { opacity: 0; transform: scale(0.15); }
+}
+
+.lumen-balloon-confetti {
+  position: fixed;
+  z-index: 140;
+  inset: 0;
+  overflow: hidden;
+  display: none;
+  pointer-events: none;
+}
+
+html.lumen-balloon-popped .lumen-balloon-confetti {
+  display: block;
+}
+
+.lumen-confetti-piece {
+  position: absolute;
+  top: var(--lumen-pop-y, 45vh);
+  left: var(--lumen-pop-x, 72vw);
+  width: 10px;
+  height: 18px;
+  border-radius: 2px;
+  background: #f04e69;
+  opacity: 0;
+  animation: lumen-confetti-burst 2.4s cubic-bezier(0.12, 0.56, 0.28, 1) both;
+}
+
+@keyframes lumen-confetti-burst {
+  0% {
+    opacity: 0;
+    transform: translate3d(-50%, -50%, 0) scale(0.2) rotate(0);
+  }
+  10% { opacity: 1; }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--confetti-x), var(--confetti-y), 0) scale(1) rotate(var(--confetti-spin));
+  }
+}
+
+.lumen-confetti-piece:nth-child(6n + 1) { background: #f04e69; }
+.lumen-confetti-piece:nth-child(6n + 2) { background: #ffc928; }
+.lumen-confetti-piece:nth-child(6n + 3) { background: #4fc98a; }
+.lumen-confetti-piece:nth-child(6n + 4) { background: #4fa8f5; }
+.lumen-confetti-piece:nth-child(6n + 5) { background: #a56af2; }
+.lumen-confetti-piece:nth-child(6n) { background: #ff8a36; }
+
+.lumen-confetti-piece:nth-child(12n + 1) { --confetti-x: -48vw; --confetti-y: -42vh; --confetti-spin: 620deg; animation-delay: 20ms; }
+.lumen-confetti-piece:nth-child(12n + 2) { --confetti-x: -30vw; --confetti-y: -52vh; --confetti-spin: -480deg; animation-delay: 90ms; }
+.lumen-confetti-piece:nth-child(12n + 3) { --confetti-x: -12vw; --confetti-y: -45vh; --confetti-spin: 760deg; animation-delay: 40ms; }
+.lumen-confetti-piece:nth-child(12n + 4) { --confetti-x: 10vw; --confetti-y: -54vh; --confetti-spin: -640deg; animation-delay: 130ms; }
+.lumen-confetti-piece:nth-child(12n + 5) { --confetti-x: 31vw; --confetti-y: -45vh; --confetti-spin: 540deg; animation-delay: 70ms; }
+.lumen-confetti-piece:nth-child(12n + 6) { --confetti-x: 49vw; --confetti-y: -31vh; --confetti-spin: -720deg; animation-delay: 150ms; }
+.lumen-confetti-piece:nth-child(12n + 7) { --confetti-x: 48vw; --confetti-y: -4vh; --confetti-spin: 660deg; animation-delay: 50ms; }
+.lumen-confetti-piece:nth-child(12n + 8) { --confetti-x: 34vw; --confetti-y: 26vh; --confetti-spin: -560deg; animation-delay: 120ms; }
+.lumen-confetti-piece:nth-child(12n + 9) { --confetti-x: 14vw; --confetti-y: 48vh; --confetti-spin: 800deg; animation-delay: 30ms; }
+.lumen-confetti-piece:nth-child(12n + 10) { --confetti-x: -8vw; --confetti-y: 52vh; --confetti-spin: -680deg; animation-delay: 110ms; }
+.lumen-confetti-piece:nth-child(12n + 11) { --confetti-x: -31vw; --confetti-y: 39vh; --confetti-spin: 740deg; animation-delay: 60ms; }
+.lumen-confetti-piece:nth-child(12n) { --confetti-x: -49vw; --confetti-y: 15vh; --confetti-spin: -820deg; animation-delay: 140ms; }
 
 .lumen-firefly {
   position: absolute;

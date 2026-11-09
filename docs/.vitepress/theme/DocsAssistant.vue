@@ -115,6 +115,7 @@ interface AmbientTrack {
   description: string
   secret?: boolean
   modeOnly?: boolean
+  chaotic?: boolean
   monkeyCalls?: boolean
   chords: number[][]
   waveform: OscillatorType
@@ -264,25 +265,25 @@ const ambientTracks: AmbientTrack[] = [
     name: 'Banana Jungle',
     description: 'A chaotic original jungle jam with chattery, cartoonish synth-monkey calls.',
     modeOnly: true,
+    chaotic: true,
     monkeyCalls: true,
-    waveform: 'triangle',
-    filterFrequency: 2100,
-    chordInterval: 2100,
-    chordVolume: 0.065,
-    texture: { filter: 'bandpass', frequency: 920, volume: 0.026, pulse: 0.02 },
+    waveform: 'square',
+    filterFrequency: 3200,
+    chordInterval: 240,
+    chordVolume: 0.028,
     notes: {
-      frequencies: [392, 523.25, 659.25, 587.33, 783.99, 523.25, 698.46, 440],
+      frequencies: [392, 659.25, 523.25, 783.99, 440, 698.46, 587.33, 880, 493.88, 783.99],
       waveform: 'square',
-      volume: 0.045,
-      attack: 0.015,
-      decay: 0.36,
-      interval: 420,
+      volume: 0.1,
+      attack: 0.006,
+      decay: 0.19,
+      interval: 155,
     },
     chords: [
-      [130.81, 196, 261.63, 329.63],
-      [146.83, 220, 293.66, 369.99],
-      [123.47, 185, 246.94, 311.13],
-      [164.81, 220, 277.18, 349.23],
+      [98, 196, 293.66, 392],
+      [110, 220, 329.63, 440],
+      [87.31, 174.61, 261.63, 523.25],
+      [123.47, 246.94, 369.99, 493.88],
     ],
   },
 ]
@@ -514,7 +515,10 @@ function startAmbientMusic() {
   musicFilter.type = 'lowpass'
   musicFilter.frequency.setValueAtTime(activeTrack.filterFrequency, now)
   musicMaster.gain.setValueAtTime(0.0001, now)
-  musicMaster.gain.linearRampToValueAtTime(0.022, now + 2.5)
+  musicMaster.gain.linearRampToValueAtTime(
+    activeTrack.chaotic ? 0.032 : 0.022,
+    now + (activeTrack.chaotic ? 0.12 : 2.5),
+  )
   musicFilter.connect(musicMaster)
   musicMaster.connect(audioContext.destination)
 
@@ -595,12 +599,12 @@ function startAmbientMusic() {
       if (!audioContext || !musicMaster || activeTrack?.name !== 'Banana Jungle') return
 
       const callAt = audioContext.currentTime
-      for (let index = 0; index < 3; index += 1) {
+      for (let index = 0; index < 4; index += 1) {
         const call = audioContext.createOscillator()
         const callFilter = audioContext.createBiquadFilter()
         const callVolume = audioContext.createGain()
-        const startAt = callAt + index * (0.08 + Math.random() * 0.07)
-        const pitch = 420 + Math.random() * 620
+        const startAt = callAt + index * (0.035 + Math.random() * 0.055)
+        const pitch = 380 + Math.random() * 850
         call.type = index === 1 ? 'sawtooth' : 'triangle'
         call.frequency.setValueAtTime(pitch, startAt)
         call.frequency.exponentialRampToValueAtTime(pitch * (1.2 + Math.random() * 0.5), startAt + 0.08)
@@ -609,7 +613,7 @@ function startAmbientMusic() {
         callFilter.frequency.setValueAtTime(1350 + Math.random() * 900, startAt)
         callFilter.Q.setValueAtTime(1.2, startAt)
         callVolume.gain.setValueAtTime(0.0001, startAt)
-        callVolume.gain.linearRampToValueAtTime(0.12, startAt + 0.025)
+        callVolume.gain.linearRampToValueAtTime(0.14, startAt + 0.018)
         callVolume.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.27)
         call.connect(callFilter)
         callFilter.connect(callVolume)
@@ -618,7 +622,7 @@ function startAmbientMusic() {
         call.stop(startAt + 0.29)
       }
 
-      monkeyTimer = window.setTimeout(playMonkeyCalls, 650 + Math.random() * 1250)
+      monkeyTimer = window.setTimeout(playMonkeyCalls, 180 + Math.random() * 320)
     }
 
     monkeyTimer = window.setTimeout(playMonkeyCalls, 500)
@@ -632,7 +636,7 @@ function startAmbientMusic() {
     const changeAt = audioContext.currentTime
     musicOscillators.forEach((tone, index) => {
       tone.frequency.cancelScheduledValues(changeAt)
-      tone.frequency.setTargetAtTime(chord[index], changeAt, 0.8)
+      tone.frequency.setTargetAtTime(chord[index], changeAt, activeTrack.chaotic ? 0.025 : 0.8)
     })
   }, activeTrack.chordInterval)
 
@@ -642,7 +646,9 @@ function startAmbientMusic() {
       if (!audioContext || !activeTrack?.notes || !musicFilter) return
       const instrument = activeTrack.notes
       const changeAt = audioContext.currentTime
-      const frequency = instrument.frequencies[musicNoteIndex % instrument.frequencies.length]
+      const frequency = instrument.frequencies[activeTrack.chaotic
+        ? Math.floor(Math.random() * instrument.frequencies.length)
+        : musicNoteIndex % instrument.frequencies.length]
       musicNoteIndex += 1
       const partials = [{ ratio: 1, level: 1 }, ...(instrument.partials ?? [])]
 
@@ -668,7 +674,25 @@ function startAmbientMusic() {
   setAmbientTrackEffect(activeTrack.name)
 }
 
-function stopAmbientMusic() {
+function handleBananaModeChange(event: Event) {
+  const enabled = (event as CustomEvent<{ enabled: boolean }>).detail.enabled
+  if (!ambientMusic.value || !audioContext) return
+  stopAmbientMusic(0.12)
+  if (!enabled) {
+    ambientMusic.value = false
+    return
+  }
+  try {
+    startAmbientMusic()
+    ambientMusic.value = true
+  } catch (error) {
+    console.error('Unable to switch to Banana Jungle music:', error)
+    ambientMusic.value = false
+    activeMusicTrack.value = ''
+  }
+}
+
+function stopAmbientMusic(fadeDuration = 1.2) {
   setAmbientTrackEffect()
   if (!audioContext || !musicMaster) return
 
@@ -683,8 +707,8 @@ function stopAmbientMusic() {
   const now = audioContext.currentTime
   musicMaster.gain.cancelScheduledValues(now)
   musicMaster.gain.setValueAtTime(musicMaster.gain.value, now)
-  musicMaster.gain.linearRampToValueAtTime(0.0001, now + 1.2)
-  for (const source of musicSources) source.stop(now + 1.25)
+  musicMaster.gain.linearRampToValueAtTime(0.0001, now + fadeDuration)
+  for (const source of musicSources) source.stop(now + fadeDuration + 0.05)
   musicOscillators = []
   musicSources = []
   musicMaster = undefined
@@ -754,12 +778,14 @@ onMounted(() => {
   }
   document.addEventListener('click', playClickSound, true)
   document.addEventListener('pointerdown', resumeAmbientMusic, true)
+  window.addEventListener('lumen-banana-mode-change', handleBananaModeChange)
   window.addEventListener('keydown', onKeydown)
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', playClickSound, true)
   document.removeEventListener('pointerdown', resumeAmbientMusic, true)
+  window.removeEventListener('lumen-banana-mode-change', handleBananaModeChange)
   window.removeEventListener('keydown', onKeydown)
   window.clearInterval(musicTimer)
   window.clearInterval(noteTimer)

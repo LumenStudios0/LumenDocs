@@ -19,6 +19,7 @@ export default {
       let moonClicks = 0
       let ambientWeatherTimer: number | undefined
       const ambientWeatherTimers: number[] = []
+      let balloonPopTimer: number | undefined
       const minecraftToast = ref('')
       let minecraftToastTimer: number | undefined
       let phraseBuffer = ''
@@ -53,9 +54,22 @@ export default {
           root.classList.remove('lumen-minecraft')
           minecraftModeEnabled = false
         }
+        window.dispatchEvent(new CustomEvent('lumen-banana-mode-change', { detail: { enabled } }))
         minecraftToast.value = enabled ? '🍌 Banana mode! 🍌' : 'Banana mode off'
         window.clearTimeout(minecraftToastTimer)
         minecraftToastTimer = window.setTimeout(() => { minecraftToast.value = '' }, 2400)
+      }
+
+      const handleBalloonPop = (event: MouseEvent) => {
+        const root = document.documentElement
+        root.style.setProperty('--lumen-pop-x', `${event.clientX}px`)
+        root.style.setProperty('--lumen-pop-y', `${event.clientY}px`)
+        root.classList.remove('lumen-weather-balloon-event')
+        root.classList.add('lumen-balloon-popped')
+        window.clearTimeout(balloonPopTimer)
+        balloonPopTimer = window.setTimeout(() => {
+          root.classList.remove('lumen-balloon-popped')
+        }, 4200)
       }
 
       const handlePointerMove = (event: PointerEvent) => {
@@ -212,6 +226,7 @@ export default {
         window.removeEventListener('pointermove', handlePointerMove)
         window.clearTimeout(ambientWeatherTimer)
         window.clearTimeout(minecraftToastTimer)
+        window.clearTimeout(balloonPopTimer)
         ambientWeatherTimers.forEach(timer => window.clearTimeout(timer))
         document.documentElement.classList.remove(
           'lumen-minecraft',
@@ -219,6 +234,7 @@ export default {
           'lumen-weather-meteors',
           'lumen-weather-rain',
           'lumen-weather-balloon-event',
+          'lumen-balloon-popped',
         )
       })
 
@@ -232,7 +248,7 @@ export default {
               h('span', { class: `lumen-shooting-star lumen-shooting-star-${index + 1}` }),
             ),
           ]),
-          h('div', { class: 'lumen-weather-sky', 'aria-hidden': 'true' }, [
+          h('div', { class: 'lumen-weather-sky' }, [
             ...Array.from({ length: 12 }, (_, index) =>
               h('span', { class: `lumen-event-meteor lumen-event-meteor-${index + 1}` }),
             ),
@@ -242,7 +258,13 @@ export default {
             ...Array.from({ length: 32 }, (_, index) =>
               h('span', { class: `lumen-rain-drop lumen-rain-drop-${index + 1}` }),
             ),
-            h('span', { class: 'lumen-weather-balloon' }, [
+            h('button', {
+              class: 'lumen-weather-balloon',
+              type: 'button',
+              'aria-label': 'Pop the balloon and release confetti',
+              title: 'Pop the balloon!',
+              onClick: handleBalloonPop,
+            }, [
               h('span', { class: 'lumen-balloon-string' }),
             ]),
             ...Array.from({ length: 8 }, (_, index) =>
@@ -257,6 +279,11 @@ export default {
             ),
           ),
           h('span', { class: 'lumen-banana-cursor', 'aria-hidden': 'true' }, '🍌'),
+          h('div', { class: 'lumen-balloon-confetti', 'aria-hidden': 'true' },
+            Array.from({ length: 48 }, (_, index) =>
+              h('span', { class: `lumen-confetti-piece lumen-confetti-piece-${index + 1}` }),
+            ),
+          ),
           h('div', { class: 'lumen-disaster-overlay', 'aria-hidden': 'true' }, [
             h('span', { class: 'lumen-disaster-flash' }),
             h('span', { class: 'lumen-disaster-ring' }),
