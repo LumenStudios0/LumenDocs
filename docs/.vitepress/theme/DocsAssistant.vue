@@ -851,9 +851,9 @@ const ambientTracks: AmbientTrack[] = [
   },
 ]
 
-const ambientTrackClasses = ambientTracks.map(track =>
-  `lumen-track-${track.name.toLowerCase().replace(/\s+/g, '-')}`,
-)
+const getTrackClass = (trackName: string) =>
+  `lumen-track-${trackName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`
+const ambientTrackClasses = ambientTracks.map(track => getTrackClass(track.name))
 const selectableAmbientTracks = ambientTracks.filter(track => !track.secret && !track.modeOnly)
 const tracklistTracks = ambientTracks
 
@@ -861,7 +861,7 @@ function setAmbientTrackEffect(trackName?: string) {
   const root = document.documentElement
   root.classList.remove(...ambientTrackClasses)
   if (trackName) {
-    root.classList.add(`lumen-track-${trackName.toLowerCase().replace(/\s+/g, '-')}`)
+    root.classList.add(getTrackClass(trackName))
   }
 }
 

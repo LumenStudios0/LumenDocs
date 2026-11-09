@@ -636,6 +636,14 @@ export default {
             ),
             h('span', { class: 'lumen-tide-wave lumen-tide-wave-1' }),
             h('span', { class: 'lumen-tide-wave lumen-tide-wave-2' }),
+            h('div', { class: 'lumen-track-visuals', 'aria-hidden': 'true' }, [
+              ...Array.from({ length: 3 }, (_, index) =>
+                h('span', { class: `lumen-track-aurora lumen-track-aurora-${index + 1}` }),
+              ),
+              ...Array.from({ length: 14 }, (_, index) =>
+                h('span', { class: `lumen-track-particle lumen-track-particle-${index + 1}` }),
+              ),
+            ]),
           ]),
           h('div', { class: 'lumen-banana-sky', 'aria-hidden': 'true' },
             [
