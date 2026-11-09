@@ -1,1 +1,27 @@
-{}
+{
+  "Gladiator": [
+    {
+      "title": "INTELLIGANCE UPDATE - v1.1",
+      "date": "2026-11-09 (Today at 4:29 AM)",
+      "text": "INTELLIGANCE UPDATE - v1.1\n\n• Staff can mark alerts as false alarms; feedback does not change detection automatically.\n• Staff can find players with similar alert patterns without seeing shared addresses.\n• Configuration suggestions require staff approval.\n• Added seven day security and risk trends.\n• Added separate anticheat settings for each world.\n• Added Safe Mode to keep alerts on while suppressing punishments.\n• Added searchable security logs.\n• Added command and staff GUI controls for these features.\n• Added diagnostics and regression tests.\n• Fixed hidden blocks showing when the tracking cache filled up.\n• Fixed Safe Mode handling for DDoS restrictions.\n• Fixed per world module commands.\n• Fixed configuration suggestion adjustments and message counts.\n\nBUG FIXES\n\n• Fixed hidden ore and structure blocks being exposed when the mask cache fills up.\n• Fixed DDoS checks from applying new restrictions while Safe Mode is on.\n• Fixed existing temporary connection restrictions being mishandled during Safe Mode.\n• Fixed DDoS alerts from claiming a restriction was applied when Safe Mode suppressed it.\n• Fixed Safe Mode from changing saved punishment settings.\n• Fixed per world module commands not being routed correctly.\n• Fixed recommendation messages displaying incorrect counts.\n• Fixed recommended setting changes from using the wrong adjustment steps.",
+      "url": "https://builtbybit.com/resources/gladiator.132519/",
+      "source": "builtbybit"
+    }
+  ],
+  "LumenShards": [
+    {
+      "title": "LICENCE UPDATE",
+      "date": "Oct 21, 2026",
+      "text": "Make a ticket in discord.gg/lumenstudios to claim your license.",
+      "url": "https://builtbybit.com/resources/lumenshards.116897/",
+      "source": "builtbybit"
+    },
+    {
+      "title": "BIG UPDATE - Quality of life update - VERSION v1.1",
+      "date": "Oct 17, 2026",
+      "text": "What's new:\n\n• Added offline player support: /Shard pay, /Shard take, /Shard set.\n• Added an option to close the shop on purchase.\n• Added shop support to sell stacks of items: x64, x2, x5.\n• Added a shard leaderboard: /Shard top, /Shard leaderboard.\n• Added leaderboard.db; the shard leaderboard resets if this file is deleted.\n• Improved GUIs.\n• Added leaderboard hologram support.\n• Added versions 1.26.1 and 1.26.2.\n• Added /Shard Toggle pay on/off.\n\nBug fixes:\n\n• Fixed being able to pay users decimal amounts.\n• Switched player data storage from YAML to SQLite; switching back to YAML is available.\n• Fixed being able to purchase items while inventory is full.\n• Fixed decimals still showing when decimal formatting is off.",
+      "url": "https://builtbybit.com/resources/lumenshards.116897/",
+      "source": "builtbybit"
+    }
+  ]
+}
