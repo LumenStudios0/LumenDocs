@@ -1,6 +1,6 @@
 import DefaultTheme from 'vitepress/theme'
 import { h, defineComponent, nextTick, onMounted, onUnmounted, ref } from 'vue'
-import { useRouter } from 'vitepress'
+import { useData, useRouter } from 'vitepress'
 import DocsAssistant from './DocsAssistant.vue'
 import './custom.css'
 
@@ -9,6 +9,7 @@ export default {
   Layout: defineComponent({
     setup() {
       const router = useRouter()
+      const { isDark } = useData()
       const previousRouteChanged = router.onAfterRouteChange
       const canGoBack = ref(false)
       const canGoForward = ref(false)
@@ -869,7 +870,23 @@ export default {
                 style: { '--menu-index': index },
                 onClick: () => { navMenuOpen.value = false },
               }, item.text),
-            )),
+            ).concat([
+              h('a', {
+                class: 'lumen-nav-menu-link',
+                href: 'https://discord.gg/lumenstudios',
+                target: '_blank',
+                rel: 'noreferrer',
+                style: { '--menu-index': topNavigationItems.length },
+                onClick: () => { navMenuOpen.value = false },
+              }, 'Visit'),
+              h('button', {
+                class: 'lumen-nav-menu-link lumen-nav-menu-theme',
+                type: 'button',
+                'aria-label': isDark.value ? 'Switch to day mode' : 'Switch to night mode',
+                style: { '--menu-index': topNavigationItems.length + 1 },
+                onClick: () => { isDark.value = !isDark.value },
+              }, isDark.value ? '☀ Switch to day mode' : '☾ Switch to night mode'),
+            ])),
           ]),
           h('div', { class: 'lumen-nav-report-group' }, [
             h('a', {

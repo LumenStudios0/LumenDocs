@@ -2620,6 +2620,20 @@ html.lumen-track-cretaceous-sunrise .lumen-track-horizon {
   outline: none;
 }
 
+.lumen-nav-menu-theme {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lumen-nav-menu-theme:focus-visible {
+  outline: 2px solid var(--vp-c-brand-1);
+  outline-offset: -2px;
+}
+
 @keyframes lumen-nav-panel-enter {
   from { opacity: 0; transform: translateY(-8px) scale(0.94); }
   to { opacity: 1; transform: translateY(0) scale(1); }
@@ -2782,6 +2796,12 @@ html.lumen-track-cretaceous-sunrise .lumen-track-horizon {
   color: var(--vp-c-brand-1);
 }
 
+@media (min-width: 768px) {
+  .VPNavBarSocialLinks .VPSocialLink[aria-label="Log in with Discord"] {
+    display: none;
+  }
+}
+
 @media (max-width: 900px) {
   .lumen-history-controls {
     display: none;
@@ -2791,6 +2811,20 @@ html.lumen-track-cretaceous-sunrise .lumen-track-horizon {
 @media (max-width: 767px) {
   .lumen-nav-menu {
     display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lumen-nav-menu-button span,
+  .lumen-nav-menu-panel,
+  .lumen-nav-menu-link,
+  .VPNavBarHamburger.active .container {
+    animation: none;
+    transition: none;
+  }
+
+  .lumen-nav-menu-link {
+    opacity: 1;
   }
 }
 
