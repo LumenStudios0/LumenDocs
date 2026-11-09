@@ -1,5 +1,54 @@
+<script setup lang="ts">
+import { onMounted, onUnmounted, ref } from 'vue'
+
+const experienceRoot = ref<HTMLElement | null>(null)
+let revealObserver: IntersectionObserver | undefined
+
+function handleFeatureTilt(event: PointerEvent) {
+  const card = event.currentTarget
+  if (!(card instanceof HTMLElement) || event.pointerType === 'touch') return
+
+  const bounds = card.getBoundingClientRect()
+  const x = (event.clientX - bounds.left) / bounds.width - 0.5
+  const y = (event.clientY - bounds.top) / bounds.height - 0.5
+  card.style.setProperty('--tilt-x', `${-y * 3}deg`)
+  card.style.setProperty('--tilt-y', `${x * 3}deg`)
+}
+
+function resetFeatureTilt(event: PointerEvent) {
+  const card = event.currentTarget
+  if (!(card instanceof HTMLElement)) return
+  card.style.setProperty('--tilt-x', '0deg')
+  card.style.setProperty('--tilt-y', '0deg')
+}
+
+onMounted(() => {
+  const root = experienceRoot.value
+  if (!root) return
+
+  if (!('IntersectionObserver' in window)) {
+    root.querySelectorAll('.home-reveal').forEach(element => element.classList.add('is-visible'))
+    return
+  }
+  root.classList.add('home-motion-ready')
+  revealObserver = new IntersectionObserver((entries, observer) => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return
+      entry.target.classList.add('is-visible')
+      observer.unobserve(entry.target)
+    })
+  }, { threshold: 0.16 })
+
+  root.querySelectorAll('.home-reveal').forEach(element => revealObserver?.observe(element))
+})
+
+onUnmounted(() => {
+  revealObserver?.disconnect()
+})
+</script>
+
 <template>
-  <div class="home-experience">
+  <div ref="experienceRoot" class="home-experience">
     <section class="home-proof" aria-label="Lumen Studios principles">
       <div class="home-proof-copy">
         <span class="home-eyebrow"><span class="home-pulse" /> BUILT FOR THE PEOPLE RUNNING SERVERS</span>
@@ -14,7 +63,9 @@
       <div class="home-orbit-scene" aria-label="Animated illustration of a plugin moving from setup to a running server">
         <div class="home-orbit home-orbit-outer" />
         <div class="home-orbit home-orbit-inner" />
+        <div class="home-orbit home-orbit-dash" />
         <div class="home-glow" />
+        <div class="home-energy-line"><i /><i /><i /></div>
         <div class="home-float-card home-float-card-top">
           <span class="home-card-dot" />
           <span>Ready to install</span>
@@ -33,6 +84,85 @@
         <span class="home-spark home-spark-one">✦</span>
         <span class="home-spark home-spark-two">·</span>
         <span class="home-spark home-spark-three">✧</span>
+      </div>
+    </section>
+
+    <section class="home-feature-showcase" aria-label="What you can do with Lumen Studios">
+      <div class="home-section-heading home-feature-heading">
+        <span class="home-eyebrow">DESIGNED TO WORK TOGETHER</span>
+        <h2>Small details. A smoother run.</h2>
+        <p>A few of the ways we help you get from “just bought it” to “it’s working.”</p>
+      </div>
+
+      <div class="home-feature-grid">
+        <article class="home-feature-card home-key-card home-reveal" @pointermove="handleFeatureTilt" @pointerleave="resetFeatureTilt">
+          <div class="home-feature-copy">
+            <span class="home-feature-label">PRODUCT ACCESS</span>
+            <h3>One account for your Lumen tools.</h3>
+            <p>Keep your products together and find their setup guides without digging around.</p>
+          </div>
+          <div class="home-key-visual" aria-hidden="true">
+            <span class="home-key-orbit" />
+            <span class="home-key-orbit home-key-orbit-two" />
+            <div class="home-key-token"><span>✦</span></div>
+            <div class="home-key-code"><i /><i /><i /><i /><i /><i /><i /><i /></div>
+            <div class="home-product-pills">
+              <span><i>LA</i> Auction</span>
+              <span><i>LD</i> Duels</span>
+              <span><i>LS</i> Shards</span>
+            </div>
+          </div>
+          <span class="home-card-corner" aria-hidden="true">01</span>
+        </article>
+
+        <article class="home-feature-card home-ip-card home-reveal" @pointermove="handleFeatureTilt" @pointerleave="resetFeatureTilt">
+          <div class="home-feature-copy">
+            <span class="home-feature-label">LICENSE CONTROLS</span>
+            <h3>Room for three server IPs.</h3>
+            <p>Review and prepare your IP list in the customer portal. Live license syncing is coming later.</p>
+          </div>
+          <div class="home-ip-visual" aria-hidden="true">
+            <div class="home-ip-slot home-ip-slot-one"><span>01</span><i /><b>Server IP</b><em>READY</em></div>
+            <div class="home-ip-slot home-ip-slot-two"><span>02</span><i /><b>Server IP</b><em>READY</em></div>
+            <div class="home-ip-slot home-ip-slot-three"><span>03</span><i /><b>Add address</b><em>+</em></div>
+            <span class="home-ip-orbit" />
+          </div>
+          <span class="home-feature-badge">3 MAX</span>
+          <span class="home-card-corner" aria-hidden="true">02</span>
+        </article>
+
+        <article class="home-feature-card home-server-card home-reveal" @pointermove="handleFeatureTilt" @pointerleave="resetFeatureTilt">
+          <div class="home-feature-copy">
+            <span class="home-feature-label">SERVER CONNECTIONS</span>
+            <h3>See what’s connected.</h3>
+            <p>A dedicated place for license-linked servers. Connection data will appear when licensing is wired up.</p>
+          </div>
+          <div class="home-server-visual" aria-hidden="true">
+            <div class="home-server-node home-server-node-main"><span class="home-node-cube">L</span><b>License</b><i>PREVIEW</i></div>
+            <div class="home-server-link"><span /><span /><span /></div>
+            <div class="home-server-nodes">
+              <div class="home-server-node"><span class="home-mini-server"><i /><i /><i /></span><b>Survival</b><i>WAITING</i></div>
+              <div class="home-server-node"><span class="home-mini-server"><i /><i /><i /></span><b>Lobby</b><i>WAITING</i></div>
+            </div>
+            <span class="home-server-sweep" />
+          </div>
+          <span class="home-card-corner" aria-hidden="true">03</span>
+        </article>
+
+        <article class="home-feature-card home-docs-card home-reveal" @pointermove="handleFeatureTilt" @pointerleave="resetFeatureTilt">
+          <div class="home-feature-copy">
+            <span class="home-feature-label">SEARCHABLE DOCS</span>
+            <h3>Find the right answer, faster.</h3>
+            <p>Search installation steps, commands, permissions, and configuration references in one docs space.</p>
+          </div>
+          <div class="home-docs-visual" aria-hidden="true">
+            <div class="home-search-bar"><span class="home-search-icon">⌕</span><span class="home-search-typing">installation</span><i /></div>
+            <div class="home-search-result"><span>01</span><b>Installation</b><small>Getting started</small><i>↗</i></div>
+            <div class="home-search-result home-search-result-two"><span>02</span><b>First launch</b><small>Plugin guide</small><i>↗</i></div>
+            <div class="home-search-spark">✦</div>
+          </div>
+          <span class="home-card-corner" aria-hidden="true">04</span>
+        </article>
       </div>
     </section>
 
@@ -416,6 +546,411 @@
 .home-spark-two { top: 44%; right: 7%; font-size: 36px; animation-delay: -1s; }
 .home-spark-three { bottom: 65px; left: 22%; font-size: 22px; animation-delay: -2s; }
 
+.home-orbit-dash {
+  width: min(270px, 67vw);
+  border-color: rgb(84 216 154 / 28%);
+  border-style: dotted;
+  animation: home-orbit 36s linear infinite reverse;
+}
+
+.home-energy-line {
+  position: absolute;
+  z-index: 1;
+  width: 178px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgb(160 123 255 / 55%), transparent);
+  transform: rotate(-32deg);
+}
+
+.home-energy-line i {
+  position: absolute;
+  top: -2px;
+  left: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #d3bfff;
+  box-shadow: 0 0 12px #a77cff;
+  animation: home-energy-flow 3s linear infinite;
+}
+
+.home-energy-line i:nth-child(2) { animation-delay: -1s; }
+.home-energy-line i:nth-child(3) { animation-delay: -2s; }
+
+.home-feature-showcase {
+  padding: 92px 8px 36px;
+}
+
+.home-feature-heading {
+  margin-bottom: 38px;
+}
+
+.home-feature-heading h2 {
+  margin-bottom: 12px;
+  font-size: clamp(1.9rem, 3.8vw, 2.7rem);
+}
+
+.home-feature-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 17px;
+}
+
+.home-feature-card {
+  --tilt-x: 0deg;
+  --tilt-y: 0deg;
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 390px;
+  grid-template-rows: auto 1fr;
+  padding: 25px 26px 20px;
+  overflow: hidden;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 20px;
+  background:
+    radial-gradient(ellipse at 82% 86%, rgb(123 63 242 / 11%), transparent 58%),
+    linear-gradient(145deg, var(--vp-c-bg-soft), var(--vp-c-bg));
+  transform: perspective(900px) rotateX(var(--tilt-x)) rotateY(var(--tilt-y));
+  transform-style: preserve-3d;
+  transition: transform 220ms ease, border-color 220ms ease, box-shadow 220ms ease;
+}
+
+.home-feature-card:hover {
+  border-color: rgb(123 63 242 / 55%);
+  box-shadow: 0 20px 50px rgb(34 17 70 / 18%);
+}
+
+.home-feature-copy {
+  position: relative;
+  z-index: 2;
+  max-width: 330px;
+}
+
+.home-feature-label {
+  color: var(--home-purple);
+  font-size: 0.62rem;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+}
+
+.home-feature-copy h3 {
+  margin: 10px 0 7px;
+  font-size: 1.18rem;
+  letter-spacing: -0.035em;
+}
+
+.home-feature-copy p {
+  margin: 0;
+  color: var(--home-muted);
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
+
+.home-card-corner {
+  position: absolute;
+  right: 22px;
+  bottom: 20px;
+  color: var(--vp-c-text-3);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.home-feature-badge {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  padding: 5px 8px;
+  border: 1px solid rgb(84 216 154 / 24%);
+  border-radius: 20px;
+  background: rgb(84 216 154 / 8%);
+  color: #54d89a;
+  font-size: 0.57rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+}
+
+.home-key-visual,
+.home-ip-visual,
+.home-server-visual,
+.home-docs-visual {
+  position: relative;
+  align-self: end;
+  width: min(100%, 390px);
+  height: 205px;
+  margin: 14px auto 0;
+}
+
+.home-key-visual {
+  display: grid;
+  place-items: center;
+  perspective: 700px;
+}
+
+.home-key-orbit {
+  position: absolute;
+  width: 184px;
+  height: 82px;
+  border: 1px solid rgb(167 124 255 / 35%);
+  border-radius: 50%;
+  transform: rotate(-20deg);
+  animation: home-key-orbit 9s linear infinite;
+}
+
+.home-key-orbit-two {
+  width: 225px;
+  height: 108px;
+  border-color: rgb(84 216 154 / 25%);
+  transform: rotate(28deg);
+  animation-direction: reverse;
+}
+
+.home-key-token {
+  position: absolute;
+  z-index: 1;
+  display: grid;
+  width: 69px;
+  height: 69px;
+  place-items: center;
+  border: 1px solid rgb(217 198 255 / 70%);
+  border-radius: 19px;
+  background: linear-gradient(145deg, #a77cff, #5d2db6);
+  box-shadow: 0 14px 40px rgb(123 63 242 / 38%), inset 0 0 20px rgb(255 255 255 / 18%);
+  color: white;
+  font-size: 2rem;
+  transform: rotate(-12deg);
+  animation: home-token-float 4s ease-in-out infinite;
+}
+
+.home-key-code {
+  position: absolute;
+  top: 39px;
+  right: 8%;
+  display: flex;
+  gap: 4px;
+  padding: 9px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--vp-c-bg) 85%, transparent);
+  transform: rotate(7deg);
+}
+
+.home-key-code i {
+  width: 4px;
+  height: 13px;
+  border-radius: 3px;
+  background: #9f75f7;
+  animation: home-code-blink 1.8s ease-in-out infinite alternate;
+}
+
+.home-key-code i:nth-child(2n) { height: 8px; animation-delay: -0.5s; }
+.home-key-code i:nth-child(3n) { height: 11px; animation-delay: -1s; }
+
+.home-product-pills {
+  position: absolute;
+  bottom: 19px;
+  display: flex;
+  gap: 6px;
+}
+
+.home-product-pills span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 7px;
+  background: var(--vp-c-bg);
+  color: var(--home-muted);
+  font-size: 0.56rem;
+  animation: home-pill-rise 3.8s ease-in-out infinite;
+}
+
+.home-product-pills span:nth-child(2) { animation-delay: -1.2s; }
+.home-product-pills span:nth-child(3) { animation-delay: -2.4s; }
+
+.home-product-pills i {
+  color: var(--home-purple);
+  font-size: 0.53rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.home-ip-visual {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 7px 17px;
+}
+
+.home-ip-slot {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  height: 43px;
+  grid-template-columns: 25px 9px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--vp-c-bg) 92%, transparent);
+  color: var(--home-muted);
+  font-size: 0.62rem;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 8%);
+  animation: home-slot-in 0.7s both;
+}
+
+.home-ip-slot-two { animation-delay: 0.25s; }
+.home-ip-slot-three { animation-delay: 0.5s; }
+.home-ip-slot > span { color: var(--vp-c-text-3); font-size: 0.56rem; }
+.home-ip-slot > i { width: 6px; height: 6px; border-radius: 50%; background: #54d89a; box-shadow: 0 0 9px rgb(84 216 154 / 60%); }
+.home-ip-slot > b { font-weight: 600; }
+.home-ip-slot > em { color: #54d89a; font-size: 0.49rem; font-style: normal; font-weight: 750; letter-spacing: 0.06em; }
+.home-ip-slot-three > i { background: var(--vp-c-divider); box-shadow: none; }
+.home-ip-slot-three > em { color: var(--home-purple); font-size: 0.9rem; }
+
+.home-ip-orbit {
+  position: absolute;
+  right: 9px;
+  width: 170px;
+  height: 120px;
+  border: 1px solid rgb(123 63 242 / 16%);
+  border-radius: 50%;
+  transform: rotate(-32deg);
+  animation: home-key-orbit 12s linear infinite;
+}
+
+.home-server-visual {
+  display: grid;
+  grid-template-columns: 0.85fr 30px 1fr;
+  align-items: center;
+  padding: 14px 4px;
+}
+
+.home-server-node {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  min-width: 0;
+  min-height: 54px;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 9px;
+  background: var(--vp-c-bg);
+  box-shadow: 0 8px 18px rgb(0 0 0 / 8%);
+  font-size: 0.55rem;
+}
+
+.home-server-node-main { grid-template-columns: 25px 1fr; }
+.home-server-node-main > i { grid-column: 2; }
+.home-node-cube {
+  display: grid;
+  width: 23px;
+  height: 23px;
+  grid-row: span 2;
+  place-items: center;
+  border-radius: 7px;
+  background: rgb(123 63 242 / 17%);
+  color: #a77cff;
+  font-weight: 800;
+}
+
+.home-server-node b { overflow: hidden; color: var(--home-ink); font-size: 0.56rem; text-overflow: ellipsis; }
+.home-server-node > i { color: var(--home-purple); font-size: 0.43rem; font-style: normal; font-weight: 750; letter-spacing: 0.04em; }
+.home-mini-server { display: grid; width: 20px; gap: 2px; padding: 4px; border-radius: 5px; background: rgb(123 63 242 / 12%); }
+.home-mini-server i { height: 3px; border-radius: 4px; background: #9567f3; }
+.home-mini-server i:last-child { width: 65%; }
+
+.home-server-link {
+  position: relative;
+  height: 1px;
+  overflow: hidden;
+  background: rgb(123 63 242 / 30%);
+}
+
+.home-server-link span {
+  position: absolute;
+  top: -2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #a77cff;
+  box-shadow: 0 0 8px #a77cff;
+  animation: home-link-flow 2.4s linear infinite;
+}
+
+.home-server-link span:nth-child(2) { animation-delay: -0.8s; }
+.home-server-link span:nth-child(3) { animation-delay: -1.6s; }
+
+.home-server-nodes {
+  display: grid;
+  gap: 9px;
+}
+
+.home-server-sweep {
+  position: absolute;
+  inset: 5% auto 5% 0;
+  width: 25%;
+  background: linear-gradient(90deg, transparent, rgb(123 63 242 / 10%), transparent);
+  animation: home-sweep 4s ease-in-out infinite;
+}
+
+.home-docs-visual {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 3px 14px;
+}
+
+.home-search-bar,
+.home-search-result {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 9px;
+  padding: 0 10px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  background: var(--vp-c-bg);
+  box-shadow: 0 8px 20px rgb(0 0 0 / 7%);
+}
+
+.home-search-bar { border-color: rgb(123 63 242 / 40%); }
+.home-search-icon { color: var(--home-purple); font-size: 1.3rem; line-height: 1; }
+.home-search-typing { overflow: hidden; color: var(--home-muted); font-size: 0.63rem; white-space: nowrap; animation: home-search-type 5s steps(12, end) infinite; }
+.home-search-bar > i { width: 1px; height: 12px; background: var(--home-purple); animation: home-caret 0.9s steps(2) infinite; }
+.home-search-result { min-height: 44px; margin-left: 13px; animation: home-result-in 5s ease-in-out infinite; }
+.home-search-result-two { margin-left: 29px; animation-delay: -2.5s; }
+.home-search-result > span { color: var(--vp-c-text-3); font-size: 0.52rem; }
+.home-search-result > b { color: var(--home-ink); font-size: 0.61rem; }
+.home-search-result > small { color: var(--home-muted); font-size: 0.53rem; }
+.home-search-result > i { margin-left: auto; color: var(--home-purple); font-size: 0.7rem; font-style: normal; }
+.home-search-spark { position: absolute; top: 17px; right: 16px; color: #b99bff; animation: home-sparkle 2.5s ease-in-out infinite; }
+
+.home-motion-ready .home-reveal {
+  opacity: 0;
+  transform: translateY(22px) scale(0.985);
+  transition: opacity 650ms ease, transform 650ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.home-motion-ready .home-reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.home-feature-card:nth-child(2) { transition-delay: 70ms; }
+.home-feature-card:nth-child(3) { transition-delay: 140ms; }
+.home-feature-card:nth-child(4) { transition-delay: 210ms; }
+
 .home-journey {
   position: relative;
   padding: 104px 12px 88px;
@@ -722,6 +1257,60 @@
   50% { transform: translateY(-12px) rotate(-20deg); }
 }
 
+@keyframes home-energy-flow {
+  to { left: 100%; }
+}
+
+@keyframes home-key-orbit {
+  to { transform: rotate(340deg); }
+}
+
+@keyframes home-token-float {
+  0%, 100% { transform: translateY(0) rotate(-12deg); }
+  50% { transform: translateY(-8px) rotate(-5deg); }
+}
+
+@keyframes home-code-blink {
+  from { opacity: 0.35; transform: scaleY(0.65); }
+  to { opacity: 1; transform: scaleY(1); }
+}
+
+@keyframes home-pill-rise {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes home-slot-in {
+  from { opacity: 0; transform: translateX(14px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes home-link-flow {
+  from { left: -5px; }
+  to { left: 100%; }
+}
+
+@keyframes home-sweep {
+  0%, 100% { transform: translateX(-50%); opacity: 0; }
+  40%, 70% { opacity: 1; }
+  90% { transform: translateX(400%); opacity: 0; }
+}
+
+@keyframes home-search-type {
+  0%, 12% { width: 0; }
+  48%, 78% { width: 69px; }
+  92%, 100% { width: 0; }
+}
+
+@keyframes home-caret {
+  50% { opacity: 0; }
+}
+
+@keyframes home-result-in {
+  0%, 10%, 100% { opacity: 0.4; transform: translateX(4px); }
+  25%, 75% { opacity: 1; transform: translateX(0); }
+}
+
 @keyframes home-card-float {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-8px); }
@@ -757,6 +1346,9 @@
 }
 
 @media (max-width: 760px) {
+  .home-feature-showcase { padding: 68px 2px 20px; }
+  .home-feature-card { min-height: 380px; padding-inline: 21px; }
+  .home-feature-grid { gap: 12px; }
   .home-proof,
   .home-portal {
     grid-template-columns: 1fr;
@@ -771,11 +1363,29 @@
   .home-journey { padding: 76px 2px 62px; }
   .home-journey-rail { display: none; }
   .home-step { min-height: 210px; }
+  .home-feature-grid { grid-template-columns: 1fr; }
+  .home-feature-card { min-height: 360px; }
+  .home-feature-copy { max-width: 390px; }
+  .home-key-visual,
+  .home-ip-visual,
+  .home-server-visual,
+  .home-docs-visual { width: min(100%, 420px); }
   .home-final { align-items: flex-start; flex-direction: column; margin-top: 48px; }
   .home-final-actions { margin-top: 5px; }
 }
 
 @media (max-width: 420px) {
+  .home-feature-card { min-height: 370px; padding: 21px 17px 18px; }
+  .home-feature-badge { top: 15px; right: 14px; }
+  .home-server-visual { grid-template-columns: 0.8fr 20px 1fr; }
+  .home-server-node { grid-template-columns: 19px minmax(0, 1fr); gap: 4px; padding: 6px; }
+  .home-server-node > i { grid-column: 2; }
+  .home-server-node-main { grid-template-columns: 22px 1fr; }
+  .home-server-node-main > i { grid-column: 2; }
+  .home-mini-server { width: 17px; }
+  .home-search-result { gap: 6px; margin-left: 4px; }
+  .home-search-result-two { margin-left: 16px; }
+  .home-search-result > small { font-size: 0.48rem; }
   .home-proof,
   .home-portal { padding: 28px 18px; }
   .home-proof-actions { align-items: flex-start; flex-direction: column; gap: 13px; }
@@ -792,6 +1402,11 @@
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+  }
+
+  .home-motion-ready .home-reveal {
+    opacity: 1;
+    transform: none;
   }
 }
 </style>
