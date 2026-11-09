@@ -1,5 +1,7 @@
 # LumenSpoofer
 
+<span class="compat-badge">Paper · Minecraft 1.21.6–1.21.11 and 26.1+ · test exact server build</span>
+
 Give your server a few extra hands. LumenSpoofer adds player-like NPCs that can explore, gather materials, follow task queues, fight in team roles, and bring supplies back to shared storage.
 
 <a class="buy-now" href="https://builtbybit.com/resources/lumenspoof.135950/" target="_blank" rel="noreferrer">Buy LumenSpoofer on BuiltByBit ↗</a>

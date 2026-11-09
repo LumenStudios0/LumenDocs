@@ -6,6 +6,7 @@ interface DocSection {
   title: string
   text: string
   href: string
+  route: string
   searchableText: string
 }
 
@@ -44,12 +45,17 @@ const sections: DocSection[] = Object.entries(sourceFiles).flatMap(([file, sourc
 
   return headings.map((heading, index) => {
     const end = headings[index + 1]?.start ?? lines.length
-    const text = lines.slice(heading.start + 1, end).join(' ').replace(/[`*_>#|[\]()]/g, ' ').replace(/\s+/g, ' ').trim()
+    const text = lines.slice(heading.start + 1, end).join(' ')
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/[`*_>#|[\]()]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
     const title = heading.title
     return {
       title,
       text,
       href: `${withBase(route)}#${heading.slug}`,
+      route,
       searchableText: `${title} ${text}`.toLowerCase(),
     }
   }).filter(section => section.text.length > 0)
@@ -80,6 +86,7 @@ let activeTrack: AmbientTrack | undefined
 
 interface AmbientTrack {
   name: string
+  description: string
   chords: number[][]
   waveform: OscillatorType
   filterFrequency: number
@@ -106,6 +113,7 @@ interface AmbientTrack {
 const ambientTracks: AmbientTrack[] = [
   {
     name: 'Tides',
+    description: 'Low, slow sine-wave chords with a gentle pulsing undertone, inspired by rolling waves.',
     waveform: 'sine',
     filterFrequency: 560,
     chordInterval: 6800,
@@ -120,6 +128,7 @@ const ambientTracks: AmbientTrack[] = [
   },
   {
     name: 'Mountain Wind',
+    description: 'Open, widely spaced triangle-wave chords over a soft, slowly swelling airy texture.',
     waveform: 'triangle',
     filterFrequency: 390,
     chordInterval: 8200,
@@ -134,6 +143,7 @@ const ambientTracks: AmbientTrack[] = [
   },
   {
     name: 'Forest',
+    description: 'A warmer mid-range triangle-wave melody over soft chords and a subtle woodland-like texture.',
     waveform: 'triangle',
     filterFrequency: 1100,
     chordInterval: 5200,
@@ -156,6 +166,7 @@ const ambientTracks: AmbientTrack[] = [
   },
   {
     name: 'Rain',
+    description: 'Quiet sustained chords with sparse, soft synthesized droplets rather than continuous noise.',
     waveform: 'sine',
     filterFrequency: 760,
     chordInterval: 9000,
@@ -170,6 +181,7 @@ const ambientTracks: AmbientTrack[] = [
   },
   {
     name: 'Starlight',
+    description: 'High, bell-like sine notes and bright, spacious chords with long, gentle decays.',
     waveform: 'sine',
     filterFrequency: 1800,
     chordInterval: 6200,
@@ -221,6 +233,24 @@ async function askQuestion() {
 
   searching.value = true
   const results = findSections(question)
+  const currentPath = window.location.pathname.replace(/\/$/, '') || '/'
+  const currentPageText = sections
+    .filter(section => (section.route.replace(/\/$/, '') || '/') === currentPath)
+    .map(section => `${section.title}: ${section.text}`)
+    .join('\n')
+  const context = results
+    .filter(section => (section.route.replace(/\/$/, '') || '/') !== currentPath)
+    .slice(0, 3)
+    .map(result => ({ title: result.title, text: result.text.slice(0, 1800) }))
+
+  if (currentPageText) {
+    context.push({ title: 'Current documentation page', text: currentPageText.slice(0, 1800) })
+  }
+  context.push({
+    title: 'Lumen Docs features and soundtracks',
+    text: `The documentation site uses dark and light themes, purple Lumen branding (#7B3FF2), animated background waves, browser back/forward controls, and copy buttons beside inline code and commands. Keyboard shortcuts: slash opens docs search, Ctrl/⌘+Shift+A opens the assistant, and Escape closes dialogs. Ambient music is optional and user-controlled. Available soundtracks: ${ambientTracks.map(track => `${track.name}: ${track.description}`).join(' ')} Currently playing: ${activeTrack?.name ?? 'none'}. Click sounds: ${clickSounds.value ? 'on' : 'off'}. Ambient music: ${ambientMusic.value ? 'on' : 'off'}.`,
+  })
+
   let reply = results.length
     ? `I found ${results.length === 1 ? 'a useful guide' : 'some useful sections'} for that. Open the links below for step-by-step details.`
     : 'I couldn’t find a close match in the docs. Try including the plugin name or a specific command, or ask for help in our Discord.'
@@ -232,7 +262,7 @@ async function askQuestion() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question,
-          context: results.slice(0, 5).map(result => ({ title: result.title, text: result.text.slice(0, 1800) })),
+          context: context.slice(0, 5),
         }),
       })
       if (!response.ok) throw new Error(`Assistant request failed with status ${response.status}`)
@@ -460,7 +490,22 @@ function toggleAmbientMusic() {
 }
 
 function onKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape') open.value = false
+  if (event.key === 'Escape') {
+    open.value = false
+    return
+  }
+  const target = event.target
+  const isEditing = target instanceof HTMLElement &&
+    (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+  if (
+    !isEditing &&
+    event.key.toLowerCase() === 'a' &&
+    event.shiftKey &&
+    (event.ctrlKey || event.metaKey)
+  ) {
+    event.preventDefault()
+    focusInput()
+  }
 }
 
 onMounted(() => {

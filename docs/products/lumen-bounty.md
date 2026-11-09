@@ -1,5 +1,7 @@
 # LumenBounty
 
+<span class="compat-badge">Check the current BuiltByBit release for supported versions</span>
+
 Give players a reason to settle a score: LumenBounty brings player bounties to your server.
 
 <a class="buy-now" href="https://builtbybit.com/resources/lumenbounty.132973/" target="_blank" rel="noreferrer">Buy LumenBounty on BuiltByBit ↗</a>

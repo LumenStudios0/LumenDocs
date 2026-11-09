@@ -1,5 +1,7 @@
 # LumenEconomy
 
+<span class="compat-badge">Paper API 1.21.4 build · Java 21 · test other versions and forks</span>
+
 Balances, payments, selling, and the Worth browser all use the same economy, so players can check an item’s value before selling it. You can also add multiplier tiers, Power Tools, history, leaderboards, and optional Vault or PlaceholderAPI integrations.
 
 <a class="buy-now" href="https://builtbybit.com/resources/lumeneconomy.132341/" target="_blank" rel="noreferrer">Buy LumenEconomy on BuiltByBit ↗</a>

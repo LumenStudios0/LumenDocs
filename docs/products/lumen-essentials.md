@@ -1,5 +1,7 @@
 # LumenEssentials
 
+<span class="compat-badge">Paper API 1.21.11 build · Java 21 · Bukkit-family runtime needs verification</span>
+
 LumenEssentials puts day-to-day staff work in one place: a dashboard, moderation commands, notes, assistance requests, chat tools, and inventory snapshots. The player-data wipe workflow is separate and deliberately permission-gated.
 
 <a class="buy-now" href="https://builtbybit.com/resources/lumenessentials.132966/" target="_blank" rel="noreferrer">Buy LumenEssentials on BuiltByBit ↗</a>

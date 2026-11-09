@@ -160,6 +160,73 @@ body::before {
   color: var(--vp-c-brand-1);
 }
 
+.compat-badge {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  margin: 0 0 20px;
+  padding: 6px 11px;
+  border: 1px solid rgba(123, 63, 242, 0.32);
+  border-radius: 999px;
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-text-1);
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.changelog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 12px;
+  margin: 24px 0;
+}
+
+.changelog-grid a {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid var(--lumen-card-border);
+  border-radius: 12px;
+  background: var(--lumen-card-bg);
+  color: var(--vp-c-text-1);
+  text-decoration: none;
+  transition: border-color 160ms ease, transform 160ms ease;
+}
+
+.changelog-grid a:hover {
+  transform: translateY(-2px);
+  border-color: var(--vp-c-brand-1);
+}
+
+.changelog-grid a span {
+  color: var(--vp-c-text-2);
+  font-size: 0.9rem;
+}
+
+.vp-doc div[class*='language-'] > button.copy {
+  border-radius: 8px;
+}
+
+.lumen-inline-copy {
+  margin-left: 5px;
+  padding: 1px 5px;
+  border: 1px solid var(--lumen-card-border);
+  border-radius: 5px;
+  background: var(--vp-c-bg-soft);
+  color: var(--vp-c-text-2);
+  font: inherit;
+  font-size: 0.72em;
+  line-height: 1.5;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+.lumen-inline-copy:hover {
+  border-color: var(--vp-c-brand-1);
+  color: var(--vp-c-brand-1);
+}
+
 .VPHome .VPHero .name {
   letter-spacing: -0.055em;
 }

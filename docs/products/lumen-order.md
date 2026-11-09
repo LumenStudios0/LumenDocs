@@ -1,5 +1,7 @@
 # LumenOrder
 
+<span class="compat-badge">Minecraft API 1.21 · Java 21+ · Bukkit, Spigot, Paper, Purpur · no Folia</span>
+
 With LumenOrder, players post what they want to buy and the price they’re offering. Other players deliver the items and get paid through Vault.
 
 <a class="buy-now" href="https://builtbybit.com/resources/lumenorders.132969/" target="_blank" rel="noreferrer">Buy LumenOrder on BuiltByBit ↗</a>

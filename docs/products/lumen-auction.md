@@ -1,5 +1,7 @@
 # LumenAuction
 
+<span class="compat-badge">Minecraft 1.21.6–1.21.11 · Java 21 · Bukkit family</span>
+
 Give players one place to list items, browse the market, and pick up expired listings. LumenAuction keeps the marketplace and transaction history in SQLite, so listings are still there after a restart.
 
 <a class="buy-now" href="https://builtbybit.com/resources/lumenauction.132967/" target="_blank" rel="noreferrer">Buy LumenAuction on BuiltByBit ↗</a>

@@ -1,5 +1,7 @@
 # LumenSpawners
 
+<span class="compat-badge">Paper API 1.21.6 build · Paper intended · verify exact runtime version</span>
+
 Build a spawner setup without filling your world with mobs. LumenSpawners produces configured drops and items virtually, and saves each spawner and its stored output in SQLite.
 
 <a class="buy-now" href="https://builtbybit.com/resources/lumenspawners.132970/" target="_blank" rel="noreferrer">Buy LumenSpawners on BuiltByBit ↗</a>

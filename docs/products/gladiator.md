@@ -1,5 +1,7 @@
 # Gladiator
 
+<span class="compat-badge">Minecraft 1.21.6–1.21.11 · Java 21+ · Bukkit, Spigot, Paper, Purpur</span>
+
 Gladiator brings server-side security checks and staff tools together. Many checks use normal Bukkit events; packet masking and a few other features need a compatible PacketEvents install.
 
 <a class="buy-now" href="https://builtbybit.com/resources/gladiator.132519/" target="_blank" rel="noreferrer">Buy Gladiator on BuiltByBit ↗</a>

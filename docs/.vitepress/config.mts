@@ -8,6 +8,9 @@ export default defineConfig({
   cleanUrls: true,
   appearance: 'dark',
   lastUpdated: true,
+  markdown: {
+    codeCopyButtonTitle: 'Copy to clipboard',
+  },
   head: [
     ['meta', { name: 'theme-color', content: '#0d0a14' }],
     ['link', { rel: 'icon', type: 'image/png', href: '/assets/lumen-logo.png' }],
@@ -44,6 +47,8 @@ export default defineConfig({
     nav: [
       { text: 'Plugins', link: '/plugins/' },
       { text: 'Getting started', link: '/getting-started/' },
+      { text: 'Changelogs', link: '/changelogs/' },
+      { text: 'Shortcuts', link: '/keyboard-shortcuts' },
     ],
     sidebar: [
       {
@@ -197,6 +202,13 @@ export default defineConfig({
         ],
       },
       { text: 'Troubleshooting', link: '/troubleshooting' },
+      {
+        text: 'Reference',
+        items: [
+          { text: 'Changelogs', link: '/changelogs/' },
+          { text: 'Keyboard shortcuts', link: '/keyboard-shortcuts' },
+        ],
+      },
     ],
     socialLinks: [
       {

@@ -1,5 +1,7 @@
 # LumenDuels Premium
 
+<span class="compat-badge">Minecraft API 1.21 · check release notes for exact server and Java requirements</span>
+
 Premium practice PvP for servers that want more than a quick `/duel`: ranked and unranked queues, Elo, ranks, leaderboards, rewards, cosmetics, and PlaceholderAPI support.
 
 <a class="buy-now" href="https://builtbybit.com/resources/lumenduels-premium.132188/" target="_blank" rel="noreferrer">Buy LumenDuels Premium on BuiltByBit ↗</a>
