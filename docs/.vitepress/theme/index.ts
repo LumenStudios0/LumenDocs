@@ -85,6 +85,15 @@ export default {
       })
 
       return () => h(DefaultTheme.Layout, null, {
+        'layout-top': () => h('div', { class: 'lumen-sky', 'aria-hidden': 'true' }, [
+          h('div', { class: 'lumen-pixel-moon' }),
+          ...Array.from({ length: 10 }, (_, index) =>
+            h('span', { class: `lumen-pixel-star lumen-pixel-star-${index + 1}` }),
+          ),
+          ...Array.from({ length: 3 }, (_, index) =>
+            h('span', { class: `lumen-shooting-star lumen-shooting-star-${index + 1}` }),
+          ),
+        ]),
         'nav-bar-content-after': () => h('div', { class: 'lumen-history-controls' }, [
           h('button', {
             type: 'button',
