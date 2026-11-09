@@ -2509,6 +2509,66 @@ html.lumen-track-tides .lumen-tide-wave {
   line-height: 1.45;
 }
 
+.assistant-tracklist {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.assistant-tracklist-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 11px;
+  border: 1px solid var(--lumen-card-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--vp-c-bg) 84%, transparent);
+}
+
+.assistant-tracklist-item > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.assistant-tracklist-item strong {
+  color: var(--vp-c-text-1);
+  font-size: 12px;
+}
+
+.assistant-tracklist-item span {
+  color: var(--lumen-card-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.assistant-tracklist-item button {
+  min-width: 62px;
+  min-height: 32px;
+  flex: 0 0 auto;
+  padding: 0 10px;
+  border: 1px solid var(--vp-c-brand-1);
+  border-radius: 8px;
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.assistant-tracklist-item button:disabled {
+  border-color: var(--lumen-card-border);
+  color: var(--vp-c-text-2);
+  cursor: default;
+}
+
+.assistant-tracklist-item button:focus-visible {
+  outline: 2px solid var(--vp-c-brand-1);
+  outline-offset: 2px;
+}
+
 .assistant-result {
   display: flex;
   flex-direction: column;

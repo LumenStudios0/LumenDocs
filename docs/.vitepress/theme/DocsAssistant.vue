@@ -20,6 +20,7 @@ interface Answer {
   question: string
   results: DocSection[]
   reply: string
+  tracklist?: boolean
 }
 
 interface AssistantApiResponse {
@@ -854,6 +855,7 @@ const ambientTrackClasses = ambientTracks.map(track =>
   `lumen-track-${track.name.toLowerCase().replace(/\s+/g, '-')}`,
 )
 const selectableAmbientTracks = ambientTracks.filter(track => !track.secret && !track.modeOnly)
+const tracklistTracks = ambientTracks
 
 function setAmbientTrackEffect(trackName?: string) {
   const root = document.documentElement
@@ -888,6 +890,23 @@ async function askQuestion() {
   if (!question || searching.value) return
 
   searching.value = true
+  if (question.toLowerCase() === '#1 tracklist') {
+    answers.value.push({
+      question,
+      results: [],
+      reply: 'Secret tracklist unlocked. Choose a soundtrack to start playing:',
+      tracklist: true,
+    })
+    query.value = ''
+    searching.value = false
+    await nextTick()
+    conversation.value?.scrollTo({
+      top: conversation.value.scrollHeight,
+      behavior: 'smooth',
+    })
+    return
+  }
+
   const results = findSections(question)
   const currentPath = window.location.pathname.replace(/\/$/, '') || '/'
   const currentPageText = sections
@@ -948,6 +967,29 @@ async function askQuestion() {
     top: conversation.value.scrollTop + responseTop - 8,
     behavior: 'smooth',
   })
+}
+
+async function playTrackFromTracklist(trackName: string) {
+  selectedMusicTrack.value = trackName
+  if (musicStarting) return
+
+  musicStarting = true
+  try {
+    const AudioContextConstructor = getAudioContextConstructor()
+    if (!AudioContextConstructor) throw new Error('Web Audio is not supported by this browser.')
+
+    audioContext ??= new AudioContextConstructor()
+    await audioContext.resume()
+    if (ambientMusic.value) stopAmbientMusic(0.12)
+    startAmbientMusic(trackName)
+    ambientMusic.value = true
+  } catch (error) {
+    console.error('Unable to play soundtrack from the tracklist:', error)
+    ambientMusic.value = false
+    activeMusicTrack.value = ''
+  } finally {
+    musicStarting = false
+  }
 }
 
 function focusInput() {
@@ -1071,7 +1113,7 @@ function handleMusicTrackSelection() {
   }
 }
 
-function startAmbientMusic() {
+function startAmbientMusic(forceTrackName?: string) {
   if (!audioContext || audioContext.state !== 'running') {
     throw new Error('The audio context is not running.')
   }
@@ -1084,6 +1126,9 @@ function startAmbientMusic() {
   const isBananaMode = document.documentElement.classList.contains('lumen-banana')
   const isMinecraftMode = document.documentElement.classList.contains('lumen-minecraft')
   const isDinosaurMode = document.documentElement.classList.contains('lumen-dino-soundtrack')
+  const forcedTrackIndex = forceTrackName
+    ? ambientTracks.findIndex(track => track.name === forceTrackName)
+    : -1
   const selectedTrackIndex = ambientTracks.findIndex(track =>
     track.name === selectedMusicTrack.value && !track.secret && !track.modeOnly,
   )
@@ -1092,13 +1137,15 @@ function startAmbientMusic() {
   const availableTracks = ambientTracks
     .map((_, index) => index)
     .filter(index => !ambientTracks[index].secret && !ambientTracks[index].modeOnly && index !== lastMusicTrack)
-  const trackIndex = isDinosaurMode || isBananaMode || isMinecraftMode
-    ? isDinosaurMode ? dinosaurTrackIndex : isBananaMode ? bananaTrackIndex : minecraftTrackIndex
-    : playSecretTrack
-      ? secretTrackIndex
-      : selectedTrackIndex >= 0
-        ? selectedTrackIndex
-        : availableTracks[Math.floor(Math.random() * availableTracks.length)]
+  const trackIndex = forcedTrackIndex >= 0
+    ? forcedTrackIndex
+    : isDinosaurMode || isBananaMode || isMinecraftMode
+      ? isDinosaurMode ? dinosaurTrackIndex : isBananaMode ? bananaTrackIndex : minecraftTrackIndex
+      : playSecretTrack
+        ? secretTrackIndex
+        : selectedTrackIndex >= 0
+          ? selectedTrackIndex
+          : availableTracks[Math.floor(Math.random() * availableTracks.length)]
   if (trackIndex < 0) throw new Error('No ambient music tracks are available.')
   activeTrack = ambientTracks[trackIndex]
   activeMusicTrack.value = activeTrack.name
@@ -1677,6 +1724,22 @@ onUnmounted(() => {
             <article v-for="(answer, index) in answers" :key="`${index}-${answer.question}`" class="assistant-answer">
               <p class="assistant-question">{{ answer.question }}</p>
               <p class="assistant-response">{{ answer.reply }}</p>
+              <div v-if="answer.tracklist" class="assistant-tracklist" aria-label="Available soundtracks">
+                <article v-for="track in tracklistTracks" :key="track.name" class="assistant-tracklist-item">
+                  <div>
+                    <strong>{{ track.name }}</strong>
+                    <span>{{ track.description }}</span>
+                  </div>
+                  <button
+                    type="button"
+                    :disabled="activeMusicTrack === track.name"
+                    :aria-label="activeMusicTrack === track.name ? `${track.name} is playing` : `Play ${track.name}`"
+                    @click="playTrackFromTracklist(track.name)"
+                  >
+                    {{ activeMusicTrack === track.name ? 'Playing' : 'Play' }}
+                  </button>
+                </article>
+              </div>
               <a
                 v-for="result in answer.results"
                 :key="result.href"
