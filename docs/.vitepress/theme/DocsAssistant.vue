@@ -93,6 +93,7 @@ const ambientMusic = ref(false)
 const musicVolume = ref(35)
 const activeMusicTrack = ref('')
 const selectedMusicTrack = ref('')
+const trackPositionSeconds = ref(0)
 const assistantEndpoint = import.meta.env.VITE_DOCS_ASSISTANT_ENDPOINT
 let audioContext: AudioContext | undefined
 let musicMaster: GainNode | undefined
@@ -102,6 +103,7 @@ let musicOscillators: OscillatorNode[] = []
 let musicSources: AudioScheduledSourceNode[] = []
 let musicTimer: number | undefined
 let noteTimer: number | undefined
+let progressTimer: number | undefined
 let rainTimer: number | undefined
 let monkeyTimer: number | undefined
 let minecraftTimer: number | undefined
@@ -112,6 +114,8 @@ let rhythmStepIndex = 0
 let lastMusicTrack = -1
 let activeTrack: AmbientTrack | undefined
 let musicStarting = false
+let trackPositionOffsetSeconds = 0
+let trackPositionStartedAt = 0
 
 function getAudioContextConstructor() {
   return window.AudioContext ?? window.webkitAudioContext
@@ -856,6 +860,63 @@ const getTrackClass = (trackName: string) =>
 const ambientTrackClasses = ambientTracks.map(track => getTrackClass(track.name))
 const selectableAmbientTracks = ambientTracks.filter(track => !track.secret && !track.modeOnly)
 const tracklistTracks = ambientTracks
+const trackDurations: Record<string, number> = {
+  Tides: 72,
+  'Mountain Wind': 84,
+  Forest: 60,
+  Rain: 90,
+  Starlight: 75,
+  'Opium #1': 64,
+  'Opium #2': 78,
+  Tonka: 96,
+  'Cavern Memo': 48,
+  'Spawn at Dusk': 72,
+  'Mossy Steps': 54,
+  Cloudsave: 88,
+  'Last Light': 104,
+  Glasshouse: 60,
+  Dustlight: 42,
+  'Blue Hour': 78,
+  'Paper Lanterns': 66,
+  'Soft Focus': 110,
+  'Hidden Signal': 56,
+  'Banana Jungle': 64,
+  'Creeper Rave': 72,
+  'Cretaceous Sunrise': 90,
+}
+const rhythmVoices: Record<string, 'sub' | 'kick' | 'pluck' | 'bell' | 'digital' | 'drum'> = {
+  Tides: 'sub',
+  'Mountain Wind': 'bell',
+  Forest: 'pluck',
+  Rain: 'bell',
+  Starlight: 'bell',
+  'Opium #1': 'kick',
+  'Opium #2': 'kick',
+  Tonka: 'sub',
+  'Cavern Memo': 'pluck',
+  'Spawn at Dusk': 'bell',
+  'Mossy Steps': 'pluck',
+  Cloudsave: 'bell',
+  'Last Light': 'bell',
+  Glasshouse: 'bell',
+  Dustlight: 'pluck',
+  'Blue Hour': 'sub',
+  'Paper Lanterns': 'bell',
+  'Soft Focus': 'sub',
+  'Hidden Signal': 'digital',
+  'Banana Jungle': 'digital',
+  'Creeper Rave': 'kick',
+  'Cretaceous Sunrise': 'drum',
+}
+
+function getTrackDuration(track: AmbientTrack) {
+  return trackDurations[track.name] ?? 60
+}
+
+function formatTrackTime(seconds: number) {
+  const totalSeconds = Math.max(0, Math.floor(seconds))
+  return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, '0')}`
+}
 
 function setAmbientTrackEffect(trackName?: string) {
   const root = document.documentElement
@@ -981,7 +1042,7 @@ async function playTrackFromTracklist(trackName: string) {
     audioContext ??= new AudioContextConstructor()
     await audioContext.resume()
     if (ambientMusic.value) stopAmbientMusic(0.12)
-    startAmbientMusic(trackName)
+    startAmbientMusic(trackName, 0)
     ambientMusic.value = true
   } catch (error) {
     console.error('Unable to play soundtrack from the tracklist:', error)
@@ -989,6 +1050,20 @@ async function playTrackFromTracklist(trackName: string) {
     activeMusicTrack.value = ''
   } finally {
     musicStarting = false
+  }
+}
+
+function seekTrack(trackName: string, positionSeconds: number) {
+  if (!ambientMusic.value || !audioContext || activeTrack?.name !== trackName || musicStarting) return
+  const duration = getTrackDuration(activeTrack)
+  const position = Math.min(duration - 1, Math.max(0, Math.floor(positionSeconds)))
+  stopAmbientMusic(0.04)
+  try {
+    startAmbientMusic(trackName, position)
+  } catch (error) {
+    console.error('Unable to seek soundtrack:', error)
+    ambientMusic.value = false
+    activeMusicTrack.value = ''
   }
 }
 
@@ -1113,7 +1188,7 @@ function handleMusicTrackSelection() {
   }
 }
 
-function startAmbientMusic(forceTrackName?: string) {
+function startAmbientMusic(forceTrackName?: string, startPositionSeconds = 0) {
   if (!audioContext || audioContext.state !== 'running') {
     throw new Error('The audio context is not running.')
   }
@@ -1150,6 +1225,16 @@ function startAmbientMusic(forceTrackName?: string) {
   activeTrack = ambientTracks[trackIndex]
   activeMusicTrack.value = activeTrack.name
   lastMusicTrack = trackIndex
+  const duration = getTrackDuration(activeTrack)
+  trackPositionOffsetSeconds = ((startPositionSeconds % duration) + duration) % duration
+  trackPositionSeconds.value = trackPositionOffsetSeconds
+  trackPositionStartedAt = performance.now()
+  window.clearInterval(progressTimer)
+  progressTimer = window.setInterval(() => {
+    if (!activeTrack) return
+    const elapsed = (performance.now() - trackPositionStartedAt) / 1000
+    trackPositionSeconds.value = (trackPositionOffsetSeconds + elapsed) % getTrackDuration(activeTrack)
+  }, 250)
 
   musicFilter = audioContext.createBiquadFilter()
   musicMaster = audioContext.createGain()
@@ -1174,7 +1259,8 @@ function startAmbientMusic(forceTrackName?: string) {
   musicLimiter.connect(audioContext.destination)
 
   if (activeTrack.pad !== false) {
-    for (const [index, frequency] of activeTrack.chords[0].entries()) {
+    musicChordIndex = Math.floor(trackPositionOffsetSeconds * 1000 / activeTrack.chordInterval) % activeTrack.chords.length
+    for (const [index, frequency] of activeTrack.chords[musicChordIndex].entries()) {
       const tone = audioContext.createOscillator()
       const voice = audioContext.createGain()
       tone.type = activeTrack.waveform
@@ -1225,37 +1311,66 @@ function startAmbientMusic(forceTrackName?: string) {
 
   if (activeTrack.rhythm) {
     const rhythm = activeTrack.rhythm
-    rhythmStepIndex = 0
+    const beatStyle = rhythmVoices[activeTrack.name] ?? 'pluck'
+    rhythmStepIndex = Math.floor(trackPositionOffsetSeconds * 1000 / rhythm.stepMs)
     const playRhythmStep = () => {
       if (!audioContext || !musicMaster || activeTrack?.rhythm !== rhythm) return
 
-      const frequency = rhythm.steps[rhythmStepIndex % rhythm.steps.length]
+      const phraseNumber = Math.floor(rhythmStepIndex / rhythm.steps.length)
+      const phraseStep = rhythmStepIndex % rhythm.steps.length
+      const stepIndex = phraseNumber % 3 === 1 ? rhythm.steps.length - 1 - phraseStep : phraseStep
+      const phraseTranspose = [1, 0.5, 1.25, 1][phraseNumber % 4]
+      const frequency = rhythm.steps[stepIndex]
       rhythmStepIndex += 1
       if (frequency === null) return
 
       const beatAt = audioContext.currentTime
-      const beatFilter = rhythm.filter ? audioContext.createBiquadFilter() : undefined
+      const beatFilter = rhythm.filter || beatStyle === 'digital' ? audioContext.createBiquadFilter() : undefined
       if (beatFilter) {
-        beatFilter.type = rhythm.filter
-        beatFilter.frequency.setValueAtTime(rhythm.filterFrequency ?? 1400, beatAt)
+        beatFilter.type = rhythm.filter ?? 'lowpass'
+        beatFilter.frequency.setValueAtTime(
+          rhythm.filterFrequency ?? (beatStyle === 'digital' ? 1700 : 1400),
+          beatAt,
+        )
         beatFilter.connect(musicMaster)
       }
 
-      const partials = [{ ratio: 1, level: 1 }, ...(rhythm.partials ?? [])]
+      const stylePartials = beatStyle === 'bell'
+        ? [{ ratio: 2.01, level: 0.24 }, { ratio: 3.92, level: 0.06 }]
+        : []
+      const partials = [{ ratio: 1, level: 1 }, ...stylePartials, ...(rhythm.partials ?? [])]
       for (const partial of partials) {
         const beat = audioContext.createOscillator()
         const beatVolume = audioContext.createGain()
-        const partialFrequency = frequency * partial.ratio
-        beat.type = rhythm.waveform
+        const partialFrequency = frequency * phraseTranspose * partial.ratio
+        const attack = beatStyle === 'kick' || beatStyle === 'drum' || beatStyle === 'digital' ? 0.004 : 0.025
+        const decay = beatStyle === 'bell'
+          ? Math.min(2.4, Math.max(rhythm.decay, 1.1))
+          : beatStyle === 'kick' || beatStyle === 'drum'
+            ? Math.min(rhythm.decay, 0.24)
+            : beatStyle === 'pluck'
+              ? Math.min(rhythm.decay, 0.32)
+              : rhythm.decay
+        const volumeScale = beatStyle === 'kick' ? 1.35 : beatStyle === 'bell' ? 0.58 : 1
+        beat.type = beatStyle === 'kick' || beatStyle === 'sub' || beatStyle === 'drum'
+          ? 'sine'
+          : beatStyle === 'digital'
+            ? 'square'
+            : beatStyle === 'bell'
+              ? 'sine'
+              : rhythm.waveform
         beat.frequency.setValueAtTime(partialFrequency, beatAt)
+        if (beatStyle === 'kick' || beatStyle === 'drum') {
+          beat.frequency.exponentialRampToValueAtTime(Math.max(28, partialFrequency * 0.52), beatAt + Math.min(0.16, decay))
+        }
         beatVolume.gain.setValueAtTime(0.0001, beatAt)
-        beatVolume.gain.linearRampToValueAtTime(rhythm.volume * partial.level, beatAt + 0.025)
-        beatVolume.gain.exponentialRampToValueAtTime(0.0001, beatAt + rhythm.decay)
+        beatVolume.gain.linearRampToValueAtTime(rhythm.volume * partial.level * volumeScale, beatAt + attack)
+        beatVolume.gain.exponentialRampToValueAtTime(0.0001, beatAt + decay)
         beat.connect(beatVolume)
         if (beatFilter) beatVolume.connect(beatFilter)
         else beatVolume.connect(musicMaster)
         beat.start(beatAt)
-        beat.stop(beatAt + rhythm.decay + 0.02)
+        beat.stop(beatAt + decay + 0.02)
         beat.onended = () => { musicSources = musicSources.filter(source => source !== beat) }
         musicSources.push(beat)
       }
@@ -1377,7 +1492,6 @@ function startAmbientMusic(forceTrackName?: string) {
   }
 
   if (activeTrack.pad !== false) {
-    musicChordIndex = 0
     musicTimer = window.setInterval(() => {
       if (!audioContext || !activeTrack) return
       musicChordIndex = (musicChordIndex + 1) % activeTrack.chords.length
@@ -1390,15 +1504,23 @@ function startAmbientMusic(forceTrackName?: string) {
     }, activeTrack.chordInterval)
   }
 
-  musicNoteIndex = 0
+  musicNoteIndex = activeTrack.notes
+    ? Math.floor(trackPositionOffsetSeconds * 1000 / activeTrack.notes.interval)
+    : 0
   if (activeTrack.notes) {
     const playTrackNote = () => {
       if (!audioContext || !activeTrack?.notes || !musicFilter) return
       const instrument = activeTrack.notes
       const changeAt = audioContext.currentTime
-      const frequency = instrument.frequencies[activeTrack.chaotic
+      const phraseNumber = Math.floor(musicNoteIndex / instrument.frequencies.length)
+      const phraseStep = musicNoteIndex % instrument.frequencies.length
+      const noteIndex = activeTrack.chaotic
         ? Math.floor(Math.random() * instrument.frequencies.length)
-        : musicNoteIndex % instrument.frequencies.length]
+        : phraseNumber % 3 === 1
+          ? instrument.frequencies.length - 1 - phraseStep
+          : phraseStep
+      const phraseTranspose = [1, 0.5, 1.25, 1][phraseNumber % 4]
+      const frequency = instrument.frequencies[noteIndex]
       musicNoteIndex += 1
       if (frequency === null) return
       const partials = [{ ratio: 1, level: 1 }, ...(instrument.partials ?? [])]
@@ -1407,7 +1529,7 @@ function startAmbientMusic(forceTrackName?: string) {
         const note = audioContext.createOscillator()
         const noteVolume = audioContext.createGain()
         note.type = instrument.waveform
-        note.frequency.setValueAtTime(frequency * partial.ratio, changeAt)
+        note.frequency.setValueAtTime(frequency * phraseTranspose * partial.ratio, changeAt)
         noteVolume.gain.setValueAtTime(0.0001, changeAt)
         noteVolume.gain.linearRampToValueAtTime(instrument.volume * partial.level, changeAt + instrument.attack)
         noteVolume.gain.exponentialRampToValueAtTime(0.0001, changeAt + instrument.decay)
@@ -1460,6 +1582,8 @@ function stopAmbientMusic(fadeDuration = 1.2) {
   musicTimer = undefined
   window.clearInterval(noteTimer)
   noteTimer = undefined
+  window.clearInterval(progressTimer)
+  progressTimer = undefined
   window.clearTimeout(rainTimer)
   rainTimer = undefined
   window.clearTimeout(monkeyTimer)
@@ -1480,6 +1604,7 @@ function stopAmbientMusic(fadeDuration = 1.2) {
   musicFilter = undefined
   activeTrack = undefined
   activeMusicTrack.value = ''
+  trackPositionSeconds.value = 0
 }
 
 async function toggleAmbientMusic() {
@@ -1561,6 +1686,7 @@ onUnmounted(() => {
   window.removeEventListener('keydown', onKeydown)
   window.clearInterval(musicTimer)
   window.clearInterval(noteTimer)
+  window.clearInterval(progressTimer)
   window.clearTimeout(rainTimer)
   window.clearTimeout(monkeyTimer)
   window.clearInterval(rhythmTimer)
@@ -1728,7 +1854,21 @@ onUnmounted(() => {
                 <article v-for="track in tracklistTracks" :key="track.name" class="assistant-tracklist-item">
                   <div>
                     <strong>{{ track.name }}</strong>
-                    <span>{{ track.description }}</span>
+                    <span>{{ track.description }} · {{ formatTrackTime(getTrackDuration(track)) }}</span>
+                    <div class="assistant-tracklist-seek">
+                      <input
+                        type="range"
+                        min="0"
+                        :max="getTrackDuration(track) - 1"
+                        step="1"
+                        :value="activeMusicTrack === track.name ? Math.floor(trackPositionSeconds) : 0"
+                        :disabled="activeMusicTrack !== track.name"
+                        :aria-label="`Seek ${track.name}`"
+                        :aria-valuetext="`${formatTrackTime(activeMusicTrack === track.name ? trackPositionSeconds : 0)} of ${formatTrackTime(getTrackDuration(track))}`"
+                        @input="seekTrack(track.name, Number(($event.target as HTMLInputElement).value))"
+                      >
+                      <small>{{ formatTrackTime(activeMusicTrack === track.name ? trackPositionSeconds : 0) }} / {{ formatTrackTime(getTrackDuration(track)) }}</small>
+                    </div>
                   </div>
                   <button
                     type="button"

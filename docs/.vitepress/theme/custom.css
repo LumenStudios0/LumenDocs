@@ -2852,6 +2852,7 @@ html.lumen-track-hidden-signal .lumen-track-visuals::after {
   min-width: 0;
   flex-direction: column;
   gap: 3px;
+  flex: 1;
 }
 
 .assistant-tracklist-item strong {
@@ -2863,6 +2864,41 @@ html.lumen-track-hidden-signal .lumen-track-visuals::after {
   color: var(--lumen-card-muted);
   font-size: 11px;
   line-height: 1.4;
+}
+
+.assistant-tracklist-seek {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.assistant-tracklist-seek input[type="range"] {
+  width: 100%;
+  min-width: 0;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--vp-c-brand-1);
+  cursor: pointer;
+  touch-action: pan-x;
+}
+
+.assistant-tracklist-seek input[type="range"]:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.assistant-tracklist-seek input[type="range"]:focus-visible {
+  outline: 2px solid var(--vp-c-brand-1);
+  outline-offset: 2px;
+}
+
+.assistant-tracklist-seek small {
+  min-width: 68px;
+  color: var(--vp-c-text-2);
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  text-align: right;
 }
 
 .assistant-tracklist-item button {
