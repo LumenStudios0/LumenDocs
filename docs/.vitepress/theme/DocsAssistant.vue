@@ -121,6 +121,8 @@ interface AmbientTrack {
   chaotic?: boolean
   monkeyCalls?: boolean
   creeperEffects?: boolean
+  masterVolume?: number
+  pad?: boolean
   chords: number[][]
   waveform: OscillatorType
   filterFrequency: number
@@ -157,7 +159,8 @@ interface AmbientTrack {
 const ambientTracks: AmbientTrack[] = [
   {
     name: 'Tides',
-    description: 'Low, slow sine-wave chords with a gentle pulsing undertone, inspired by rolling waves.',
+    description: 'A deep oceanic sine drone with slow, rounded bass pulses.',
+    masterVolume: 0.06,
     waveform: 'sine',
     filterFrequency: 560,
     chordInterval: 6800,
@@ -179,7 +182,9 @@ const ambientTracks: AmbientTrack[] = [
   },
   {
     name: 'Mountain Wind',
-    description: 'Open, widely spaced triangle-wave chords over a soft, slowly swelling airy texture.',
+    description: 'A sparse, airy highland soundscape built from soft wind and long, open tones.',
+    masterVolume: 0.055,
+    pad: false,
     waveform: 'triangle',
     filterFrequency: 390,
     chordInterval: 8200,
@@ -203,7 +208,9 @@ const ambientTracks: AmbientTrack[] = [
   },
   {
     name: 'Forest',
-    description: 'A warmer mid-range triangle-wave melody over soft chords and a subtle woodland-like texture.',
+    description: 'Muted, woody plucks make a gentle syncopated melody over a faint forest ambience.',
+    masterVolume: 0.055,
+    pad: false,
     waveform: 'triangle',
     filterFrequency: 1100,
     chordInterval: 5200,
@@ -221,10 +228,10 @@ const ambientTracks: AmbientTrack[] = [
     notes: {
       frequencies: [392, 493.88, 587.33, 493.88, 440, 587.33, 659.25, 587.33],
       waveform: 'triangle',
-      volume: 0.07,
-      attack: 0.04,
-      decay: 0.65,
-      interval: 1900,
+      volume: 0.11,
+      attack: 0.008,
+      decay: 0.24,
+      interval: 720,
     },
     chords: [
       [146.83, 174.61, 220, 261.63],
@@ -235,7 +242,9 @@ const ambientTracks: AmbientTrack[] = [
   },
   {
     name: 'Rain',
-    description: 'Quiet sustained chords with sparse, soft synthesized droplets rather than continuous noise.',
+    description: 'A soft, chord-free rain texture with irregular glassy droplets.',
+    masterVolume: 0.06,
+    pad: false,
     waveform: 'sine',
     filterFrequency: 760,
     chordInterval: 9000,
@@ -243,7 +252,7 @@ const ambientTracks: AmbientTrack[] = [
     rhythm: {
       steps: [null, null, 659.25, null, null, null, 880, null, null, 587.33, null, null],
       stepMs: 420,
-      volume: 0.022,
+      volume: 0.035,
       decay: 0.11,
       waveform: 'triangle',
       filter: 'bandpass',
@@ -260,7 +269,9 @@ const ambientTracks: AmbientTrack[] = [
   },
   {
     name: 'Starlight',
-    description: 'High, bell-like sine notes and bright, spacious chords with long, gentle decays.',
+    description: 'A chord-free constellation of bright, slowly ringing bell tones.',
+    masterVolume: 0.05,
+    pad: false,
     waveform: 'sine',
     filterFrequency: 1800,
     chordInterval: 6200,
@@ -603,24 +614,26 @@ function startAmbientMusic() {
   musicFilter.frequency.setValueAtTime(activeTrack.filterFrequency, now)
   musicMaster.gain.setValueAtTime(0.0001, now)
   musicMaster.gain.linearRampToValueAtTime(
-    activeTrack.chaotic ? 0.12 : 0.022,
+    activeTrack.masterVolume ?? (activeTrack.chaotic ? 0.12 : 0.022),
     now + (activeTrack.chaotic ? 0.12 : 2.5),
   )
   musicFilter.connect(musicMaster)
   musicMaster.connect(audioContext.destination)
 
-  for (const [index, frequency] of activeTrack.chords[0].entries()) {
-    const tone = audioContext.createOscillator()
-    const voice = audioContext.createGain()
-    tone.type = activeTrack.waveform
-    tone.frequency.setValueAtTime(frequency, now)
-    tone.detune.setValueAtTime(index % 2 === 0 ? -2 : 2, now)
-    voice.gain.setValueAtTime(activeTrack.chordVolume, now)
-    tone.connect(voice)
-    voice.connect(musicFilter)
-    tone.start(now)
-    musicOscillators.push(tone)
-    musicSources.push(tone)
+  if (activeTrack.pad !== false) {
+    for (const [index, frequency] of activeTrack.chords[0].entries()) {
+      const tone = audioContext.createOscillator()
+      const voice = audioContext.createGain()
+      tone.type = activeTrack.waveform
+      tone.frequency.setValueAtTime(frequency, now)
+      tone.detune.setValueAtTime(index % 2 === 0 ? -2 : 2, now)
+      voice.gain.setValueAtTime(activeTrack.chordVolume, now)
+      tone.connect(voice)
+      voice.connect(musicFilter)
+      tone.start(now)
+      musicOscillators.push(tone)
+      musicSources.push(tone)
+    }
   }
 
   if (activeTrack.texture) {
@@ -810,17 +823,19 @@ function startAmbientMusic() {
     minecraftTimer = window.setTimeout(playCreeperEffect, 700)
   }
 
-  musicChordIndex = 0
-  musicTimer = window.setInterval(() => {
-    if (!audioContext || !activeTrack) return
-    musicChordIndex = (musicChordIndex + 1) % activeTrack.chords.length
-    const chord = activeTrack.chords[musicChordIndex]
-    const changeAt = audioContext.currentTime
-    musicOscillators.forEach((tone, index) => {
-      tone.frequency.cancelScheduledValues(changeAt)
-      tone.frequency.setTargetAtTime(chord[index], changeAt, activeTrack.chaotic ? 0.025 : 0.8)
-    })
-  }, activeTrack.chordInterval)
+  if (activeTrack.pad !== false) {
+    musicChordIndex = 0
+    musicTimer = window.setInterval(() => {
+      if (!audioContext || !activeTrack) return
+      musicChordIndex = (musicChordIndex + 1) % activeTrack.chords.length
+      const chord = activeTrack.chords[musicChordIndex]
+      const changeAt = audioContext.currentTime
+      musicOscillators.forEach((tone, index) => {
+        tone.frequency.cancelScheduledValues(changeAt)
+        tone.frequency.setTargetAtTime(chord[index], changeAt, activeTrack.chaotic ? 0.025 : 0.8)
+      })
+    }, activeTrack.chordInterval)
+  }
 
   musicNoteIndex = 0
   if (activeTrack.notes) {
