@@ -138,6 +138,9 @@ interface AmbientTrack {
     volume: number
     decay: number
     waveform: OscillatorType
+    filter?: BiquadFilterType
+    filterFrequency?: number
+    partials?: { ratio: number; level: number }[]
   }
   rain?: boolean
   notes?: {
@@ -160,10 +163,10 @@ const ambientTracks: AmbientTrack[] = [
     chordInterval: 6800,
     chordVolume: 0.12,
     rhythm: {
-      steps: [196, null, null, 220, null, null, 164.81, null],
-      stepMs: 620,
-      volume: 0.045,
-      decay: 0.42,
+      steps: [65.41, null, null, 73.42, null, null, 55, null],
+      stepMs: 720,
+      volume: 0.055,
+      decay: 0.62,
       waveform: 'sine',
     },
     texture: { filter: 'lowpass', frequency: 420, volume: 0.035, pulse: 0.016 },
@@ -182,11 +185,13 @@ const ambientTracks: AmbientTrack[] = [
     chordInterval: 8200,
     chordVolume: 0.1,
     rhythm: {
-      steps: [null, 164.81, null, null, null, 220, null, null],
-      stepMs: 560,
-      volume: 0.035,
-      decay: 0.78,
-      waveform: 'sine',
+      steps: [null, 349.23, null, null, null, null, 523.25, null],
+      stepMs: 960,
+      volume: 0.024,
+      decay: 1.05,
+      waveform: 'triangle',
+      filter: 'lowpass',
+      filterFrequency: 1500,
     },
     texture: { filter: 'lowpass', frequency: 280, volume: 0.07, pulse: 0.045 },
     chords: [
@@ -204,11 +209,13 @@ const ambientTracks: AmbientTrack[] = [
     chordInterval: 5200,
     chordVolume: 0.09,
     rhythm: {
-      steps: [261.63, null, 329.63, null, 293.66, null, 392, null],
-      stepMs: 420,
-      volume: 0.025,
-      decay: 0.28,
-      waveform: 'triangle',
+      steps: [196, null, null, 293.66, null, 220, null, 329.63],
+      stepMs: 360,
+      volume: 0.04,
+      decay: 0.17,
+      waveform: 'square',
+      filter: 'lowpass',
+      filterFrequency: 720,
     },
     texture: { filter: 'bandpass', frequency: 850, volume: 0.018, pulse: 0.012 },
     notes: {
@@ -234,11 +241,14 @@ const ambientTracks: AmbientTrack[] = [
     chordInterval: 9000,
     chordVolume: 0.055,
     rhythm: {
-      steps: [null, null, 587.33, null, null, 523.25, null, null, null, 659.25, null, null],
-      stepMs: 300,
-      volume: 0.018,
-      decay: 0.18,
-      waveform: 'sine',
+      steps: [null, null, 659.25, null, null, null, 880, null, null, 587.33, null, null],
+      stepMs: 420,
+      volume: 0.022,
+      decay: 0.11,
+      waveform: 'triangle',
+      filter: 'bandpass',
+      filterFrequency: 1250,
+      partials: [{ ratio: 2, level: 0.12 }],
     },
     rain: true,
     chords: [
@@ -256,11 +266,15 @@ const ambientTracks: AmbientTrack[] = [
     chordInterval: 6200,
     chordVolume: 0.08,
     rhythm: {
-      steps: [null, 783.99, null, null, 987.77, null, null, 880],
-      stepMs: 520,
-      volume: 0.022,
-      decay: 0.72,
+      steps: [null, 783.99, null, null, 1174.66, null, 987.77, null, null, 880],
+      stepMs: 680,
+      volume: 0.027,
+      decay: 1.15,
       waveform: 'sine',
+      partials: [
+        { ratio: 2.01, level: 0.28 },
+        { ratio: 3.92, level: 0.08 },
+      ],
     },
     notes: {
       frequencies: [987.77, 783.99, 1174.66, 880, 1318.51, 1046.5],
@@ -654,19 +668,31 @@ function startAmbientMusic() {
       if (frequency === null) return
 
       const beatAt = audioContext.currentTime
-      const beat = audioContext.createOscillator()
-      const beatVolume = audioContext.createGain()
-      beat.type = rhythm.waveform
-      beat.frequency.setValueAtTime(frequency, beatAt)
-      beatVolume.gain.setValueAtTime(0.0001, beatAt)
-      beatVolume.gain.linearRampToValueAtTime(rhythm.volume, beatAt + 0.025)
-      beatVolume.gain.exponentialRampToValueAtTime(0.0001, beatAt + rhythm.decay)
-      beat.connect(beatVolume)
-      beatVolume.connect(musicMaster)
-      beat.start(beatAt)
-      beat.stop(beatAt + rhythm.decay + 0.02)
-      beat.onended = () => { musicSources = musicSources.filter(source => source !== beat) }
-      musicSources.push(beat)
+      const beatFilter = rhythm.filter ? audioContext.createBiquadFilter() : undefined
+      if (beatFilter) {
+        beatFilter.type = rhythm.filter
+        beatFilter.frequency.setValueAtTime(rhythm.filterFrequency ?? 1400, beatAt)
+        beatFilter.connect(musicMaster)
+      }
+
+      const partials = [{ ratio: 1, level: 1 }, ...(rhythm.partials ?? [])]
+      for (const partial of partials) {
+        const beat = audioContext.createOscillator()
+        const beatVolume = audioContext.createGain()
+        const partialFrequency = frequency * partial.ratio
+        beat.type = rhythm.waveform
+        beat.frequency.setValueAtTime(partialFrequency, beatAt)
+        beatVolume.gain.setValueAtTime(0.0001, beatAt)
+        beatVolume.gain.linearRampToValueAtTime(rhythm.volume * partial.level, beatAt + 0.025)
+        beatVolume.gain.exponentialRampToValueAtTime(0.0001, beatAt + rhythm.decay)
+        beat.connect(beatVolume)
+        if (beatFilter) beatVolume.connect(beatFilter)
+        else beatVolume.connect(musicMaster)
+        beat.start(beatAt)
+        beat.stop(beatAt + rhythm.decay + 0.02)
+        beat.onended = () => { musicSources = musicSources.filter(source => source !== beat) }
+        musicSources.push(beat)
+      }
     }
 
     playRhythmStep()
