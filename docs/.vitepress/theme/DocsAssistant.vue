@@ -101,8 +101,10 @@ let noteTimer: number | undefined
 let rainTimer: number | undefined
 let monkeyTimer: number | undefined
 let minecraftTimer: number | undefined
+let rhythmTimer: number | undefined
 let musicChordIndex = 0
 let musicNoteIndex = 0
+let rhythmStepIndex = 0
 let lastMusicTrack = -1
 let activeTrack: AmbientTrack | undefined
 let musicStarting = false
@@ -130,6 +132,13 @@ interface AmbientTrack {
     volume: number
     pulse?: number
   }
+  rhythm?: {
+    steps: (number | null)[]
+    stepMs: number
+    volume: number
+    decay: number
+    waveform: OscillatorType
+  }
   rain?: boolean
   notes?: {
     frequencies: number[]
@@ -150,6 +159,13 @@ const ambientTracks: AmbientTrack[] = [
     filterFrequency: 560,
     chordInterval: 6800,
     chordVolume: 0.12,
+    rhythm: {
+      steps: [196, null, null, 220, null, null, 164.81, null],
+      stepMs: 620,
+      volume: 0.045,
+      decay: 0.42,
+      waveform: 'sine',
+    },
     texture: { filter: 'lowpass', frequency: 420, volume: 0.035, pulse: 0.016 },
     chords: [
       [130.81, 164.81, 196, 246.94],
@@ -165,6 +181,13 @@ const ambientTracks: AmbientTrack[] = [
     filterFrequency: 390,
     chordInterval: 8200,
     chordVolume: 0.1,
+    rhythm: {
+      steps: [null, 164.81, null, null, null, 220, null, null],
+      stepMs: 560,
+      volume: 0.035,
+      decay: 0.78,
+      waveform: 'sine',
+    },
     texture: { filter: 'lowpass', frequency: 280, volume: 0.07, pulse: 0.045 },
     chords: [
       [110, 164.81, 220, 329.63],
@@ -180,6 +203,13 @@ const ambientTracks: AmbientTrack[] = [
     filterFrequency: 1100,
     chordInterval: 5200,
     chordVolume: 0.09,
+    rhythm: {
+      steps: [261.63, null, 329.63, null, 293.66, null, 392, null],
+      stepMs: 420,
+      volume: 0.025,
+      decay: 0.28,
+      waveform: 'triangle',
+    },
     texture: { filter: 'bandpass', frequency: 850, volume: 0.018, pulse: 0.012 },
     notes: {
       frequencies: [392, 493.88, 587.33, 493.88, 440, 587.33, 659.25, 587.33],
@@ -203,6 +233,13 @@ const ambientTracks: AmbientTrack[] = [
     filterFrequency: 760,
     chordInterval: 9000,
     chordVolume: 0.055,
+    rhythm: {
+      steps: [null, null, 587.33, null, null, 523.25, null, null, null, 659.25, null, null],
+      stepMs: 300,
+      volume: 0.018,
+      decay: 0.18,
+      waveform: 'sine',
+    },
     rain: true,
     chords: [
       [130.81, 196, 261.63],
@@ -218,6 +255,13 @@ const ambientTracks: AmbientTrack[] = [
     filterFrequency: 1800,
     chordInterval: 6200,
     chordVolume: 0.08,
+    rhythm: {
+      steps: [null, 783.99, null, null, 987.77, null, null, 880],
+      stepMs: 520,
+      volume: 0.022,
+      decay: 0.72,
+      waveform: 'sine',
+    },
     notes: {
       frequencies: [987.77, 783.99, 1174.66, 880, 1318.51, 1046.5],
       waveform: 'sine',
@@ -599,6 +643,36 @@ function startAmbientMusic() {
     }
   }
 
+  if (activeTrack.rhythm) {
+    const rhythm = activeTrack.rhythm
+    rhythmStepIndex = 0
+    const playRhythmStep = () => {
+      if (!audioContext || !musicMaster || activeTrack?.rhythm !== rhythm) return
+
+      const frequency = rhythm.steps[rhythmStepIndex % rhythm.steps.length]
+      rhythmStepIndex += 1
+      if (frequency === null) return
+
+      const beatAt = audioContext.currentTime
+      const beat = audioContext.createOscillator()
+      const beatVolume = audioContext.createGain()
+      beat.type = rhythm.waveform
+      beat.frequency.setValueAtTime(frequency, beatAt)
+      beatVolume.gain.setValueAtTime(0.0001, beatAt)
+      beatVolume.gain.linearRampToValueAtTime(rhythm.volume, beatAt + 0.025)
+      beatVolume.gain.exponentialRampToValueAtTime(0.0001, beatAt + rhythm.decay)
+      beat.connect(beatVolume)
+      beatVolume.connect(musicMaster)
+      beat.start(beatAt)
+      beat.stop(beatAt + rhythm.decay + 0.02)
+      beat.onended = () => { musicSources = musicSources.filter(source => source !== beat) }
+      musicSources.push(beat)
+    }
+
+    playRhythmStep()
+    rhythmTimer = window.setInterval(playRhythmStep, rhythm.stepMs)
+  }
+
   if (activeTrack.rain) {
     const playRaindrop = () => {
       if (!audioContext || !musicMaster || activeTrack?.name !== 'Rain') return
@@ -783,6 +857,8 @@ function stopAmbientMusic(fadeDuration = 1.2) {
   monkeyTimer = undefined
   window.clearTimeout(minecraftTimer)
   minecraftTimer = undefined
+  window.clearInterval(rhythmTimer)
+  rhythmTimer = undefined
   const now = audioContext.currentTime
   musicMaster.gain.cancelScheduledValues(now)
   musicMaster.gain.setValueAtTime(musicMaster.gain.value, now)
@@ -870,6 +946,7 @@ onUnmounted(() => {
   window.clearInterval(noteTimer)
   window.clearTimeout(rainTimer)
   window.clearTimeout(monkeyTimer)
+  window.clearInterval(rhythmTimer)
   window.clearTimeout(minecraftTimer)
   for (const source of musicSources) source.stop()
   void audioContext?.close()
