@@ -5,7 +5,7 @@ import worker from '../worker/chat.js'
 const origin = 'https://lumenstudio.fyi'
 
 function makeRequest(payload, options = {}) {
-  return new Request(`https://worker.example/bug-report`, {
+  return new Request(`https://worker.example${options.path ?? '/bug-report'}`, {
     method: options.method ?? 'POST',
     headers: {
       Origin: options.origin ?? origin,
@@ -82,4 +82,86 @@ test('bug report returns an error when Discord rejects delivery', async t => {
 
   assert.equal(response.status, 502)
   assert.match((await response.json()).error, /Could not deliver/)
+})
+
+test('reports accepts all compatibility statuses and delivers them to the shared inbox', async t => {
+  const originalFetch = globalThis.fetch
+  const delivered = []
+  globalThis.fetch = async (url, options) => {
+    delivered.push({ url, body: JSON.parse(options.body) })
+    return new Response(null, { status: 204 })
+  }
+  t.after(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  for (const status of ['untested', 'broken', 'partial', 'working']) {
+    const response = await worker.fetch(makeRequest({
+      type: 'compatibility',
+      plugin: 'LumenShards',
+      serverSoftware: 'Paper',
+      version: '1.21.4',
+      status,
+      description: 'Tested on a clean server',
+    }, { path: '/reports' }), makeEnv())
+
+    assert.equal(response.status, 200)
+  }
+
+  assert.equal(delivered.length, 4)
+  for (const { url, body } of delivered) {
+    assert.equal(url, 'https://discord.example/webhook')
+    assert.equal(body.embeds[0].title, 'New Compatibility Report')
+    assert.deepEqual(body.allowed_mentions, { parse: [] })
+  }
+  assert.deepEqual(
+    delivered.map(report => report.body.embeds[0].fields[3].value),
+    ['untested', 'broken', 'partial', 'working'],
+  )
+})
+
+test('reports accepts feature requests in the shared inbox', async t => {
+  const originalFetch = globalThis.fetch
+  let embed
+  globalThis.fetch = async (_url, options) => {
+    embed = JSON.parse(options.body).embeds[0]
+    return new Response(null, { status: 204 })
+  }
+  t.after(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  const response = await worker.fetch(makeRequest({
+    type: 'feature',
+    title: 'Add a market history export',
+    plugin: 'LumenAuction',
+    description: 'Let administrators export transaction history for accounting.',
+  }, { path: '/reports' }), makeEnv())
+
+  assert.equal(response.status, 200)
+  assert.equal(embed.title, 'New Feature Request')
+  assert.equal(embed.fields[0].value, 'Add a market history export')
+  assert.equal(embed.fields[1].value, 'LumenAuction')
+})
+
+test('reports rejects invalid types, compatibility statuses, and missing fields', async () => {
+  const validCompatibilityReport = {
+    type: 'compatibility',
+    plugin: 'LumenShards',
+    serverSoftware: 'Paper',
+    version: '1.21.4',
+    status: 'working',
+    description: 'Tested on a clean server',
+  }
+  const invalidCases = [
+    { ...validCompatibilityReport, type: 'other' },
+    { ...validCompatibilityReport, status: 'mostly working' },
+    { ...validCompatibilityReport, status: '' },
+    { type: 'feature', title: 'Add a feature' },
+  ]
+
+  for (const payload of invalidCases) {
+    const response = await worker.fetch(makeRequest(payload, { path: '/reports' }), makeEnv())
+    assert.equal(response.status, 400)
+  }
 })

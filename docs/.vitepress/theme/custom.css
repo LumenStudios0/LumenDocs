@@ -2545,6 +2545,7 @@ html.lumen-track-cretaceous-sunrise .lumen-track-horizon {
   font-size: 12px;
   font-weight: 650;
   white-space: nowrap;
+  text-decoration: none;
   cursor: pointer;
   transition: background-color 160ms ease, color 160ms ease;
 }
@@ -3254,6 +3255,191 @@ html.lumen-track-cretaceous-sunrise .lumen-track-horizon {
 
 .plugin-catalog-help > a:hover {
   color: var(--vp-c-brand-1);
+}
+
+.reports-workspace {
+  max-width: 760px;
+  margin: 30px 0 52px;
+}
+
+.reports-intro {
+  margin-bottom: 22px;
+}
+
+.reports-eyebrow {
+  color: var(--vp-c-brand-1);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.reports-intro h2 {
+  margin: 8px 0;
+  border: 0 !important;
+  font-size: clamp(1.45rem, 3vw, 1.8rem);
+}
+
+.reports-intro p,
+.reports-privacy {
+  color: var(--vp-c-text-2);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.reports-intro p {
+  margin: 0;
+}
+
+.reports-form {
+  display: grid;
+  gap: 16px;
+  padding: clamp(18px, 4vw, 28px);
+  border: 1px solid var(--lumen-card-border);
+  border-radius: 14px;
+  background: var(--lumen-card-bg);
+  box-shadow: 0 12px 36px rgba(27, 16, 46, 0.1);
+}
+
+.reports-form label {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+  color: var(--vp-c-text-1);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.reports-form label small {
+  color: var(--vp-c-text-3);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.reports-form input,
+.reports-form textarea,
+.reports-form select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--lumen-card-border);
+  border-radius: 8px;
+  background: var(--vp-c-bg);
+  color: var(--vp-c-text-1);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.reports-form input,
+.reports-form select {
+  min-height: 42px;
+}
+
+.reports-form textarea {
+  min-height: 116px;
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.reports-form input:focus,
+.reports-form textarea:focus,
+.reports-form select:focus {
+  border-color: var(--vp-c-brand-1);
+  outline: 2px solid var(--vp-c-brand-soft);
+  outline-offset: 1px;
+}
+
+.reports-fields {
+  display: grid;
+  gap: 16px;
+}
+
+.reports-field-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.reports-status-field {
+  max-width: 280px;
+}
+
+.reports-extra-fields {
+  padding: 12px 14px;
+  border: 1px solid var(--lumen-card-border);
+  border-radius: 9px;
+  background: var(--vp-c-bg-soft);
+}
+
+.reports-extra-fields summary {
+  color: var(--vp-c-text-2);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.reports-extra-fields summary span {
+  margin-left: 5px;
+  color: var(--vp-c-text-3);
+}
+
+.reports-extra-fields[open] {
+  display: grid;
+  gap: 16px;
+}
+
+.reports-extra-fields[open] summary {
+  margin-bottom: 2px;
+}
+
+.reports-submit {
+  min-height: 44px;
+  justify-self: start;
+  padding: 0 18px;
+  border: 1px solid var(--vp-c-brand-1);
+  border-radius: 8px;
+  background: var(--vp-c-brand-1);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background-color 150ms ease, opacity 150ms ease;
+}
+
+.reports-submit:hover:not(:disabled) {
+  background: var(--vp-c-brand-2);
+}
+
+.reports-submit:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.reports-message {
+  margin: 0;
+  padding: 11px 13px;
+  border: 1px solid var(--lumen-card-border);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.reports-error {
+  border-color: rgba(215, 72, 91, 0.4);
+  background: rgba(215, 72, 91, 0.08);
+  color: #ef7c89;
+}
+
+.reports-success {
+  border-color: rgba(74, 173, 120, 0.4);
+  background: rgba(74, 173, 120, 0.08);
+  color: #63c18d;
+}
+
+.reports-privacy {
+  margin: 13px 0 0;
+  font-size: 11px;
 }
 
 .sr-only {

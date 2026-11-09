@@ -10,6 +10,12 @@ The documentation site is hosted on GitHub Pages, which cannot keep an AI API ke
 
 The Worker only accepts requests from the configured site origin, limits each IP to 10 questions per minute, bounds question and documentation-context sizes, and does not log prompts or provider responses. `ALLOWED_ORIGIN` is set to `https://lumenstudio.fyi`. The assistant sends the question and matching documentation excerpts to DeepSeek when enabled; the page's local guide search remains the fallback if no endpoint is configured.
 
+## Bug, compatibility, and feature reports
+
+The `/reports` endpoint sends bug reports, compatibility results, and feature requests to the same Discord reports inbox. Configure its private webhook with `npx wrangler secret put DISCORD_BUG_REPORT_WEBHOOK`, then deploy the Worker with `npx wrangler deploy`. The GitHub Pages build only deploys the documentation site; changes to `worker/chat.js` require a separate Worker deployment.
+
+Compatibility reports require a plugin, server software, Minecraft version, one of `untested`, `broken`, `partial`, or `working`, and test details. Feature requests require a title and description. The legacy `/bug-report` endpoint remains available for the assistant's existing bug form.
+
 ## Optional anonymous dinosaur discoverer total
 
 The secret `/extinction` page can show a site-wide total of unique browsers that completed the dinosaur egg hunt. Without this optional D1 database, the dinosaur event still works and the page reports that its global counter is not connected.

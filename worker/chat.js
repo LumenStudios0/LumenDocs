@@ -18,15 +18,15 @@ function cleanReportValue(value, maxLength) {
     .replace(/([\\`*_~|])/g, '\\$1')
 }
 
-async function submitBugReport(request, env, origin) {
+async function submitReport(request, env, origin) {
   if (!env.DISCORD_BUG_REPORT_WEBHOOK) {
-    return respond({ error: 'Bug reports are not configured yet' }, 503, origin)
+    return respond({ error: 'Reports are not configured yet' }, 503, origin)
   }
 
   const ip = request.headers.get('CF-Connecting-IP')
   if (!ip) return respond({ error: 'Request could not be verified' }, 400, origin)
 
-  const rateLimit = await env.ASSISTANT_LIMITER.limit({ key: `bug-report:${ip}` })
+  const rateLimit = await env.ASSISTANT_LIMITER.limit({ key: `reports:${ip}` })
   if (!rateLimit.success) {
     return respond({ error: 'Please wait a moment before submitting another report' }, 429, origin)
   }
@@ -42,51 +42,90 @@ async function submitBugReport(request, env, origin) {
   }
 
   const fields = {
+    type: typeof payload?.type === 'string' ? payload.type.trim() : 'bug',
     plugin: typeof payload?.plugin === 'string' ? payload.plugin.trim() : '',
     serverSoftware: typeof payload?.serverSoftware === 'string' ? payload.serverSoftware.trim() : '',
     version: typeof payload?.version === 'string' ? payload.version.trim() : '',
+    status: typeof payload?.status === 'string' ? payload.status.trim() : '',
     discordUsername: typeof payload?.discordUsername === 'string' ? payload.discordUsername.trim() : '',
     productKey: typeof payload?.productKey === 'string' ? payload.productKey.trim() : '',
     consoleLog: typeof payload?.consoleLog === 'string' ? payload.consoleLog.trim() : '',
     description: typeof payload?.description === 'string' ? payload.description.trim() : '',
+    title: typeof payload?.title === 'string' ? payload.title.trim() : '',
   }
-  if (!fields.plugin || !fields.serverSoftware || !fields.version || !fields.description) {
-    return respond({ error: 'Fill in the plugin, server software, version, and description' }, 400, origin)
+  if (!['bug', 'compatibility', 'feature'].includes(fields.type)) {
+    return respond({ error: 'Choose a valid report type' }, 400, origin)
+  }
+
+  const requiredByType = {
+    bug: ['plugin', 'serverSoftware', 'version', 'description'],
+    compatibility: ['plugin', 'serverSoftware', 'version', 'status', 'description'],
+    feature: ['title', 'description'],
+  }
+  if (requiredByType[fields.type].some(field => !fields[field])) {
+    return respond({ error: 'Fill in all required report fields' }, 400, origin)
+  }
+  if (fields.type === 'compatibility' && !['untested', 'broken', 'partial', 'working'].includes(fields.status)) {
+    return respond({ error: 'Choose a valid compatibility status' }, 400, origin)
   }
   if (
+    fields.type.length > 20 ||
     fields.plugin.length > 100 ||
     fields.serverSoftware.length > 100 ||
     fields.version.length > 60 ||
+    fields.status.length > 20 ||
     fields.discordUsername.length > 100 ||
     fields.productKey.length > 200 ||
     fields.consoleLog.length > 2000 ||
-    fields.description.length > 2000
+    fields.description.length > 2000 ||
+    fields.title.length > 120
   ) {
     return respond({ error: 'One or more report fields are too long' }, 400, origin)
   }
 
+  const reportNames = {
+    bug: 'Bug Report',
+    compatibility: 'Compatibility Report',
+    feature: 'Feature Request',
+  }
   const embedField = (name, value, maxLength) => ({
     name,
     value: cleanReportValue(value, maxLength) || 'Not provided',
     inline: false,
   })
+  const fieldsByType = {
+    bug: [
+      embedField('Plugin', fields.plugin, 100),
+      embedField('Discord username', fields.discordUsername, 100),
+      embedField('Server software', fields.serverSoftware, 100),
+      embedField('Version number', fields.version, 60),
+      embedField('Product key', fields.productKey, 200),
+      embedField('Console log message', fields.consoleLog, 2000),
+      embedField('What happened', fields.description, 2000),
+    ],
+    compatibility: [
+      embedField('Plugin', fields.plugin, 100),
+      embedField('Server software', fields.serverSoftware, 100),
+      embedField('Version number', fields.version, 60),
+      embedField('Compatibility status', fields.status, 20),
+      embedField('Details', fields.description, 2000),
+    ],
+    feature: [
+      embedField('Request', fields.title, 120),
+      embedField('Plugin', fields.plugin, 100),
+      embedField('Discord username', fields.discordUsername, 100),
+      embedField('Description and use case', fields.description, 2000),
+    ],
+  }
   const report = {
-    username: 'Lumen Studios Bug Reports',
+    username: 'Lumen Studios Reports',
     allowed_mentions: { parse: [] },
     embeds: [{
-      title: '🐛 New Plugin Bug Report',
+      title: `New ${reportNames[fields.type]}`,
       color: 0x7B3FF2,
-      fields: [
-        embedField('Plugin', fields.plugin, 100),
-        embedField('Discord username', fields.discordUsername, 100),
-        embedField('Server software', fields.serverSoftware, 100),
-        embedField('Version number', fields.version, 60),
-        embedField('Product key', fields.productKey, 200),
-        embedField('Console log message', fields.consoleLog, 2000),
-        embedField('What happened', fields.description, 2000),
-      ],
+      fields: fieldsByType[fields.type],
       timestamp: new Date().toISOString(),
-      footer: { text: 'Lumen Studios Docs' },
+      footer: { text: `Lumen Studios Reports · ${fields.type}` },
     }],
   }
 
@@ -167,7 +206,7 @@ export default {
     }
 
     const path = new URL(request.url).pathname
-    if (path !== '/chat' && path !== '/bug-report' && path !== '/dinosaur-discoveries') {
+    if (path !== '/chat' && path !== '/bug-report' && path !== '/reports' && path !== '/dinosaur-discoveries') {
       return respond({ error: 'Not found' }, 404, origin)
     }
 
@@ -195,8 +234,8 @@ export default {
       return respond({ error: 'Method not allowed' }, 405, origin)
     }
 
-    if (path === '/bug-report') {
-      return submitBugReport(request, env, origin)
+    if (path === '/bug-report' || path === '/reports') {
+      return submitReport(request, env, origin)
     }
 
     if (!env.DEEPSEEK_API_KEY) {

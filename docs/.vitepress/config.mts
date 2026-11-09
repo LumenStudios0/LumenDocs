@@ -46,11 +46,13 @@ export default defineConfig({
     },
     nav: [
       { text: 'Plugins', link: '/plugins/' },
+      { text: 'Reports', link: '/reports/' },
       { text: 'Getting started', link: '/getting-started/' },
       { text: 'Changelogs', link: '/changelogs/' },
       { text: 'Shortcuts', link: '/keyboard-shortcuts' },
     ],
     sidebar: [
+      { text: 'Reports', link: '/reports/' },
       {
         text: 'Getting started',
         items: [
