@@ -1,24 +1,18 @@
-# Plugin catalog
+<script setup>
+import PluginCatalog from '../.vitepress/theme/PluginCatalog.vue'
+</script>
 
-Looking for something for your server? Pick a plugin below. Open a guide for setup help, or jump straight to its BuiltByBit listing.
+# Plugins
 
-<div class="plugin-grid">
-  <article class="plugin-card"><a class="plugin-card-main" href="/products/lumen-auction"><strong>LumenAuction</strong><span>Player-run auctions, persistent listings, and expired item claims.</span></a><a class="plugin-card-store" href="https://builtbybit.com/resources/lumenauction.132967/" target="_blank" rel="noreferrer">Buy now ↗</a></article>
-  <article class="plugin-card"><a class="plugin-card-main" href="/products/gladiator"><strong>Gladiator</strong><span>Server-side security checks and tools for your staff.</span></a><a class="plugin-card-store" href="https://builtbybit.com/resources/gladiator.132519/" target="_blank" rel="noreferrer">Buy now ↗</a></article>
-  <article class="plugin-card"><a class="plugin-card-main" href="/products/lumen-spoofer"><strong>LumenSpoofer</strong><span>Player-like NPCs that explore, gather, and work as a team.</span></a><a class="plugin-card-store" href="https://builtbybit.com/resources/lumenspoof.135950/" target="_blank" rel="noreferrer">Buy now ↗</a></article>
-  <article class="plugin-card"><a class="plugin-card-main" href="/products/lumen-duels"><strong>LumenDuels</strong><span>Practice-style PvP duels, arenas, and matchmaking.</span></a><a class="plugin-card-store" href="https://builtbybit.com/resources/lumenduels.119760/" target="_blank" rel="noreferrer">Buy now ↗</a></article>
-  <article class="plugin-card"><a class="plugin-card-main" href="/products/lumen-duels-premium"><strong>LumenDuels Premium</strong><span>Premium practice PvP with ranked queues, Elo, and rewards.</span></a><a class="plugin-card-store" href="https://builtbybit.com/resources/lumenduels-premium.132188/" target="_blank" rel="noreferrer">Buy now ↗</a></article>
-  <article class="plugin-card"><a class="plugin-card-main" href="/products/lumen-bounty"><strong>LumenBounty</strong><span>Put a bounty on a player and give rivals a reason to hunt them.</span></a><a class="plugin-card-store" href="https://builtbybit.com/resources/lumenbounty.132973/" target="_blank" rel="noreferrer">Buy now ↗</a></article>
-  <article class="plugin-card"><a class="plugin-card-main" href="/products/lumen-economy"><strong>LumenEconomy</strong><span>Let players pay, sell items, and check what their loot is worth.</span></a><a class="plugin-card-store" href="https://builtbybit.com/resources/lumeneconomy.132341/" target="_blank" rel="noreferrer">Buy now ↗</a></article>
-  <article class="plugin-card"><a class="plugin-card-main" href="/products/lumen-essentials"><strong>LumenEssentials</strong><span>Staff tools, player moderation, and server operations.</span></a><a class="plugin-card-store" href="https://builtbybit.com/resources/lumenessentials.132966/" target="_blank" rel="noreferrer">Buy now ↗</a></article>
-  <article class="plugin-card"><a class="plugin-card-main" href="/products/lumen-order"><strong>LumenOrder</strong><span>Players post buy orders; other players fill them and get paid.</span></a><a class="plugin-card-store" href="https://builtbybit.com/resources/lumenorders.132969/" target="_blank" rel="noreferrer">Buy now ↗</a></article>
-  <article class="plugin-card"><a class="plugin-card-main" href="/products/lumen-shards"><strong>LumenShards</strong><span>Players earn shards from AFK rewards and spend them in your shop.</span></a><a class="plugin-card-store" href="https://builtbybit.com/resources/lumenshards.116897/" target="_blank" rel="noreferrer">Buy now ↗</a></article>
-  <article class="plugin-card"><a class="plugin-card-main" href="/products/lumen-spawners"><strong>LumenSpawners</strong><span>Virtual spawners produce drops without filling your world with mobs.</span></a><a class="plugin-card-store" href="https://builtbybit.com/resources/lumenspawners.132970/" target="_blank" rel="noreferrer">Buy now ↗</a></article>
-  <article class="plugin-card plugin-card-coming"><a class="plugin-card-main" href="/coming-soon?product=LumenTeam"><strong>LumenTeam</strong><span>Coming soon. Your crew’s new tools are still being built.</span></a><a class="plugin-card-store" href="/coming-soon?product=LumenTeam">Take a peek ↗</a></article>
-  <article class="plugin-card plugin-card-coming"><a class="plugin-card-main" href="/coming-soon?product=LumenIntellegance"><strong>LumenIntellegance</strong><span>Coming soon. The details are still under wraps.</span></a><a class="plugin-card-store" href="/coming-soon?product=LumenIntellegance">Take a peek ↗</a></article>
-  <article class="plugin-card plugin-card-coming"><a class="plugin-card-main" href="/coming-soon?product=Sentinel"><strong>Sentinel</strong><span>Coming soon. Even the sentry is sworn to secrecy.</span></a><a class="plugin-card-store" href="/coming-soon?product=Sentinel">Take a peek ↗</a></article>
+Find the right tools for your server. Filter by what you need, search by name, and open a guide for setup, commands, and configuration.
+
+<PluginCatalog />
+
+<div class="plugin-catalog-help">
+  <div>
+    <span class="plugin-card-category">NEED A HAND?</span>
+    <strong>Start with the setup guides</strong>
+    <p>Check compatibility, installation steps, and license help before you get started.</p>
+  </div>
+  <a href="/getting-started/">Browse getting started <span aria-hidden="true">→</span></a>
 </div>
-
-## What’s next?
-
-Some products are still on the way. Those pages are marked **Coming soon**—click one if you feel like asking the void for a release date.

@@ -820,21 +820,35 @@ export default {
             onClick: handleSkyClick,
           }),
         ],
-        'nav-bar-content-after': () => h('div', { class: 'lumen-history-controls' }, [
+        'nav-bar-content-after': () => h('div', { class: 'lumen-nav-actions' }, [
           h('button', {
+            class: 'lumen-report-button',
             type: 'button',
-            disabled: !canGoBack.value,
-            'aria-label': 'Go back',
-            title: 'Go back',
-            onClick: () => window.history.back(),
-          }, '<-'),
-          h('button', {
-            type: 'button',
-            disabled: !canGoForward.value,
-            'aria-label': 'Go forward',
-            title: 'Go forward',
-            onClick: () => window.history.forward(),
-          }, '->'),
+            'aria-label': 'Report a plugin bug',
+            onClick: () => window.dispatchEvent(new Event('lumen-open-bug-report')),
+          }, [
+            h('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' }, [
+              h('path', { d: 'M12 8v9M8.5 10 5 7.5M15.5 10 19 7.5M8 13H4.5M16 13h3.5M9 5.5 7.5 3M15 5.5 16.5 3M8 17l-2 2M16 17l2 2' }),
+              h('path', { d: 'M8 11a4 4 0 0 1 8 0v5a4 4 0 0 1-8 0zM10 6h4' }),
+            ]),
+            h('span', 'Report a bug'),
+          ]),
+          h('div', { class: 'lumen-history-controls' }, [
+            h('button', {
+              type: 'button',
+              disabled: !canGoBack.value,
+              'aria-label': 'Go back',
+              title: 'Go back',
+              onClick: () => window.history.back(),
+            }, '<-'),
+            h('button', {
+              type: 'button',
+              disabled: !canGoForward.value,
+              'aria-label': 'Go forward',
+              title: 'Go forward',
+              onClick: () => window.history.forward(),
+            }, '->'),
+          ]),
         ]),
         'layout-bottom': () => h(DocsAssistant),
       })

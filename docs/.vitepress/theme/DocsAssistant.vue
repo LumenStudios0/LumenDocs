@@ -1142,6 +1142,10 @@ function showBugReport() {
   open.value = true
 }
 
+function handleExternalBugReport() {
+  showBugReport()
+}
+
 function getBugReportEndpoint() {
   if (!assistantEndpoint) return ''
 
@@ -1739,6 +1743,7 @@ onMounted(() => {
   document.addEventListener('pointerdown', resumeAmbientMusic, true)
   window.addEventListener('lumen-theme-mode-change', handleThemeModeChange)
   window.addEventListener('lumen-dinosaur-soundtrack', handleDinosaurSoundtrack)
+  window.addEventListener('lumen-open-bug-report', handleExternalBugReport)
   window.addEventListener('keydown', onKeydown)
 })
 
@@ -1747,6 +1752,7 @@ onUnmounted(() => {
   document.removeEventListener('pointerdown', resumeAmbientMusic, true)
   window.removeEventListener('lumen-theme-mode-change', handleThemeModeChange)
   window.removeEventListener('lumen-dinosaur-soundtrack', handleDinosaurSoundtrack)
+  window.removeEventListener('lumen-open-bug-report', handleExternalBugReport)
   window.removeEventListener('keydown', onKeydown)
   window.clearInterval(musicTimer)
   window.clearInterval(noteTimer)
