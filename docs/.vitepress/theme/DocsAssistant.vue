@@ -285,8 +285,12 @@ async function askQuestion() {
   query.value = ''
   searching.value = false
   await nextTick()
-  conversation.value?.scrollTo({
-    top: conversation.value.scrollHeight,
+  const responseElement = conversation.value?.querySelectorAll<HTMLElement>('.assistant-response').item(answers.value.length - 1)
+  if (!conversation.value || !responseElement) return
+
+  const responseTop = responseElement.getBoundingClientRect().top - conversation.value.getBoundingClientRect().top
+  conversation.value.scrollTo({
+    top: conversation.value.scrollTop + responseTop - 8,
     behavior: 'smooth',
   })
 }
