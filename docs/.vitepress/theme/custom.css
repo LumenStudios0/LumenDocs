@@ -3309,6 +3309,23 @@ html.lumen-track-cretaceous-sunrise .lumen-track-horizon {
   font-weight: 600;
 }
 
+.reports-type-field {
+  display: grid;
+  gap: 7px;
+  color: var(--vp-c-text-1);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.reports-type-slider {
+  margin: 0;
+  padding: 7px;
+}
+
+.reports-type-slider .plugin-category-rail button {
+  padding-inline: 14px;
+}
+
 .reports-form label small {
   color: var(--vp-c-text-3);
   font-size: 11px;

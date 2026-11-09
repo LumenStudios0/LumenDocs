@@ -17,12 +17,29 @@ const description = ref('')
 const submitting = ref(false)
 const error = ref('')
 const submitted = ref(false)
+const reportTypeRail = ref<HTMLElement | null>(null)
+
+const reportTypes: { value: ReportType; label: string }[] = [
+  { value: 'bug', label: 'Bug report' },
+  { value: 'compatibility', label: 'Compatibility' },
+  { value: 'feature', label: 'Feature request' },
+]
 
 const reportTypeLabel = computed(() => ({
   bug: 'Bug report',
   compatibility: 'Compatibility report',
   feature: 'Feature request',
 }[reportType.value]))
+
+function selectReportType(type: ReportType) {
+  reportType.value = type
+  submitted.value = false
+  error.value = ''
+}
+
+function scrollReportTypes(direction: -1 | 1) {
+  reportTypeRail.value?.scrollBy({ left: direction * 180, behavior: 'smooth' })
+}
 
 function getReportsEndpoint() {
   if (!assistantEndpoint) return ''
@@ -102,14 +119,38 @@ async function submitReport() {
     </div>
 
     <form class="reports-form" @submit.prevent="submitReport">
-      <label class="reports-type-field">
+      <div class="reports-type-field">
         <span>Report type</span>
-        <select v-model="reportType" aria-label="Choose report type" @change="submitted = false; error = ''">
-          <option value="bug">Bug report</option>
-          <option value="compatibility">Compatibility report</option>
-          <option value="feature">Feature request</option>
-        </select>
-      </label>
+        <div class="plugin-category-slider reports-type-slider">
+          <button
+            class="plugin-category-arrow"
+            type="button"
+            aria-label="Scroll report types left"
+            @click="scrollReportTypes(-1)"
+          >
+            ←
+          </button>
+          <div ref="reportTypeRail" class="plugin-category-rail" role="group" aria-label="Choose report type">
+            <button
+              v-for="type in reportTypes"
+              :key="type.value"
+              type="button"
+              :aria-pressed="reportType === type.value"
+              @click="selectReportType(type.value)"
+            >
+              {{ type.label }}
+            </button>
+          </div>
+          <button
+            class="plugin-category-arrow"
+            type="button"
+            aria-label="Scroll report types right"
+            @click="scrollReportTypes(1)"
+          >
+            →
+          </button>
+        </div>
+      </div>
 
       <div v-if="reportType !== 'feature'" class="reports-fields">
         <label>
