@@ -18,21 +18,30 @@ export default {
       let sunClicks = 0
       let moonClicks = 0
       let ambientWeatherTimer: number | undefined
+      const ambientWeatherTimers: number[] = []
 
       const scheduleAmbientWeather = () => {
         ambientWeatherTimer = window.setTimeout(() => {
           const root = document.documentElement
           const isDark = root.classList.contains('dark')
-          const eventClass = isDark ? 'lumen-weather-meteors' : 'lumen-weather-rain'
-          const chance = isDark ? 0.22 : 0.24
 
-          if (Math.random() < chance) {
+          const startEvent = (eventClass: string, duration: number) => {
+            if (root.classList.contains(eventClass)) return
             root.classList.add(eventClass)
-            window.setTimeout(() => root.classList.remove(eventClass), 15000)
+            ambientWeatherTimers.push(window.setTimeout(() => {
+              root.classList.remove(eventClass)
+            }, duration))
+          }
+
+          if (isDark) {
+            if (Math.random() < 0.22) startEvent('lumen-weather-meteors', 15000)
+          } else {
+            if (Math.random() < 0.72) startEvent('lumen-weather-rain', 24000)
+            if (Math.random() < 0.18) startEvent('lumen-weather-balloon-event', 16000)
           }
 
           scheduleAmbientWeather()
-        }, 40000 + Math.random() * 35000)
+        }, 25000 + Math.random() * 20000)
       }
 
       const handleSkyClick = () => {
@@ -116,7 +125,12 @@ export default {
         router.onAfterRouteChange = previousRouteChanged
         window.removeEventListener('popstate', handlePopState)
         window.clearTimeout(ambientWeatherTimer)
-        document.documentElement.classList.remove('lumen-weather-meteors', 'lumen-weather-rain')
+        ambientWeatherTimers.forEach(timer => window.clearTimeout(timer))
+        document.documentElement.classList.remove(
+          'lumen-weather-meteors',
+          'lumen-weather-rain',
+          'lumen-weather-balloon-event',
+        )
       })
 
       return () => h(DefaultTheme.Layout, null, {
@@ -139,6 +153,9 @@ export default {
             ...Array.from({ length: 32 }, (_, index) =>
               h('span', { class: `lumen-rain-drop lumen-rain-drop-${index + 1}` }),
             ),
+            h('span', { class: 'lumen-weather-balloon' }, [
+              h('span', { class: 'lumen-balloon-string' }),
+            ]),
             ...Array.from({ length: 8 }, (_, index) =>
               h('span', { class: `lumen-firefly lumen-firefly-${index + 1}` }),
             ),
