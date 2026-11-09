@@ -2882,6 +2882,10 @@ html.lumen-track-cretaceous-sunrise .lumen-track-horizon {
   .lumen-nav-menu {
     display: none;
   }
+
+  .lumen-report-button {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

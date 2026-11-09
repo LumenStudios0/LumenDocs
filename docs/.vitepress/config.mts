@@ -45,23 +45,28 @@ export default defineConfig({
       },
     },
     nav: [
+      { text: 'Docs', link: '/docs/' },
       { text: 'Plugins', link: '/plugins/' },
+      { text: 'Customer portal', link: '/account/' },
       { text: 'Reports', link: '/reports/' },
       { text: 'Getting started', link: '/getting-started/' },
       { text: 'Changelogs', link: '/changelogs/' },
       { text: 'Shortcuts', link: '/keyboard-shortcuts' },
     ],
-    sidebar: [
-      {
-        text: 'Customer account',
-        collapsed: true,
-        items: [
-          { text: 'Dashboard', link: '/account/' },
-          { text: 'My licenses', link: '/account/licenses' },
-          { text: 'Products purchased', link: '/account/products' },
-          { text: 'Account settings', link: '/account/settings' },
-        ],
-      },
+    sidebar: {
+      '/account/': [
+        {
+          text: 'Customer portal',
+          items: [
+            { text: 'Dashboard', link: '/account/' },
+            { text: 'My licenses', link: '/account/licenses' },
+            { text: 'Products purchased', link: '/account/products' },
+            { text: 'Account settings', link: '/account/settings' },
+          ],
+        },
+      ],
+      '/': [
+      { text: 'Documentation', link: '/docs/' },
       { text: 'Reports', link: '/reports/' },
       {
         text: 'Getting started',
@@ -222,7 +227,8 @@ export default defineConfig({
           { text: 'Keyboard shortcuts', link: '/keyboard-shortcuts' },
         ],
       },
-    ],
+      ],
+    },
     socialLinks: [
       {
         ariaLabel: 'Log in with Discord',

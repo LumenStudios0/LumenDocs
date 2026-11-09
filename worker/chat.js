@@ -456,6 +456,69 @@ async function dinosaurDiscoveries(request, env, origin) {
   }
 }
 
+function isValidIpAddress(address) {
+  if (typeof address !== 'string' || address.length > 45) return false
+  if (address.includes(':')) {
+    if (!/^[\da-f:]+$/i.test(address) || !address.includes(':')) return false
+    try {
+      return new URL(`http://[${address}]/`).hostname.startsWith('[')
+    } catch {
+      return false
+    }
+  }
+  const octets = address.split('.')
+  return octets.length === 4 && octets.every(octet =>
+    /^\d{1,3}$/.test(octet) && Number(octet) >= 0 && Number(octet) <= 255,
+  )
+}
+
+async function accountLicenseApi(request, env, origin, path) {
+  const authorization = request.headers.get('Authorization') ?? ''
+  const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : ''
+  const user = await verifyLoginToken(token, env)
+  if (!user) return respond({ error: 'Sign in to access your customer account' }, 401, origin)
+
+  if (!env.ASSISTANT_LIMITER) {
+    return respond({ error: 'Customer account service is not configured' }, 503, origin)
+  }
+  const rateLimit = await env.ASSISTANT_LIMITER.limit({ key: `account:${user.id}` })
+  if (!rateLimit.success) {
+    return respond({ error: 'Please wait before checking your license account again' }, 429, origin)
+  }
+
+  if (path === '/account/servers' && request.method !== 'GET') {
+    return respond({ error: 'Method not allowed' }, 405, origin)
+  }
+  if (path === '/account/license-ips' && request.method !== 'GET' && request.method !== 'PUT') {
+    return respond({ error: 'Method not allowed' }, 405, origin)
+  }
+
+  if (request.method === 'PUT') {
+    const body = await request.text()
+    if (body.length > 2000) return respond({ error: 'Request is too large' }, 413, origin)
+
+    let payload
+    try {
+      payload = JSON.parse(body)
+    } catch {
+      return respond({ error: 'Expected a JSON request' }, 400, origin)
+    }
+    if (
+      !Array.isArray(payload?.addresses) ||
+      payload.addresses.length > 3 ||
+      payload.addresses.some(address => !isValidIpAddress(address)) ||
+      new Set(payload.addresses).size !== payload.addresses.length
+    ) {
+      return respond({ error: 'Provide up to 3 unique, valid IPv4 or IPv6 addresses' }, 400, origin)
+    }
+  }
+
+  return respond({
+    error: 'The license service is not connected yet',
+    code: 'LICENSE_SERVICE_UNAVAILABLE',
+  }, 503, origin)
+}
+
 export default {
   async fetch(request, env) {
     const path = new URL(request.url).pathname
@@ -473,7 +536,15 @@ export default {
       return new Response('Forbidden', { status: 403 })
     }
 
-    if (path !== '/chat' && path !== '/bug-report' && path !== '/reports' && path !== '/dinosaur-discoveries' && path !== '/auth/me') {
+    if (
+      path !== '/chat' &&
+      path !== '/bug-report' &&
+      path !== '/reports' &&
+      path !== '/dinosaur-discoveries' &&
+      path !== '/auth/me' &&
+      path !== '/account/servers' &&
+      path !== '/account/license-ips'
+    ) {
       return respond({ error: 'Not found' }, 404, origin)
     }
 
@@ -484,8 +555,10 @@ export default {
           'Access-Control-Allow-Origin': origin,
           'Access-Control-Allow-Methods': path === '/dinosaur-discoveries'
             ? 'GET, POST, OPTIONS'
-            : path === '/auth/me'
+            : path === '/auth/me' || path === '/account/servers'
               ? 'GET, OPTIONS'
+              : path === '/account/license-ips'
+                ? 'GET, PUT, OPTIONS'
               : 'POST, OPTIONS',
           'Access-Control-Allow-Headers': 'Authorization, Content-Type',
           'Access-Control-Max-Age': '86400',
@@ -501,6 +574,10 @@ export default {
       const user = await verifyLoginToken(token, env)
       if (!user) return respond({ error: 'Sign-in has expired. Please sign in again.' }, 401, origin)
       return respond({ user }, 200, origin)
+    }
+
+    if (path === '/account/servers' || path === '/account/license-ips') {
+      return accountLicenseApi(request, env, origin, path)
     }
 
     if (path === '/dinosaur-discoveries') {

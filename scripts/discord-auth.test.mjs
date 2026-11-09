@@ -12,7 +12,9 @@ function request(path, options = {}) {
       ...(options.origin ? { Origin: options.origin } : {}),
       ...(options.cookie ? { Cookie: options.cookie } : {}),
       ...(options.authorization ? { Authorization: options.authorization } : {}),
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
     },
+    body: options.body ? JSON.stringify(options.body) : undefined,
   })
 }
 
@@ -22,8 +24,34 @@ function env(overrides = {}) {
     DISCORD_CLIENT_ID: 'discord-client-id',
     DISCORD_CLIENT_SECRET: 'discord-client-secret',
     AUTH_SIGNING_SECRET: signingSecret,
+    ASSISTANT_LIMITER: { limit: async () => ({ success: true }) },
     ...overrides,
   }
+}
+
+async function createSessionToken(t) {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async url => {
+    if (String(url).endsWith('/oauth2/token')) {
+      return Response.json({ access_token: 'discord-access-token' })
+    }
+    if (String(url).endsWith('/api/users/@me')) {
+      return Response.json({ id: '123456789', username: 'lumen-user' })
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  }
+  t.after(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  const response = await worker.fetch(
+    request('/auth/callback?code=authorization-code&state=valid-state', {
+      cookie: 'lumen_discord_oauth_state=valid-state',
+    }),
+    env(),
+  )
+  const redirect = new URL(response.headers.get('Location'))
+  return new URLSearchParams(redirect.hash.slice(1)).get('discord_token')
 }
 
 test('Discord login sends the user to OAuth with state protected by a secure cookie', async () => {
@@ -123,4 +151,52 @@ test('Discord profile endpoint rejects invalid bearer tokens', async () => {
     env(),
   )
   assert.equal(response.status, 401)
+})
+
+test('account license endpoints require a valid Discord session', async () => {
+  const response = await worker.fetch(
+    request('/account/servers', { origin }),
+    env(),
+  )
+
+  assert.equal(response.status, 401)
+  assert.match((await response.json()).error, /Sign in/)
+})
+
+test('account server endpoint clearly reports the unconnected license service', async t => {
+  const token = await createSessionToken(t)
+  const response = await worker.fetch(
+    request('/account/servers', { origin, authorization: `Bearer ${token}` }),
+    env(),
+  )
+  const result = await response.json()
+
+  assert.equal(response.status, 503)
+  assert.equal(result.code, 'LICENSE_SERVICE_UNAVAILABLE')
+})
+
+test('account IP endpoint enforces three unique valid IPs before license integration', async t => {
+  const token = await createSessionToken(t)
+  const invalid = await worker.fetch(
+    request('/account/license-ips', {
+      method: 'PUT',
+      origin,
+      authorization: `Bearer ${token}`,
+      body: { addresses: ['192.0.2.1', '192.0.2.2', '192.0.2.3', '192.0.2.4'] },
+    }),
+    env(),
+  )
+  const valid = await worker.fetch(
+    request('/account/license-ips', {
+      method: 'PUT',
+      origin,
+      authorization: `Bearer ${token}`,
+      body: { addresses: ['192.0.2.1', '2001:db8::1'] },
+    }),
+    env(),
+  )
+
+  assert.equal(invalid.status, 400)
+  assert.equal(valid.status, 503)
+  assert.equal((await valid.json()).code, 'LICENSE_SERVICE_UNAVAILABLE')
 })

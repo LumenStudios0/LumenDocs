@@ -3,7 +3,9 @@ import { h, defineComponent, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useData, useRouter } from 'vitepress'
 import AccountLicenseIps from './AccountLicenseIps.vue'
 import AccountProductCatalog from './AccountProductCatalog.vue'
+import AccountConnectedServers from './AccountConnectedServers.vue'
 import DocsAssistant from './DocsAssistant.vue'
+import HomeExperience from './HomeExperience.vue'
 import './custom.css'
 
 export default {
@@ -11,6 +13,8 @@ export default {
   enhanceApp({ app }) {
     app.component('AccountLicenseIps', AccountLicenseIps)
     app.component('AccountProductCatalog', AccountProductCatalog)
+    app.component('AccountConnectedServers', AccountConnectedServers)
+    app.component('HomeExperience', HomeExperience)
   },
   Layout: defineComponent({
     setup() {
@@ -28,11 +32,13 @@ export default {
       const dinoToast = ref('')
       let traversingHistory = false
       const topNavigationItems = [
-        { text: 'Plugins', link: '/plugins/' },
-        { text: 'Reports', link: '/reports/' },
+        { text: 'Documentation', link: '/docs/' },
+        { text: 'Browse plugins', link: '/plugins/' },
+        { text: 'Customer portal', link: '/account/' },
         { text: 'Getting started', link: '/getting-started/' },
+        { text: 'Reports', link: '/reports/' },
         { text: 'Changelogs', link: '/changelogs/' },
-        { text: 'Shortcuts', link: '/keyboard-shortcuts' },
+        { text: 'Keyboard shortcuts', link: '/keyboard-shortcuts' },
       ]
       let slideFromLeft = true
       let sunClicks = 0

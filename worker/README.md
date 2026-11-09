@@ -36,6 +36,16 @@ Discord sign-in is optional and does not restrict access to the documentation. I
 
 The Worker uses Discord's `identify` scope, validates OAuth state with a short-lived HttpOnly cookie, and signs a one-hour identity token. Users can sign out from the navigation; signing out clears the current tab's session token. The Pages workflow does not deploy Worker changes.
 
+## Customer portal license API scaffold
+
+The authenticated customer API surface is reserved for the future licensing integration:
+
+- `GET /account/servers` — connected servers for the signed-in Discord account.
+- `GET /account/license-ips` — IP addresses assigned to a license.
+- `PUT /account/license-ips` — validates a list of at most three unique IPv4/IPv6 addresses.
+
+All three routes require a valid `Authorization: Bearer <session-token>` header and are rate limited by account. They currently return `503` with `LICENSE_SERVICE_UNAVAILABLE`; the Worker does not store or change license data until a licensing service is connected. The portal's IP-address preview remains browser-local and is not authoritative.
+
 ## Optional anonymous dinosaur discoverer total
 
 The secret `/extinction` page can show a site-wide total of unique browsers that completed the dinosaur egg hunt. Without this optional D1 database, the dinosaur event still works and the page reports that its global counter is not connected.

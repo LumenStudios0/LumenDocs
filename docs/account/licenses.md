@@ -10,3 +10,9 @@ License records will be linked to your Discord account when the licensing servic
 <AccountLicenseIps />
 
 The addresses above are stored only in this browser as a preview. Saving them here does **not** change an active license yet.
+
+## Connected servers
+
+The portal will list server installations using your licenses when the licensing service is connected.
+
+<AccountConnectedServers />
