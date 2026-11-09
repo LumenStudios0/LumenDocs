@@ -2661,6 +2661,8 @@ html.lumen-track-cretaceous-sunrise .lumen-track-horizon {
 }
 
 .VPHome .VPFeature {
+  position: relative;
+  z-index: 6;
   border: 1px solid var(--lumen-card-border);
   border-radius: 14px;
   background: var(--lumen-feature-bg);
@@ -2762,6 +2764,7 @@ html.lumen-track-cretaceous-sunrise .lumen-track-horizon {
 
 .home-card {
   position: relative;
+  z-index: 6;
   isolation: isolate;
   overflow: hidden;
   display: flex;
@@ -2865,6 +2868,8 @@ html.lumen-track-cretaceous-sunrise .lumen-track-horizon {
 }
 
 .plugin-card {
+  position: relative;
+  z-index: 6;
   display: flex;
   min-width: 0;
   min-height: 184px;

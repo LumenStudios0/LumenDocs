@@ -1197,18 +1197,23 @@ function playClickSound(event: MouseEvent) {
     return
   }
   const now = audioContext.currentTime
-  const tone = audioContext.createOscillator()
-  const volume = audioContext.createGain()
-  tone.type = 'sine'
-  tone.frequency.setValueAtTime(330, now)
-  tone.frequency.exponentialRampToValueAtTime(220, now + 0.09)
-  volume.gain.setValueAtTime(0.0001, now)
-  volume.gain.exponentialRampToValueAtTime(0.009, now + 0.012)
-  volume.gain.exponentialRampToValueAtTime(0.0001, now + 0.1)
-  tone.connect(volume)
-  volume.connect(audioContext.destination)
-  tone.start(now)
-  tone.stop(now + 0.11)
+  for (const note of [
+    { type: 'triangle' as OscillatorType, start: 440, end: 280, peak: 0.065, duration: 0.14 },
+    { type: 'sine' as OscillatorType, start: 880, end: 560, peak: 0.018, duration: 0.1 },
+  ]) {
+    const tone = audioContext.createOscillator()
+    const volume = audioContext.createGain()
+    tone.type = note.type
+    tone.frequency.setValueAtTime(note.start, now)
+    tone.frequency.exponentialRampToValueAtTime(note.end, now + note.duration)
+    volume.gain.setValueAtTime(0.0001, now)
+    volume.gain.exponentialRampToValueAtTime(note.peak, now + 0.008)
+    volume.gain.exponentialRampToValueAtTime(0.0001, now + note.duration)
+    tone.connect(volume)
+    volume.connect(audioContext.destination)
+    tone.start(now)
+    tone.stop(now + note.duration + 0.01)
+  }
 }
 
 function toggleClickSounds() {
