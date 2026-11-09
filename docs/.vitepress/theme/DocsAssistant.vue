@@ -74,6 +74,18 @@ const input = ref<HTMLInputElement | null>(null)
 const conversation = ref<HTMLDivElement | null>(null)
 const searching = ref(false)
 const hasQuestion = computed(() => answers.value.length > 0)
+const assistantView = ref<'chat' | 'bug-report'>('chat')
+const bugReport = ref({
+  plugin: '',
+  serverSoftware: '',
+  version: '',
+  productKey: '',
+  consoleLog: '',
+  description: '',
+})
+const submittingBugReport = ref(false)
+const bugReportError = ref('')
+const bugReportSent = ref(false)
 const clickSounds = ref(true)
 const ambientMusic = ref(false)
 const activeMusicTrack = ref('')
@@ -312,8 +324,55 @@ function focusInput() {
 }
 
 function useSuggestedQuestion(question: string) {
+  assistantView.value = 'chat'
   query.value = question
   input.value?.focus()
+}
+
+function openBugReport() {
+  assistantView.value = 'bug-report'
+  bugReportError.value = ''
+  bugReportSent.value = false
+}
+
+function getBugReportEndpoint() {
+  if (!assistantEndpoint) return ''
+
+  const endpoint = new URL(assistantEndpoint, window.location.origin)
+  endpoint.pathname = endpoint.pathname.replace(/\/chat\/?$/, '') + '/bug-report'
+  endpoint.search = ''
+  return endpoint.toString()
+}
+
+async function submitBugReport() {
+  if (submittingBugReport.value) return
+  const endpoint = getBugReportEndpoint()
+  if (!endpoint) {
+    bugReportError.value = 'Bug reports are temporarily unavailable. Please contact us on Discord.'
+    return
+  }
+
+  submittingBugReport.value = true
+  bugReportError.value = ''
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(bugReport.value),
+    })
+    const result = await response.json().catch(() => ({})) as { error?: string; ok?: boolean }
+    if (!response.ok || !result.ok) {
+      throw new Error(result.error || 'Could not deliver the report. Please try again later.')
+    }
+
+    bugReportSent.value = true
+  } catch (error) {
+    bugReportError.value = error instanceof Error
+      ? error.message
+      : 'Could not deliver the report. Please try again later.'
+  } finally {
+    submittingBugReport.value = false
+  }
 }
 
 function playClickSound(event: MouseEvent) {
@@ -664,33 +723,74 @@ onUnmounted(() => {
         </header>
 
         <div ref="conversation" class="assistant-conversation" aria-live="polite">
-          <div v-if="!hasQuestion" class="assistant-welcome">
-            <span class="assistant-eyebrow">LUMEN STUDIOS</span>
-            <h2>How can I help?</h2>
-            <p>Get quick answers from our plugin guides.</p>
-            <div class="assistant-suggestions" aria-label="Suggested questions">
-              <button type="button" @click="useSuggestedQuestion('How do I install a plugin?')">Install a plugin</button>
-              <button type="button" @click="useSuggestedQuestion('Show me the available commands and permissions')">Commands &amp; permissions</button>
-              <button type="button" @click="useSuggestedQuestion('How do I configure a plugin?')">Configuration help</button>
+          <template v-if="assistantView === 'chat'">
+            <div v-if="!hasQuestion" class="assistant-welcome">
+              <span class="assistant-eyebrow">LUMEN STUDIOS</span>
+              <h2>How can I help?</h2>
+              <p>Get quick answers from our plugin guides.</p>
+              <div class="assistant-suggestions" aria-label="Suggested questions">
+                <button type="button" @click="useSuggestedQuestion('How do I install a plugin?')">Install a plugin</button>
+                <button type="button" @click="useSuggestedQuestion('Show me the available commands and permissions')">Commands &amp; permissions</button>
+                <button type="button" @click="useSuggestedQuestion('How do I configure a plugin?')">Configuration help</button>
+              </div>
             </div>
-          </div>
-          <article v-for="(answer, index) in answers" :key="`${index}-${answer.question}`" class="assistant-answer">
-            <p class="assistant-question">{{ answer.question }}</p>
-            <p class="assistant-response">{{ answer.reply }}</p>
-            <a
-              v-for="result in answer.results"
-              :key="result.href"
-              class="assistant-result"
-              :href="result.href"
-            >
-              <strong>{{ result.title }}</strong>
-              <span>{{ result.text.slice(0, 220) }}{{ result.text.length > 220 ? '…' : '' }}</span>
-              <small>Open guide ↗</small>
-            </a>
-          </article>
+            <article v-for="(answer, index) in answers" :key="`${index}-${answer.question}`" class="assistant-answer">
+              <p class="assistant-question">{{ answer.question }}</p>
+              <p class="assistant-response">{{ answer.reply }}</p>
+              <a
+                v-for="result in answer.results"
+                :key="result.href"
+                class="assistant-result"
+                :href="result.href"
+              >
+                <strong>{{ result.title }}</strong>
+                <span>{{ result.text.slice(0, 220) }}{{ result.text.length > 220 ? '…' : '' }}</span>
+                <small>Open guide ↗</small>
+              </a>
+            </article>
+          </template>
+          <form v-else class="assistant-bug-form" @submit.prevent="submitBugReport">
+            <div class="assistant-bug-heading">
+              <button type="button" class="assistant-back-button" @click="assistantView = 'chat'">← Assistant</button>
+              <strong>Report a bug</strong>
+              <span>Tell us what happened and we’ll take a look.</span>
+            </div>
+            <label>
+              <span>Plugin name</span>
+              <input v-model="bugReport.plugin" type="text" maxlength="100" required placeholder="e.g. LumenShards">
+            </label>
+            <div class="assistant-bug-row">
+              <label>
+                <span>Server software</span>
+                <input v-model="bugReport.serverSoftware" type="text" maxlength="100" required placeholder="e.g. Paper">
+              </label>
+              <label>
+                <span>Version number</span>
+                <input v-model="bugReport.version" type="text" maxlength="60" required placeholder="e.g. 1.21.4">
+              </label>
+            </div>
+            <label>
+              <span>Product key <small>Optional</small></span>
+              <input v-model="bugReport.productKey" type="text" maxlength="200" autocomplete="off" placeholder="Only if relevant to the issue">
+              <small class="assistant-field-hint">This will be shared in the report channel. Include it only if support needs it; never include passwords.</small>
+            </label>
+            <label>
+              <span>Console log message <small>Optional</small></span>
+              <textarea v-model="bugReport.consoleLog" maxlength="2000" rows="3" placeholder="Paste the relevant error or warning"></textarea>
+            </label>
+            <label>
+              <span>Description of what happened</span>
+              <textarea v-model="bugReport.description" maxlength="2000" rows="3" required placeholder="What did you expect, and what happened instead?"></textarea>
+            </label>
+            <p v-if="bugReportError" class="assistant-bug-error" role="alert">{{ bugReportError }}</p>
+            <p v-if="bugReportSent" class="assistant-bug-success" role="status">Thanks — your report was sent to the Lumen Studios team.</p>
+            <button class="assistant-bug-submit" type="submit" :disabled="submittingBugReport || bugReportSent">
+              {{ submittingBugReport ? 'Sending report…' : bugReportSent ? 'Report sent' : 'Send bug report' }}
+            </button>
+          </form>
         </div>
 
-        <form class="assistant-form" @submit.prevent="askQuestion">
+        <form v-if="assistantView === 'chat'" class="assistant-form" @submit.prevent="askQuestion">
           <input
             ref="input"
             v-model="query"
@@ -701,9 +801,10 @@ onUnmounted(() => {
           >
           <button type="submit" :disabled="!query.trim() || searching">{{ searching ? 'Thinking…' : 'Ask' }}</button>
         </form>
-        <p class="assistant-note">
-          {{ assistantEndpoint ? 'Questions and selected guide excerpts are sent to DeepSeek. Full plugin source code and ZIP archives are not sent.' : 'Local guide search is active. AI replies need a secure backend.' }}
-        </p>
+        <div v-if="assistantView === 'chat'" class="assistant-note">
+          <span>{{ assistantEndpoint ? 'Questions and selected guide excerpts are sent to DeepSeek. Full plugin source code and ZIP archives are not sent.' : 'Local guide search is active. AI replies need a secure backend.' }}</span>
+          <button type="button" @click="openBugReport">Report a bug</button>
+        </div>
       </section>
     </Transition>
   </div>

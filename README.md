@@ -24,6 +24,17 @@ Push changes to `main` or run **Deploy documentation** from the repository’s A
 
 The VitePress `base` is `/LumenDocs/`, matching this repository's GitHub Pages project-site URL. Update `docs/.vitepress/config.mts` if the repository name or hosting path changes.
 
+## Assistant and bug reports
+
+The assistant and bug-report form use the Cloudflare Worker in `worker/chat.js`. Set the GitHub Actions repository variable `DOCS_ASSISTANT_ENDPOINT` to the worker's `/chat` URL. Configure the Discord webhook only as a Cloudflare Worker secret, then deploy the worker:
+
+```sh
+npx wrangler secret put DISCORD_BUG_REPORT_WEBHOOK
+npx wrangler deploy
+```
+
+Never put the webhook URL in site code, GitHub Pages variables, or committed files. If a webhook URL has been shared publicly, delete it and create a replacement before configuring the secret. Run worker tests with `npm run test:worker`.
+
 ## Keeping guides accurate
 
 Commands and supported versions can vary by release, so check the notes that came with your jar. Need a license? Follow the [Discord license guide](https://lumenstudios0.github.io/LumenDocs/getting-started/licensing). Never add license keys, plugin tokens, database passwords, Discord webhooks, or other private credentials here.

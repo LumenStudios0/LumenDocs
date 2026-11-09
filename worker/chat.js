@@ -10,6 +10,102 @@ function respond(data, status, origin) {
   return new Response(JSON.stringify(data), { status, headers })
 }
 
+function cleanReportValue(value, maxLength) {
+  return value
+    .trim()
+    .slice(0, maxLength)
+    .replace(/@/g, '@\u200b')
+    .replace(/([\\`*_~|])/g, '\\$1')
+}
+
+async function submitBugReport(request, env, origin) {
+  if (!env.DISCORD_BUG_REPORT_WEBHOOK) {
+    return respond({ error: 'Bug reports are not configured yet' }, 503, origin)
+  }
+
+  const ip = request.headers.get('CF-Connecting-IP')
+  if (!ip) return respond({ error: 'Request could not be verified' }, 400, origin)
+
+  const rateLimit = await env.ASSISTANT_LIMITER.limit({ key: `bug-report:${ip}` })
+  if (!rateLimit.success) {
+    return respond({ error: 'Please wait a moment before submitting another report' }, 429, origin)
+  }
+
+  const body = await request.text()
+  if (body.length > 8000) return respond({ error: 'Report is too large' }, 413, origin)
+
+  let payload
+  try {
+    payload = JSON.parse(body)
+  } catch {
+    return respond({ error: 'Expected a JSON request' }, 400, origin)
+  }
+
+  const fields = {
+    plugin: typeof payload?.plugin === 'string' ? payload.plugin.trim() : '',
+    serverSoftware: typeof payload?.serverSoftware === 'string' ? payload.serverSoftware.trim() : '',
+    version: typeof payload?.version === 'string' ? payload.version.trim() : '',
+    productKey: typeof payload?.productKey === 'string' ? payload.productKey.trim() : '',
+    consoleLog: typeof payload?.consoleLog === 'string' ? payload.consoleLog.trim() : '',
+    description: typeof payload?.description === 'string' ? payload.description.trim() : '',
+  }
+  if (!fields.plugin || !fields.serverSoftware || !fields.version || !fields.description) {
+    return respond({ error: 'Fill in the plugin, server software, version, and description' }, 400, origin)
+  }
+  if (
+    fields.plugin.length > 100 ||
+    fields.serverSoftware.length > 100 ||
+    fields.version.length > 60 ||
+    fields.productKey.length > 200 ||
+    fields.consoleLog.length > 2000 ||
+    fields.description.length > 2000
+  ) {
+    return respond({ error: 'One or more report fields are too long' }, 400, origin)
+  }
+
+  const embedField = (name, value, maxLength) => ({
+    name,
+    value: cleanReportValue(value, maxLength) || 'Not provided',
+    inline: false,
+  })
+  const report = {
+    username: 'Lumen Studios Bug Reports',
+    allowed_mentions: { parse: [] },
+    embeds: [{
+      title: '🐛 New Plugin Bug Report',
+      color: 0x7B3FF2,
+      fields: [
+        embedField('Plugin', fields.plugin, 100),
+        embedField('Server software', fields.serverSoftware, 100),
+        embedField('Version number', fields.version, 60),
+        embedField('Product key', fields.productKey, 200),
+        embedField('Console log message', fields.consoleLog, 2000),
+        embedField('What happened', fields.description, 2000),
+      ],
+      timestamp: new Date().toISOString(),
+      footer: { text: 'Lumen Studios Docs' },
+    }],
+  }
+
+  let upstream
+  try {
+    upstream = await fetch(env.DISCORD_BUG_REPORT_WEBHOOK, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(report),
+      signal: AbortSignal.timeout(10000),
+    })
+  } catch {
+    return respond({ error: 'Could not deliver the report. Please try again later.' }, 502, origin)
+  }
+
+  if (!upstream.ok) {
+    return respond({ error: 'Could not deliver the report. Please try again later.' }, 502, origin)
+  }
+
+  return respond({ ok: true }, 200, origin)
+}
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get('Origin')
@@ -17,7 +113,8 @@ export default {
       return new Response('Forbidden', { status: 403 })
     }
 
-    if (new URL(request.url).pathname !== '/chat') {
+    const path = new URL(request.url).pathname
+    if (path !== '/chat' && path !== '/bug-report') {
       return respond({ error: 'Not found' }, 404, origin)
     }
 
@@ -36,6 +133,10 @@ export default {
 
     if (request.method !== 'POST') {
       return respond({ error: 'Method not allowed' }, 405, origin)
+    }
+
+    if (path === '/bug-report') {
+      return submitBugReport(request, env, origin)
     }
 
     if (!env.DEEPSEEK_API_KEY) {
