@@ -295,6 +295,17 @@ export default {
         })
       }
 
+      const dinosaurSprite = (variant: 'trex' | 'longneck' | 'triceratops', className: string) =>
+        h('svg', {
+          class: className,
+          viewBox: '0 0 180 140',
+          role: 'img',
+          'aria-label': `Cute ${variant === 'trex' ? 'T. rex' : variant === 'longneck' ? 'long-necked dinosaur' : 'triceratops'}`,
+          focusable: 'false',
+        }, [
+          h('use', { href: `/assets/dinosaur-sprites.svg#${variant}` }),
+        ])
+
       const handleBalloonPop = (event: MouseEvent) => {
         const root = document.documentElement
         root.style.setProperty('--lumen-pop-x', `${event.clientX}px`)
@@ -693,7 +704,13 @@ export default {
                 top: dinoEggPosition.value.top,
               },
               onClick: discoverDinosaurEgg,
-            }, '🥚')
+            }, [
+              h('svg', {
+                viewBox: '0 0 72 88',
+                'aria-hidden': 'true',
+                focusable: 'false',
+              }, [h('use', { href: '/assets/dinosaur-sprites.svg#egg' })]),
+            ])
             : null,
           h('div', {
             class: 'lumen-dino-toast',
@@ -711,18 +728,26 @@ export default {
           ]),
           h('div', { class: 'lumen-dino-lockdown-overlay', 'aria-hidden': 'true' }, [
             h('span', { class: 'lumen-dino-lockdown-label' }, 'EMERGENCY LOCKDOWN'),
-            h('span', { class: 'lumen-dino-trex' }, '🦖'),
+            dinosaurSprite('trex', 'lumen-dino-trex'),
             h('span', { class: 'lumen-dino-lockdown-copy' }, 'Please remain calm. The T. rex is very friendly. Probably.'),
           ]),
           h('div', { class: 'lumen-dino-prehistoric' }, [
             h('div', { class: 'lumen-dino-skyline', 'aria-hidden': 'true' }),
-            h('div', { class: 'lumen-dino-volcano', 'aria-hidden': 'true' }, '🌋'),
+            h('div', { class: 'lumen-dino-volcano', 'aria-hidden': 'true' }, [
+              h('svg', { viewBox: '0 0 180 140', focusable: 'false' }, [
+                h('use', { href: '/assets/dinosaur-sprites.svg#volcano' }),
+              ]),
+            ]),
             h('div', { class: 'lumen-dino-landscape', 'aria-hidden': 'true' }),
-            ...['🦕', '🦖', '🦴', '🦕', '🦖', '🥚'].map((dinosaur, index) =>
-              h('span', {
-                class: `lumen-dino-roamer lumen-dino-roamer-${index + 1}`,
-                'aria-hidden': 'true',
-              }, dinosaur),
+            ...([
+              ['longneck', 'lumen-dino-roamer-1'],
+              ['trex', 'lumen-dino-roamer-2'],
+              ['triceratops', 'lumen-dino-roamer-3'],
+              ['longneck', 'lumen-dino-roamer-4'],
+              ['triceratops', 'lumen-dino-roamer-5'],
+              ['trex', 'lumen-dino-roamer-6'],
+            ] as const).map(([kind, className], index) =>
+              dinosaurSprite(kind, `lumen-dino-roamer ${className} lumen-dino-roamer-walker-${index + 1}`),
             ),
             h('a', {
               class: 'lumen-dino-era-label',
