@@ -19,6 +19,57 @@ export default {
       let moonClicks = 0
       let ambientWeatherTimer: number | undefined
       const ambientWeatherTimers: number[] = []
+      const minecraftToast = ref('')
+      let minecraftToastTimer: number | undefined
+      let phraseBuffer = ''
+      let konamiIndex = 0
+      const konamiCode = [
+        'ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown',
+        'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a',
+      ]
+
+      const toggleMinecraftMode = () => {
+        const root = document.documentElement
+        const enabled = !root.classList.contains('lumen-minecraft')
+        root.classList.toggle('lumen-minecraft', enabled)
+        minecraftToast.value = enabled ? 'Minecraft mode enabled' : 'Minecraft mode disabled'
+        window.clearTimeout(minecraftToastTimer)
+        minecraftToastTimer = window.setTimeout(() => { minecraftToast.value = '' }, 2400)
+      }
+
+      const handleSecretKeys = (event: KeyboardEvent) => {
+        const target = event.target
+        if (target instanceof HTMLElement &&
+          (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) {
+          return
+        }
+
+        const key = event.key.length === 1 ? event.key.toLowerCase() : event.key
+        const expectedKey = konamiCode[konamiIndex]
+        if (key === expectedKey) {
+          konamiIndex += 1
+          if (konamiIndex === konamiCode.length) {
+            konamiIndex = 0
+            phraseBuffer = ''
+            toggleMinecraftMode()
+            return
+          }
+          if (key.startsWith('Arrow')) event.preventDefault()
+        } else {
+          konamiIndex = key === konamiCode[0] ? 1 : 0
+        }
+
+        if (/^[a-z]$/.test(key)) {
+          phraseBuffer = (phraseBuffer + key).slice(-'minecraft'.length)
+          if (phraseBuffer === 'minecraft') {
+            phraseBuffer = ''
+            konamiIndex = 0
+            toggleMinecraftMode()
+          }
+        } else if (!key.startsWith('Arrow')) {
+          phraseBuffer = ''
+        }
+      }
 
       const scheduleAmbientWeather = () => {
         ambientWeatherTimer = window.setTimeout(() => {
@@ -118,13 +169,16 @@ export default {
       onMounted(() => {
         canGoBack.value = window.history.length > 1
         window.addEventListener('popstate', handlePopState)
+        window.addEventListener('keydown', handleSecretKeys)
         addInlineCopyButtons()
         scheduleAmbientWeather()
       })
       onUnmounted(() => {
         router.onAfterRouteChange = previousRouteChanged
         window.removeEventListener('popstate', handlePopState)
+        window.removeEventListener('keydown', handleSecretKeys)
         window.clearTimeout(ambientWeatherTimer)
+        window.clearTimeout(minecraftToastTimer)
         ambientWeatherTimers.forEach(timer => window.clearTimeout(timer))
         document.documentElement.classList.remove(
           'lumen-weather-meteors',
@@ -172,6 +226,7 @@ export default {
               h('span', { class: `lumen-flood-wave lumen-flood-wave-${index + 1}` }),
             ),
           ]),
+          h('div', { class: 'lumen-minecraft-toast', role: 'status', 'aria-live': 'polite' }, minecraftToast.value),
           h('button', {
             class: 'lumen-pixel-moon',
             type: 'button',

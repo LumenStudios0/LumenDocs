@@ -50,6 +50,60 @@ html:not(.dark) .lumen-shooting-star {
   --lumen-feature-bg: linear-gradient(145deg, rgba(25, 19, 36, 0.92), rgba(17, 13, 25, 0.92));
 }
 
+.lumen-minecraft {
+  --vp-c-brand-1: #4a9b45;
+  --vp-c-brand-2: #3c8138;
+  --vp-c-brand-3: #326d30;
+  --vp-c-brand-soft: rgba(91, 166, 68, 0.16);
+  --vp-c-bg: #d7e5c4;
+  --vp-c-bg-alt: #c4d6ae;
+  --vp-c-bg-elv: #e5efd8;
+  --vp-c-bg-soft: #d0dfbc;
+  --vp-c-divider: rgba(58, 84, 48, 0.24);
+  --vp-c-text-1: #263a26;
+  --vp-c-text-2: #435b3e;
+  --vp-c-text-3: #607658;
+  --vp-button-brand-bg: #4a9b45;
+  --vp-button-brand-hover-bg: #3c8138;
+  --vp-button-brand-active-bg: #326d30;
+  --lumen-card-bg: linear-gradient(145deg, #eaf2df, #d6e5c4);
+  --lumen-card-border: rgba(58, 84, 48, 0.32);
+  --lumen-card-hover: rgba(74, 155, 69, 0.62);
+  --lumen-card-muted: #435b3e;
+  --lumen-card-kicker: #326d30;
+  --lumen-card-link: #326d30;
+  --lumen-nav-title: #263a26;
+  --lumen-feature-bg: linear-gradient(145deg, #eaf2df, #d6e5c4);
+  color-scheme: light;
+}
+
+.lumen-minecraft.dark {
+  --vp-c-brand-1: #79c95f;
+  --vp-c-brand-2: #65ad4e;
+  --vp-c-brand-3: #4a923d;
+  --vp-c-brand-soft: rgba(101, 173, 78, 0.2);
+  --vp-c-bg: #17241b;
+  --vp-c-bg-alt: #1d2c20;
+  --vp-c-bg-elv: #27382a;
+  --vp-c-bg-soft: #223226;
+  --vp-c-divider: rgba(159, 200, 132, 0.18);
+  --vp-c-text-1: #e1f0d4;
+  --vp-c-text-2: #b7cba7;
+  --vp-c-text-3: #91a783;
+  --vp-button-brand-bg: #4a923d;
+  --vp-button-brand-hover-bg: #65ad4e;
+  --vp-button-brand-active-bg: #79c95f;
+  --lumen-card-bg: linear-gradient(145deg, #293b2b, #1d2c20);
+  --lumen-card-border: rgba(159, 200, 132, 0.2);
+  --lumen-card-hover: rgba(121, 201, 95, 0.58);
+  --lumen-card-muted: #b7cba7;
+  --lumen-card-kicker: #a4d97d;
+  --lumen-card-link: #b4e692;
+  --lumen-nav-title: #e1f0d4;
+  --lumen-feature-bg: linear-gradient(145deg, #293b2b, #1d2c20);
+  color-scheme: dark;
+}
+
 body {
   isolation: isolate;
   background-image:
@@ -89,6 +143,108 @@ body::before {
 
 .dark body::before {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 900' preserveAspectRatio='none'%3E%3Cpath d='M-80 620 C160 500 300 770 560 640 S940 520 1180 650 S1450 770 1530 610' fill='none' stroke='%23a986ff' stroke-opacity='.38' stroke-width='2.5'/%3E%3Cpath d='M-80 660 C160 540 310 810 570 680 S940 560 1180 690 S1450 810 1530 650' fill='none' stroke='%237b3ff2' stroke-opacity='.30' stroke-width='2'/%3E%3Cpath d='M-80 205 C150 100 310 310 570 200 S930 110 1160 220 S1430 300 1530 180' fill='none' stroke='%23a986ff' stroke-opacity='.24' stroke-width='2'/%3E%3C/svg%3E");
+}
+
+.lumen-minecraft body {
+  background-color: #d7e5c4;
+  background-image:
+    linear-gradient(135deg, rgba(126, 177, 91, 0.14), transparent 40%),
+    linear-gradient(315deg, rgba(122, 160, 90, 0.12), transparent 46%);
+}
+
+.lumen-minecraft.dark body {
+  background-color: #17241b;
+  background-image:
+    radial-gradient(ellipse at 50% 0%, rgba(125, 176, 88, 0.15), transparent 54%),
+    linear-gradient(315deg, rgba(81, 124, 66, 0.13), transparent 48%);
+}
+
+.lumen-minecraft body::before {
+  background-image:
+    linear-gradient(rgba(67, 104, 55, 0.1) 2px, transparent 2px),
+    linear-gradient(90deg, rgba(67, 104, 55, 0.1) 2px, transparent 2px),
+    linear-gradient(90deg, transparent 0 12%, rgba(91, 145, 66, 0.16) 12% 21%, transparent 21% 47%, rgba(121, 163, 91, 0.16) 47% 60%, transparent 60%),
+    linear-gradient(0deg, transparent 0 24%, rgba(107, 151, 77, 0.15) 24% 40%, transparent 40% 72%, rgba(132, 171, 100, 0.14) 72% 86%, transparent 86%);
+  background-size: 32px 32px, 32px 32px, 100% 100%, 100% 100%;
+}
+
+.lumen-minecraft.dark body::before {
+  background-image:
+    linear-gradient(rgba(157, 202, 122, 0.08) 2px, transparent 2px),
+    linear-gradient(90deg, rgba(157, 202, 122, 0.08) 2px, transparent 2px),
+    linear-gradient(90deg, transparent 0 12%, rgba(91, 145, 66, 0.12) 12% 21%, transparent 21% 47%, rgba(121, 163, 91, 0.12) 47% 60%, transparent 60%),
+    linear-gradient(0deg, transparent 0 24%, rgba(107, 151, 77, 0.12) 24% 40%, transparent 40% 72%, rgba(132, 171, 100, 0.1) 72% 86%, transparent 86%);
+}
+
+.lumen-minecraft .VPNavBar,
+.lumen-minecraft .VPSidebar,
+.lumen-minecraft .VPDoc .content-container,
+.lumen-minecraft .VPHome .VPHero .main {
+  border-color: var(--vp-c-divider);
+}
+
+.lumen-minecraft .home-card,
+.lumen-minecraft .plugin-card,
+.lumen-minecraft .VPHome .VPFeature .box {
+  border-radius: 3px;
+  box-shadow: 0 4px 0 rgba(46, 70, 39, 0.2);
+}
+
+.lumen-minecraft .home-card:hover,
+.lumen-minecraft .plugin-card:hover,
+.lumen-minecraft .VPHome .VPFeature:hover {
+  transform: translateY(-3px);
+}
+
+.lumen-minecraft .VPNavBarTitle .title,
+.lumen-minecraft .VPDoc h1,
+.lumen-minecraft .VPDoc h2,
+.lumen-minecraft .VPDoc h3,
+.lumen-minecraft .VPHome .VPHero .name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  letter-spacing: -0.035em;
+}
+
+.lumen-minecraft .VPButton,
+.lumen-minecraft .assistant-launcher,
+.lumen-minecraft .assistant-report-launcher {
+  border-radius: 3px;
+  box-shadow: 0 3px 0 rgba(39, 73, 35, 0.32);
+}
+
+.lumen-minecraft .lumen-sky {
+  display: none;
+}
+
+.lumen-minecraft .lumen-weather-sky {
+  opacity: 0.52;
+}
+
+.lumen-minecraft .lumen-pixel-moon {
+  filter: hue-rotate(70deg) saturate(0.65);
+}
+
+.lumen-minecraft .lumen-minecraft-toast {
+  position: fixed;
+  z-index: 120;
+  top: 82px;
+  left: 50%;
+  padding: 10px 16px;
+  transform: translateX(-50%);
+  border: 2px solid rgba(31, 59, 31, 0.42);
+  border-radius: 3px;
+  background: #527d3d;
+  box-shadow: 0 4px 0 rgba(31, 59, 31, 0.32), 0 8px 26px rgba(24, 42, 24, 0.22);
+  color: #f0ffe6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.lumen-minecraft .lumen-minecraft-toast:empty {
+  display: none;
 }
 
 @keyframes lumen-wave-drift {
