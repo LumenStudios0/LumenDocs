@@ -4,12 +4,32 @@ import { onMounted, onUnmounted, ref } from 'vue'
 const dashboard = ref<HTMLElement | null>(null)
 let observer: IntersectionObserver | undefined
 
+function handleCardPointer(event: PointerEvent) {
+  const card = event.currentTarget
+  if (!(card instanceof HTMLElement) || event.pointerType === 'touch') return
+
+  const bounds = card.getBoundingClientRect()
+  const x = (event.clientX - bounds.left) / bounds.width - 0.5
+  const y = (event.clientY - bounds.top) / bounds.height - 0.5
+  card.style.setProperty('--tilt-x', `${-y * 2.5}deg`)
+  card.style.setProperty('--tilt-y', `${x * 2.5}deg`)
+  card.style.setProperty('--pointer-x', `${event.clientX - bounds.left}px`)
+  card.style.setProperty('--pointer-y', `${event.clientY - bounds.top}px`)
+}
+
+function resetCardPointer(event: PointerEvent) {
+  const card = event.currentTarget
+  if (!(card instanceof HTMLElement)) return
+  card.style.setProperty('--tilt-x', '0deg')
+  card.style.setProperty('--tilt-y', '0deg')
+}
+
 onMounted(() => {
   const root = dashboard.value
   if (!root) return
 
   if (!('IntersectionObserver' in window)) {
-    root.querySelectorAll('.portal-reveal').forEach(element => element.classList.add('is-visible'))
+    root.querySelectorAll('.portal-reveal, .portal-card-reveal').forEach(element => element.classList.add('is-visible'))
     return
   }
 
@@ -22,7 +42,7 @@ onMounted(() => {
     })
   }, { threshold: 0.14 })
 
-  root.querySelectorAll('.portal-reveal').forEach(element => observer?.observe(element))
+  root.querySelectorAll('.portal-reveal, .portal-card-reveal').forEach(element => observer?.observe(element))
 })
 
 onUnmounted(() => observer?.disconnect())
@@ -52,6 +72,11 @@ onUnmounted(() => observer?.disconnect())
         <div class="portal-float-node portal-node-license"><span class="portal-node-icon">⌁</span><span><b>Licenses</b><small>Manage access</small></span></div>
         <div class="portal-float-node portal-node-products"><span class="portal-node-icon">▦</span><span><b>Products</b><small>Your collection</small></span></div>
         <div class="portal-float-node portal-node-settings"><span class="portal-node-icon">⚙</span><span><b>Settings</b><small>Account controls</small></span></div>
+        <div class="portal-mini-console">
+          <div class="portal-console-top"><span><i /> PORTAL OVERVIEW</span><b>PREVIEW</b></div>
+          <div class="portal-console-line"><i class="portal-line-key">⌁</i><span>License controls</span><b>3 IP slots</b></div>
+          <div class="portal-console-line"><i class="portal-line-product">▦</i><span>Product catalog</span><b>Ready to browse</b></div>
+        </div>
         <span class="portal-star portal-star-one">✦</span>
         <span class="portal-star portal-star-two">✧</span>
         <span class="portal-star portal-star-three">·</span>
@@ -68,7 +93,7 @@ onUnmounted(() => observer?.disconnect())
       </div>
 
       <div class="portal-action-grid">
-        <a class="portal-action-card portal-license-card" href="/account/licenses">
+        <a class="portal-action-card portal-license-card portal-card-reveal" href="/account/licenses" @pointermove="handleCardPointer" @pointerleave="resetCardPointer">
           <div class="portal-action-card-top">
             <span class="portal-action-icon"><span>⌁</span></span>
             <span class="portal-action-number">01</span>
@@ -80,7 +105,7 @@ onUnmounted(() => observer?.disconnect())
           <span class="portal-card-orb" aria-hidden="true" />
         </a>
 
-        <a class="portal-action-card portal-products-card" href="/account/products">
+        <a class="portal-action-card portal-products-card portal-card-reveal" href="/account/products" @pointermove="handleCardPointer" @pointerleave="resetCardPointer">
           <div class="portal-action-card-top">
             <span class="portal-action-icon"><span>▦</span></span>
             <span class="portal-action-number">02</span>
@@ -92,7 +117,7 @@ onUnmounted(() => observer?.disconnect())
           <span class="portal-card-orb" aria-hidden="true" />
         </a>
 
-        <a class="portal-action-card portal-settings-card" href="/account/settings">
+        <a class="portal-action-card portal-settings-card portal-card-reveal" href="/account/settings" @pointermove="handleCardPointer" @pointerleave="resetCardPointer">
           <div class="portal-action-card-top">
             <span class="portal-action-icon"><span>⚙</span></span>
             <span class="portal-action-number">03</span>
@@ -133,7 +158,22 @@ onUnmounted(() => observer?.disconnect())
   --portal-muted: var(--vp-c-text-2);
   width: min(1040px, 100%);
   margin: 0 auto;
+  overflow-x: clip;
   padding: 18px 0 62px;
+  isolation: isolate;
+  position: relative;
+}
+
+.portal-dashboard::before {
+  position: absolute;
+  z-index: -1;
+  inset: -80px -100px 0;
+  background:
+    radial-gradient(ellipse at 2% 12%, rgb(123 63 242 / 10%), transparent 34%),
+    radial-gradient(ellipse at 94% 48%, rgb(79 211 171 / 6%), transparent 35%);
+  content: "";
+  pointer-events: none;
+  animation: portal-ambient-drift 14s ease-in-out infinite alternate;
 }
 
 .portal-welcome {
@@ -145,6 +185,7 @@ onUnmounted(() => observer?.disconnect())
   gap: 16px;
   padding: 40px clamp(23px, 5vw, 56px);
   overflow: hidden;
+  box-shadow: 0 26px 80px rgb(3 1 10 / 20%);
   border: 1px solid var(--lumen-card-border, var(--vp-c-divider));
   border-radius: 25px;
   background:
@@ -162,12 +203,27 @@ onUnmounted(() => observer?.disconnect())
   mask-image: linear-gradient(90deg, transparent 38%, #000 100%);
   opacity: 0.14;
   pointer-events: none;
+  animation: portal-starfield 18s linear infinite;
+}
+
+.portal-welcome::after {
+  position: absolute;
+  top: -80%;
+  bottom: -80%;
+  left: -45%;
+  width: 25%;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 5%), transparent);
+  content: "";
+  pointer-events: none;
+  transform: rotate(22deg);
+  animation: portal-sheen 10s ease-in-out infinite;
 }
 
 .portal-welcome-copy {
   position: relative;
   z-index: 2;
   max-width: 470px;
+  animation: portal-copy-enter 850ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 .portal-kicker,
@@ -281,6 +337,7 @@ onUnmounted(() => observer?.disconnect())
   min-height: 300px;
   place-items: center;
   perspective: 700px;
+  animation: portal-illustration-enter 900ms 160ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 .portal-constellation-orbit {
@@ -376,6 +433,12 @@ onUnmounted(() => observer?.disconnect())
   color: white;
   transform: rotate(-9deg);
   animation: portal-core-float 5s ease-in-out infinite;
+  transition: box-shadow 250ms ease, filter 250ms ease;
+}
+
+.portal-constellation:hover .portal-core {
+  box-shadow: 0 20px 58px rgb(123 63 242 / 55%), inset 0 0 25px rgb(255 255 255 / 20%);
+  filter: brightness(1.12);
 }
 
 .portal-core > span { font-size: 1.8rem; line-height: 1; }
@@ -417,8 +480,95 @@ onUnmounted(() => observer?.disconnect())
 }
 
 .portal-node-license { top: 9%; right: 0; }
-.portal-node-products { bottom: 11%; left: -2%; animation-delay: -1.7s; }
-.portal-node-settings { right: -3%; bottom: 13%; animation-delay: -3.2s; }
+.portal-node-products { bottom: 39%; left: -2%; animation-delay: -1.7s; }
+.portal-node-settings { right: -3%; bottom: 39%; animation-delay: -3.2s; }
+
+.portal-mini-console {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  bottom: -1px;
+  width: min(290px, 82%);
+  padding: 10px 12px;
+  border: 1px solid rgb(186 163 226 / 22%);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--vp-c-bg) 91%, transparent);
+  box-shadow: 0 16px 42px rgb(0 0 0 / 22%), inset 0 1px rgb(255 255 255 / 4%);
+  backdrop-filter: blur(14px);
+  transform: translateX(-50%);
+  animation: portal-console-float 6s ease-in-out infinite;
+}
+
+.portal-console-top,
+.portal-console-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.portal-console-top {
+  justify-content: space-between;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--lumen-card-border, var(--vp-c-divider));
+  color: var(--vp-c-text-3);
+  font-size: 0.48rem;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+}
+
+.portal-console-top > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.portal-console-top > span i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--portal-green);
+  box-shadow: 0 0 9px rgb(84 216 154 / 65%);
+  animation: portal-pulse 1.8s ease-in-out infinite;
+}
+
+.portal-console-top > b {
+  color: var(--portal-purple);
+  font-size: 0.44rem;
+}
+
+.portal-console-line {
+  min-height: 27px;
+  color: var(--portal-muted);
+  font-size: 0.56rem;
+}
+
+.portal-console-line + .portal-console-line {
+  border-top: 1px solid rgb(185 164 220 / 8%);
+}
+
+.portal-console-line > i {
+  display: grid;
+  width: 17px;
+  height: 17px;
+  place-items: center;
+  border-radius: 5px;
+  background: rgb(123 63 242 / 13%);
+  color: #b89aff;
+  font-size: 0.62rem;
+  font-style: normal;
+}
+
+.portal-console-line > i.portal-line-product {
+  background: rgb(84 216 154 / 10%);
+  color: var(--portal-green);
+}
+
+.portal-console-line > b {
+  margin-left: auto;
+  color: var(--vp-c-text-3);
+  font-size: 0.49rem;
+  font-weight: 550;
+}
 
 .portal-star {
   position: absolute;
@@ -472,6 +622,8 @@ onUnmounted(() => observer?.disconnect())
 }
 
 .portal-action-card {
+  --tilt-x: 0deg;
+  --tilt-y: 0deg;
   position: relative;
   display: flex;
   min-height: 270px;
@@ -483,11 +635,29 @@ onUnmounted(() => observer?.disconnect())
   background: var(--lumen-card-bg, var(--vp-c-bg-soft));
   color: var(--portal-text);
   text-decoration: none;
+  transform: perspective(900px) rotateX(var(--tilt-x)) rotateY(var(--tilt-y));
+  transform-style: preserve-3d;
   transition: transform 220ms ease, border-color 220ms ease, box-shadow 220ms ease;
+  will-change: transform;
+}
+
+.portal-action-card::before {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(220px circle at var(--pointer-x, 50%) var(--pointer-y, 50%), rgb(167 124 255 / 13%), transparent 70%);
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms ease;
+}
+
+.portal-action-card:hover::before {
+  opacity: 1;
 }
 
 .portal-action-card:hover {
-  transform: translateY(-5px);
+  transform: perspective(900px) rotateX(var(--tilt-x)) rotateY(var(--tilt-y)) translateY(-5px);
   border-color: var(--lumen-card-hover, rgb(123 63 242 / 50%));
   box-shadow: 0 18px 40px rgb(31 15 57 / 14%);
 }
@@ -505,6 +675,20 @@ onUnmounted(() => observer?.disconnect())
   display: flex;
   align-items: start;
   justify-content: space-between;
+}
+
+.portal-card-reveal {
+  opacity: 1;
+  translate: 0 0;
+  transition: opacity 650ms ease, translate 650ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.portal-card-reveal:nth-child(2) { transition-delay: 90ms; }
+.portal-card-reveal:nth-child(3) { transition-delay: 180ms; }
+
+.portal-motion-ready .portal-card-reveal:not(.is-visible) {
+  opacity: 0;
+  translate: 0 22px;
 }
 
 .portal-action-icon {
@@ -705,6 +889,36 @@ onUnmounted(() => observer?.disconnect())
   50% { opacity: 1; transform: scale(1.1); }
 }
 
+@keyframes portal-ambient-drift {
+  from { transform: translate3d(-1%, -1%, 0) scale(0.96); }
+  to { transform: translate3d(1%, 1%, 0) scale(1.04); }
+}
+
+@keyframes portal-starfield {
+  to { background-position: 30px 30px; }
+}
+
+@keyframes portal-sheen {
+  0%, 15% { left: -45%; opacity: 0; }
+  30% { opacity: 1; }
+  55%, 100% { left: 130%; opacity: 0; }
+}
+
+@keyframes portal-copy-enter {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes portal-illustration-enter {
+  from { opacity: 0; transform: translateY(12px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes portal-console-float {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -5px; }
+}
+
 @keyframes portal-orbit {
   to { transform: rotateX(65deg) rotateZ(340deg); }
 }
@@ -742,7 +956,7 @@ onUnmounted(() => observer?.disconnect())
     padding: 33px 25px 20px;
   }
 
-  .portal-constellation { min-height: 270px; }
+  .portal-constellation { min-height: 285px; }
   .portal-action-grid { grid-template-columns: 1fr; }
   .portal-action-card { min-height: 230px; }
 }
@@ -754,10 +968,11 @@ onUnmounted(() => observer?.disconnect())
   .portal-welcome-copy > p { font-size: 0.83rem; }
   .portal-welcome-actions { align-items: flex-start; flex-direction: column; gap: 13px; }
   .portal-preview-note { align-items: flex-start; flex-wrap: wrap; line-height: 1.5; }
-  .portal-constellation { min-height: 235px; }
+  .portal-constellation { min-height: 260px; }
   .portal-node-license { right: -3%; }
-  .portal-node-products { left: -3%; }
-  .portal-node-settings { right: -4%; }
+  .portal-node-products { bottom: 42%; left: -3%; }
+  .portal-node-settings { right: -4%; bottom: 42%; }
+  .portal-mini-console { width: min(270px, 90%); }
   .portal-section { padding-top: 39px; }
   .portal-section-heading { align-items: flex-start; flex-direction: column; gap: 9px; }
   .portal-section-heading h2 { font-size: 1.45rem; }
@@ -779,6 +994,11 @@ onUnmounted(() => observer?.disconnect())
   .portal-motion-ready .portal-reveal {
     opacity: 1;
     transform: none;
+  }
+
+  .portal-motion-ready .portal-card-reveal:not(.is-visible) {
+    opacity: 1;
+    translate: none;
   }
 }
 </style>
