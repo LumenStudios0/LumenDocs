@@ -89,10 +89,12 @@ const bugReportError = ref('')
 const bugReportSent = ref(false)
 const clickSounds = ref(true)
 const ambientMusic = ref(false)
+const musicVolume = ref(35)
 const activeMusicTrack = ref('')
 const assistantEndpoint = import.meta.env.VITE_DOCS_ASSISTANT_ENDPOINT
 let audioContext: AudioContext | undefined
 let musicMaster: GainNode | undefined
+let musicOutput: GainNode | undefined
 let musicFilter: BiquadFilterNode | undefined
 let musicOscillators: OscillatorNode[] = []
 let musicSources: AudioScheduledSourceNode[] = []
@@ -583,6 +585,11 @@ function toggleClickSounds() {
   }
 }
 
+function updateMusicVolume() {
+  if (!audioContext || !musicOutput) return
+  musicOutput.gain.setTargetAtTime(musicVolume.value / 100, audioContext.currentTime, 0.025)
+}
+
 function startAmbientMusic() {
   if (!audioContext || audioContext.state !== 'running') {
     throw new Error('The audio context is not running.')
@@ -610,15 +617,18 @@ function startAmbientMusic() {
 
   musicFilter = audioContext.createBiquadFilter()
   musicMaster = audioContext.createGain()
+  musicOutput = audioContext.createGain()
   musicFilter.type = 'lowpass'
   musicFilter.frequency.setValueAtTime(activeTrack.filterFrequency, now)
+  musicOutput.gain.setValueAtTime(musicVolume.value / 100, now)
   musicMaster.gain.setValueAtTime(0.0001, now)
   musicMaster.gain.linearRampToValueAtTime(
     activeTrack.masterVolume ?? (activeTrack.chaotic ? 0.12 : 0.022),
     now + (activeTrack.chaotic ? 0.12 : 2.5),
   )
   musicFilter.connect(musicMaster)
-  musicMaster.connect(audioContext.destination)
+  musicMaster.connect(musicOutput)
+  musicOutput.connect(audioContext.destination)
 
   if (activeTrack.pad !== false) {
     for (const [index, frequency] of activeTrack.chords[0].entries()) {
@@ -908,6 +918,7 @@ function stopAmbientMusic(fadeDuration = 1.2) {
   musicOscillators = []
   musicSources = []
   musicMaster = undefined
+  musicOutput = undefined
   musicFilter = undefined
   activeTrack = undefined
   activeMusicTrack.value = ''
@@ -1030,6 +1041,22 @@ onUnmounted(() => {
     >
       {{ clickSounds ? '♪' : '♩' }}
     </button>
+    <div v-if="ambientMusic && !open" class="assistant-music-control">
+      <label class="assistant-volume-control">
+        <span class="assistant-volume-icon" aria-hidden="true">♫</span>
+        <input
+          v-model.number="musicVolume"
+          type="range"
+          min="0"
+          max="100"
+          step="1"
+          aria-label="Ambient music volume"
+          :aria-valuetext="`${musicVolume}%`"
+          :style="{ '--assistant-volume': `${musicVolume}%` }"
+          @input="updateMusicVolume"
+        >
+      </label>
+    </div>
     <button
       v-if="!open"
       class="assistant-sound assistant-music"
@@ -1063,16 +1090,32 @@ onUnmounted(() => {
             >
               {{ clickSounds ? '♪' : '♩' }}
             </button>
-            <button
-              class="assistant-sound assistant-music"
-              type="button"
-              :aria-label="ambientMusic ? `Turn off ${activeMusicTrack} music` : 'Play a random ambient soundscape'"
-              :aria-pressed="ambientMusic"
-              :title="ambientMusic ? `Now playing: ${activeMusicTrack} (click to stop)` : 'Play a random ambient soundscape'"
-              @click="toggleAmbientMusic"
-            >
-              {{ ambientMusic ? '♫' : '♬' }}
-            </button>
+            <div class="assistant-music-control">
+              <label v-if="ambientMusic" class="assistant-volume-control">
+                <span class="assistant-volume-icon" aria-hidden="true">♫</span>
+                <input
+                  v-model.number="musicVolume"
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  aria-label="Ambient music volume"
+                  :aria-valuetext="`${musicVolume}%`"
+                  :style="{ '--assistant-volume': `${musicVolume}%` }"
+                  @input="updateMusicVolume"
+                >
+              </label>
+              <button
+                class="assistant-sound assistant-music"
+                type="button"
+                :aria-label="ambientMusic ? `Turn off ${activeMusicTrack} music` : 'Play a random ambient soundscape'"
+                :aria-pressed="ambientMusic"
+                :title="ambientMusic ? `Now playing: ${activeMusicTrack} (click to stop)` : 'Play a random ambient soundscape'"
+                @click="toggleAmbientMusic"
+              >
+                {{ ambientMusic ? '♫' : '♬' }}
+              </button>
+            </div>
             <button class="assistant-close" type="button" aria-label="Close assistant" @click="open = false">
               <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
                 <path d="m5 5 10 10M15 5 5 15" />
