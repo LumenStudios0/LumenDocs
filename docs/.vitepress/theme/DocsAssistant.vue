@@ -119,7 +119,7 @@ interface AmbientTrack {
   name: string
   description: string
   secret?: boolean
-  modeOnly?: 'banana' | 'minecraft'
+  modeOnly?: 'banana' | 'minecraft' | 'dinosaur'
   chaotic?: boolean
   monkeyCalls?: boolean
   creeperEffects?: boolean
@@ -384,6 +384,39 @@ const ambientTracks: AmbientTrack[] = [
       [65.41, 130.81, 196, 261.63],
     ],
   },
+  {
+    name: 'Cretaceous Sunrise',
+    description: 'An original, cinematic prehistoric adventure with warm strings, soaring bells, and gentle dinosaur drums.',
+    modeOnly: 'dinosaur',
+    masterVolume: 0.075,
+    waveform: 'triangle',
+    filterFrequency: 2600,
+    chordInterval: 4800,
+    chordVolume: 0.11,
+    notes: {
+      frequencies: [261.63, 329.63, 392, 523.25, 440, 392, 329.63, 293.66],
+      waveform: 'sine',
+      volume: 0.095,
+      attack: 0.12,
+      decay: 1.1,
+      interval: 620,
+    },
+    rhythm: {
+      steps: [82.41, null, 110, null, 98, null, 123.47, null],
+      stepMs: 760,
+      volume: 0.035,
+      decay: 0.8,
+      waveform: 'triangle',
+      filter: 'lowpass',
+      filterFrequency: 220,
+    },
+    chords: [
+      [130.81, 196, 261.63, 329.63],
+      [146.83, 220, 293.66, 369.99],
+      [164.81, 246.94, 329.63, 392],
+      [110, 164.81, 220, 293.66],
+    ],
+  },
 ]
 
 const ambientTrackClasses = ambientTracks.map(track =>
@@ -586,8 +619,12 @@ function toggleClickSounds() {
 }
 
 function updateMusicVolume() {
+  document.documentElement.style.setProperty(
+    '--lumen-motion-speed',
+    String(Math.max(0.35, 2.5 - (musicVolume.value / 300) * 2.15)),
+  )
   if (!audioContext || !musicOutput) return
-  musicOutput.gain.setTargetAtTime(musicVolume.value / 100, audioContext.currentTime, 0.025)
+  musicOutput.gain.setTargetAtTime(musicVolume.value / 100 * 3, audioContext.currentTime, 0.025)
 }
 
 function startAmbientMusic() {
@@ -598,15 +635,17 @@ function startAmbientMusic() {
   const now = audioContext.currentTime
   const bananaTrackIndex = ambientTracks.findIndex(track => track.modeOnly === 'banana')
   const minecraftTrackIndex = ambientTracks.findIndex(track => track.modeOnly === 'minecraft')
+  const dinosaurTrackIndex = ambientTracks.findIndex(track => track.modeOnly === 'dinosaur')
   const secretTrackIndex = ambientTracks.findIndex(track => track.secret)
   const isBananaMode = document.documentElement.classList.contains('lumen-banana')
   const isMinecraftMode = document.documentElement.classList.contains('lumen-minecraft')
-  const playSecretTrack = !isBananaMode && !isMinecraftMode && Math.random() < 0.01
+  const isDinosaurMode = document.documentElement.classList.contains('lumen-dino-soundtrack')
+  const playSecretTrack = !isBananaMode && !isMinecraftMode && !isDinosaurMode && Math.random() < 0.01
   const availableTracks = ambientTracks
     .map((_, index) => index)
     .filter(index => !ambientTracks[index].secret && !ambientTracks[index].modeOnly && index !== lastMusicTrack)
-  const trackIndex = isBananaMode || isMinecraftMode
-    ? isBananaMode ? bananaTrackIndex : minecraftTrackIndex
+  const trackIndex = isDinosaurMode || isBananaMode || isMinecraftMode
+    ? isDinosaurMode ? dinosaurTrackIndex : isBananaMode ? bananaTrackIndex : minecraftTrackIndex
     : playSecretTrack
       ? secretTrackIndex
       : availableTracks[Math.floor(Math.random() * availableTracks.length)]
@@ -618,9 +657,15 @@ function startAmbientMusic() {
   musicFilter = audioContext.createBiquadFilter()
   musicMaster = audioContext.createGain()
   musicOutput = audioContext.createGain()
+  const musicLimiter = audioContext.createDynamicsCompressor()
   musicFilter.type = 'lowpass'
   musicFilter.frequency.setValueAtTime(activeTrack.filterFrequency, now)
-  musicOutput.gain.setValueAtTime(musicVolume.value / 100, now)
+  musicOutput.gain.setValueAtTime(musicVolume.value / 100 * 3, now)
+  musicLimiter.threshold.setValueAtTime(-12, now)
+  musicLimiter.knee.setValueAtTime(0, now)
+  musicLimiter.ratio.setValueAtTime(20, now)
+  musicLimiter.attack.setValueAtTime(0.003, now)
+  musicLimiter.release.setValueAtTime(0.15, now)
   musicMaster.gain.setValueAtTime(0.0001, now)
   musicMaster.gain.linearRampToValueAtTime(
     activeTrack.masterVolume ?? (activeTrack.chaotic ? 0.12 : 0.022),
@@ -628,7 +673,8 @@ function startAmbientMusic() {
   )
   musicFilter.connect(musicMaster)
   musicMaster.connect(musicOutput)
-  musicOutput.connect(audioContext.destination)
+  musicOutput.connect(musicLimiter)
+  musicLimiter.connect(audioContext.destination)
 
   if (activeTrack.pad !== false) {
     for (const [index, frequency] of activeTrack.chords[0].entries()) {
@@ -894,6 +940,20 @@ function handleThemeModeChange() {
   }
 }
 
+function handleDinosaurSoundtrack() {
+  if (ambientMusic.value && audioContext) {
+    stopAmbientMusic(0.12)
+    try {
+      startAmbientMusic()
+    } catch (error) {
+      console.error('Unable to start the dinosaur soundtrack:', error)
+      activeMusicTrack.value = ''
+    }
+    return
+  }
+  void toggleAmbientMusic()
+}
+
 function stopAmbientMusic(fadeDuration = 1.2) {
   setAmbientTrackEffect()
   if (!audioContext || !musicMaster) return
@@ -951,6 +1011,10 @@ async function toggleAmbientMusic() {
 }
 
 function resumeAmbientMusic() {
+  if (!ambientMusic.value && document.documentElement.classList.contains('lumen-dino-soundtrack')) {
+    void toggleAmbientMusic()
+    return
+  }
   if (!ambientMusic.value || !audioContext || audioContext.state === 'running') return
 
   void audioContext.resume().catch(error => {
@@ -978,6 +1042,7 @@ function onKeydown(event: KeyboardEvent) {
 }
 
 onMounted(() => {
+  updateMusicVolume()
   try {
     clickSounds.value = localStorage.getItem('lumen-click-sounds') !== 'false'
   } catch {
@@ -986,6 +1051,7 @@ onMounted(() => {
   document.addEventListener('click', playClickSound, true)
   document.addEventListener('pointerdown', resumeAmbientMusic, true)
   window.addEventListener('lumen-theme-mode-change', handleThemeModeChange)
+  window.addEventListener('lumen-dinosaur-soundtrack', handleDinosaurSoundtrack)
   window.addEventListener('keydown', onKeydown)
 })
 
@@ -993,6 +1059,7 @@ onUnmounted(() => {
   document.removeEventListener('click', playClickSound, true)
   document.removeEventListener('pointerdown', resumeAmbientMusic, true)
   window.removeEventListener('lumen-theme-mode-change', handleThemeModeChange)
+  window.removeEventListener('lumen-dinosaur-soundtrack', handleDinosaurSoundtrack)
   window.removeEventListener('keydown', onKeydown)
   window.clearInterval(musicTimer)
   window.clearInterval(noteTimer)
@@ -1048,11 +1115,11 @@ onUnmounted(() => {
           v-model.number="musicVolume"
           type="range"
           min="0"
-          max="100"
+          max="300"
           step="1"
           aria-label="Ambient music volume"
           :aria-valuetext="`${musicVolume}%`"
-          :style="{ '--assistant-volume': `${musicVolume}%` }"
+          :style="{ '--assistant-volume': `${musicVolume / 3}%` }"
           @input="updateMusicVolume"
         >
       </label>
@@ -1098,11 +1165,11 @@ onUnmounted(() => {
                   v-model.number="musicVolume"
                   type="range"
                   min="0"
-                  max="100"
+                  max="300"
                   step="1"
                   aria-label="Ambient music volume"
                   :aria-valuetext="`${musicVolume}%`"
-                  :style="{ '--assistant-volume': `${musicVolume}%` }"
+                  :style="{ '--assistant-volume': `${musicVolume / 3}%` }"
                   @input="updateMusicVolume"
                 >
               </label>

@@ -12,8 +12,13 @@ export default {
       const previousRouteChanged = router.onAfterRouteChange
       const canGoBack = ref(false)
       const canGoForward = ref(false)
+      const currentPath = ref(router.route.path)
+      const dinoEggPath = ref('')
+      const dinoEggPosition = ref({ left: '12%', top: '74%' })
+      const dinoEggsFound = ref(0)
+      const dinoCountdown = ref(0)
+      const dinoToast = ref('')
       let traversingHistory = false
-      let currentPath = router.route.path
       let slideFromLeft = true
       let sunClicks = 0
       let moonClicks = 0
@@ -22,6 +27,13 @@ export default {
       let balloonPopTimer: number | undefined
       let sunExplosionAudio: AudioContext | undefined
       let sunExplosionCleanupTimer: number | undefined
+      let floodImpactAudio: AudioContext | undefined
+      let floodImpactCleanupTimer: number | undefined
+      let dinosaurAudio: AudioContext | undefined
+      let dinosaurAudioCleanupTimer: number | undefined
+      let dinosaurCountdownTimer: number | undefined
+      let dinosaurLockdownTimer: number | undefined
+      let dinosaurToastTimer: number | undefined
       const defaultFavicon = '/assets/lumen-logo.png'
       const bananaFavicon = '/assets/banana-logo.svg'
       const minecraftToast = ref('')
@@ -34,6 +46,215 @@ export default {
         'ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown',
         'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a',
       ]
+      const dinosaurEggRoutes = [
+        '/', '/plugins/', '/getting-started/', '/getting-started/installation',
+        '/getting-started/compatibility', '/getting-started/licensing',
+        '/products/gladiator', '/products/lumen-auction', '/products/lumen-bounty',
+        '/products/lumen-duels', '/products/lumen-duels-premium', '/products/lumen-economy',
+        '/products/lumen-essentials', '/products/lumen-order', '/products/lumen-shards',
+        '/products/lumen-spawners', '/products/lumen-spoofer', '/troubleshooting',
+        '/changelogs/', '/changelogs/updates', '/keyboard-shortcuts',
+      ]
+
+      const selectDinosaurEggPages = () => {
+        try {
+          const saved = sessionStorage.getItem('lumen-dino-egg-pages')
+          const pages = saved ? JSON.parse(saved) as string[] : []
+          if (pages.length === 3 && pages.every(path => dinosaurEggRoutes.includes(path))) return pages
+          const shuffled = [...dinosaurEggRoutes]
+          for (let index = shuffled.length - 1; index > 0; index -= 1) {
+            const swapIndex = Math.floor(Math.random() * (index + 1))
+            ;[shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]]
+          }
+          const selected = shuffled.slice(0, 3)
+          sessionStorage.setItem('lumen-dino-egg-pages', JSON.stringify(selected))
+          return selected
+        } catch (error) {
+          console.error('Unable to save dinosaur egg locations:', error)
+          return dinosaurEggRoutes.slice(0, 3)
+        }
+      }
+
+      let dinosaurEggPages = dinosaurEggRoutes.slice(0, 3)
+      const readFoundEggs = () => {
+        try {
+          const saved = sessionStorage.getItem('lumen-dino-eggs-found')
+          const found = saved ? JSON.parse(saved) as string[] : []
+          return found.filter(path => dinosaurEggPages.includes(path))
+        } catch (error) {
+          console.error('Unable to read dinosaur egg progress:', error)
+          return []
+        }
+      }
+      const foundEggPages = new Set<string>()
+      const completedDinosaurEvent = () => {
+        try {
+          return localStorage.getItem('lumen-dino-extinction') === 'true'
+        } catch (error) {
+          console.error('Unable to read dinosaur event progress:', error)
+          return false
+        }
+      }
+
+      const setDinosaurToast = (message: string) => {
+        dinoToast.value = message
+        window.clearTimeout(dinosaurToastTimer)
+        dinosaurToastTimer = window.setTimeout(() => { dinoToast.value = '' }, 3400)
+      }
+
+      const playDinosaurHatchSound = () => {
+        if (!window.AudioContext) return
+        try {
+          dinosaurAudio = new AudioContext()
+          const context = dinosaurAudio
+          const now = context.currentTime
+          const master = context.createGain()
+          master.gain.setValueAtTime(0.18, now)
+          master.connect(context.destination)
+          for (const [index, frequency] of [392, 523.25, 659.25].entries()) {
+            const chirp = context.createOscillator()
+            const gain = context.createGain()
+            const start = now + index * 0.095
+            chirp.type = 'triangle'
+            chirp.frequency.setValueAtTime(frequency, start)
+            chirp.frequency.exponentialRampToValueAtTime(frequency * 1.28, start + 0.12)
+            gain.gain.setValueAtTime(0.0001, start)
+            gain.gain.exponentialRampToValueAtTime(0.5, start + 0.015)
+            gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.24)
+            chirp.connect(gain)
+            gain.connect(master)
+            chirp.start(start)
+            chirp.stop(start + 0.25)
+          }
+          dinosaurAudioCleanupTimer = window.setTimeout(() => {
+            void context.close().catch(error => console.error('Unable to close dinosaur hatch audio:', error))
+            dinosaurAudio = undefined
+          }, 600)
+        } catch (error) {
+          console.error('Unable to play dinosaur hatch sound:', error)
+        }
+      }
+
+      const registerDinosaurDiscoverer = async () => {
+        const endpoint = import.meta.env.VITE_DINO_DISCOVERIES_ENDPOINT
+        if (!endpoint) return
+        try {
+          let visitorId = localStorage.getItem('lumen-dino-visitor-id')
+          if (!visitorId) {
+            visitorId = crypto.randomUUID()
+            localStorage.setItem('lumen-dino-visitor-id', visitorId)
+          }
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ visitorId }),
+          })
+          if (!response.ok) throw new Error(`Counter returned HTTP ${response.status}`)
+        } catch (error) {
+          console.error('Unable to register dinosaur discovery:', error)
+          setDinosaurToast('Your dinosaur adventure is safe, but the global fossil counter is offline.')
+        }
+      }
+
+      const startDinosaurCountdown = () => {
+        const root = document.documentElement
+        root.classList.add('lumen-dino-countdown', 'lumen-dino-soundtrack')
+        window.dispatchEvent(new CustomEvent('lumen-dinosaur-soundtrack'))
+        setDinosaurToast('All 3 eggs found! The ground is rumbling...')
+        const deadline = Date.now() + 10000
+        try {
+          localStorage.setItem('lumen-dino-countdown-deadline', String(deadline))
+        } catch (error) {
+          console.error('Unable to save dinosaur countdown:', error)
+        }
+        const tick = () => {
+          dinoCountdown.value = Math.max(0, Math.ceil((deadline - Date.now()) / 1000))
+          if (dinoCountdown.value > 0) return
+          window.clearInterval(dinosaurCountdownTimer)
+          dinosaurCountdownTimer = undefined
+          root.classList.remove('lumen-dino-countdown')
+          root.classList.add('lumen-dino-lockdown')
+          setDinosaurToast('EMERGENCY LOCKDOWN! Tiny T. rex incoming!')
+          try {
+            localStorage.removeItem('lumen-dino-countdown-deadline')
+            localStorage.setItem('lumen-dino-extinction', 'true')
+          } catch (error) {
+            console.error('Unable to save dinosaur takeover:', error)
+          }
+          void registerDinosaurDiscoverer()
+          dinosaurLockdownTimer = window.setTimeout(() => {
+            root.classList.remove('lumen-dino-lockdown')
+            root.classList.add('lumen-dino-extinction')
+            window.dispatchEvent(new CustomEvent('lumen-theme-mode-change'))
+          }, 3400)
+        }
+        tick()
+        if (dinoCountdown.value > 0) dinosaurCountdownTimer = window.setInterval(tick, 200)
+      }
+
+      const discoverDinosaurEgg = () => {
+        const page = currentPath.value
+        if (!dinosaurEggPages.includes(page) || foundEggPages.has(page)) return
+        foundEggPages.add(page)
+        dinoEggPath.value = ''
+        dinoEggsFound.value = foundEggPages.size
+        try {
+          sessionStorage.setItem('lumen-dino-eggs-found', JSON.stringify([...foundEggPages]))
+        } catch (error) {
+          console.error('Unable to save dinosaur egg progress:', error)
+        }
+        playDinosaurHatchSound()
+        document.documentElement.classList.add('lumen-dino-egg-found')
+        window.setTimeout(() => document.documentElement.classList.remove('lumen-dino-egg-found'), 1500)
+        setDinosaurToast(`Dino Egg ${dinoEggsFound.value} of 3 hatched! ${['A tiny triceratops says hi!', 'That one was hiding from the meteor!', 'Three eggs... something is waking up!'][dinoEggsFound.value - 1]}`)
+        if (dinoEggsFound.value === 3) startDinosaurCountdown()
+      }
+
+      const resumeDinosaurEvent = () => {
+        const root = document.documentElement
+        if (completedDinosaurEvent()) {
+          root.classList.add('lumen-dino-extinction', 'lumen-dino-soundtrack')
+          return
+        }
+        try {
+          const deadline = Number(localStorage.getItem('lumen-dino-countdown-deadline'))
+          if (deadline > 0) {
+            root.classList.add('lumen-dino-countdown', 'lumen-dino-soundtrack')
+            const tick = () => {
+              dinoCountdown.value = Math.max(0, Math.ceil((deadline - Date.now()) / 1000))
+              if (dinoCountdown.value > 0) return
+              window.clearInterval(dinosaurCountdownTimer)
+              dinosaurCountdownTimer = undefined
+              root.classList.remove('lumen-dino-countdown')
+              root.classList.add('lumen-dino-lockdown')
+              localStorage.removeItem('lumen-dino-countdown-deadline')
+              localStorage.setItem('lumen-dino-extinction', 'true')
+              void registerDinosaurDiscoverer()
+              dinosaurLockdownTimer = window.setTimeout(() => {
+                root.classList.remove('lumen-dino-lockdown')
+                root.classList.add('lumen-dino-extinction')
+              }, 3400)
+            }
+            tick()
+            if (dinoCountdown.value > 0) dinosaurCountdownTimer = window.setInterval(tick, 200)
+          }
+        } catch (error) {
+          console.error('Unable to resume dinosaur countdown:', error)
+        }
+      }
+
+      const refreshDinosaurEgg = () => {
+        dinoEggPath.value = !completedDinosaurEvent() && !foundEggPages.has(currentPath.value) &&
+          dinosaurEggPages.includes(currentPath.value)
+          ? currentPath.value
+          : ''
+        if (dinoEggPath.value) {
+          dinoEggPosition.value = {
+            left: `${8 + Math.floor(Math.random() * 84)}%`,
+            top: `${16 + Math.floor(Math.random() * 72)}%`,
+          }
+        }
+      }
 
       const toggleMinecraftMode = () => {
         const root = document.documentElement
@@ -211,13 +432,72 @@ export default {
         }
       }
 
+      const playFloodImpact = () => {
+        if (!window.AudioContext) return
+
+        try {
+          floodImpactAudio = new AudioContext()
+          const context = floodImpactAudio
+          const now = context.currentTime
+          const master = context.createGain()
+          master.gain.setValueAtTime(0.55, now)
+          master.connect(context.destination)
+
+          const impact = context.createOscillator()
+          const impactVolume = context.createGain()
+          impact.type = 'sine'
+          impact.frequency.setValueAtTime(68, now)
+          impact.frequency.exponentialRampToValueAtTime(28, now + 1.6)
+          impactVolume.gain.setValueAtTime(0.0001, now)
+          impactVolume.gain.exponentialRampToValueAtTime(0.75, now + 0.06)
+          impactVolume.gain.exponentialRampToValueAtTime(0.0001, now + 1.75)
+          impact.connect(impactVolume)
+          impactVolume.connect(master)
+          impact.start(now)
+          impact.stop(now + 1.8)
+
+          const noiseBuffer = context.createBuffer(1, context.sampleRate * 1.7, context.sampleRate)
+          const samples = noiseBuffer.getChannelData(0)
+          for (let index = 0; index < samples.length; index += 1) {
+            samples[index] = (Math.random() * 2 - 1) * (1 - index / samples.length)
+          }
+
+          const surf = context.createBufferSource()
+          const surfFilter = context.createBiquadFilter()
+          const surfVolume = context.createGain()
+          surf.buffer = noiseBuffer
+          surfFilter.type = 'lowpass'
+          surfFilter.frequency.setValueAtTime(1300, now)
+          surfFilter.frequency.exponentialRampToValueAtTime(130, now + 1.55)
+          surfVolume.gain.setValueAtTime(0.0001, now)
+          surfVolume.gain.exponentialRampToValueAtTime(0.48, now + 0.08)
+          surfVolume.gain.exponentialRampToValueAtTime(0.0001, now + 1.65)
+          surf.connect(surfFilter)
+          surfFilter.connect(surfVolume)
+          surfVolume.connect(master)
+          surf.start(now)
+
+          floodImpactCleanupTimer = window.setTimeout(() => {
+            void context.close().catch(error => {
+              console.error('Unable to close flood impact audio:', error)
+            })
+            floodImpactAudio = undefined
+          }, 2100)
+        } catch (error) {
+          console.error('Unable to play flood impact sound:', error)
+        }
+      }
+
       const handleSkyClick = () => {
         const root = document.documentElement
         if (root.classList.contains('lumen-sun-exploded') || root.classList.contains('lumen-moon-flooded')) return
 
         if (root.classList.contains('dark')) {
           moonClicks += 1
-          if (moonClicks === 10) root.classList.add('lumen-moon-flooded')
+          if (moonClicks === 10) {
+            root.classList.add('lumen-moon-flooded')
+            playFloodImpact()
+          }
         } else {
           sunClicks += 1
           if (sunClicks === 10) {
@@ -261,6 +541,8 @@ export default {
       const animatePage = async (nextPath: string) => {
         await previousRouteChanged?.(nextPath)
         await nextTick()
+        currentPath.value = nextPath
+        refreshDinosaurEgg()
         addInlineCopyButtons()
         if (traversingHistory) {
           traversingHistory = false
@@ -268,8 +550,7 @@ export default {
           canGoForward.value = false
         }
         canGoBack.value = window.history.length > 1
-        if (nextPath === currentPath) return
-        currentPath = nextPath
+        if (nextPath === currentPath.value) return
 
         if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
 
@@ -287,6 +568,11 @@ export default {
       router.onAfterRouteChange = animatePage
       onMounted(() => {
         canGoBack.value = window.history.length > 1
+        dinosaurEggPages = selectDinosaurEggPages()
+        readFoundEggs().forEach(path => foundEggPages.add(path))
+        dinoEggsFound.value = foundEggPages.size
+        refreshDinosaurEgg()
+        resumeDinosaurEvent()
         window.addEventListener('popstate', handlePopState)
         window.addEventListener('keydown', handleSecretKeys)
         window.addEventListener('pointermove', handlePointerMove)
@@ -302,7 +588,14 @@ export default {
         window.clearTimeout(minecraftToastTimer)
         window.clearTimeout(balloonPopTimer)
         window.clearTimeout(sunExplosionCleanupTimer)
+        window.clearTimeout(floodImpactCleanupTimer)
+        window.clearTimeout(dinosaurAudioCleanupTimer)
+        window.clearTimeout(dinosaurLockdownTimer)
+        window.clearTimeout(dinosaurToastTimer)
+        window.clearInterval(dinosaurCountdownTimer)
         void sunExplosionAudio?.close()
+        void floodImpactAudio?.close()
+        void dinosaurAudio?.close()
         ambientWeatherTimers.forEach(timer => window.clearTimeout(timer))
         document.documentElement.classList.remove(
           'lumen-minecraft',
@@ -382,6 +675,61 @@ export default {
             ...Array.from({ length: 3 }, (_, index) =>
               h('span', { class: `lumen-flood-wave lumen-flood-wave-${index + 1}` }),
             ),
+            ...Array.from({ length: 7 }, (_, index) =>
+              h('span', { class: `lumen-flood-fish lumen-flood-fish-${index + 1}` }, '🐟'),
+            ),
+            ...Array.from({ length: 3 }, (_, index) =>
+              h('span', { class: `lumen-flood-shark lumen-flood-shark-${index + 1}` }, '🦈'),
+            ),
+          ]),
+          dinoEggPath.value && dinoEggPath.value === currentPath.value
+            ? h('button', {
+              class: 'lumen-dino-egg',
+              type: 'button',
+              'aria-label': 'A tiny dinosaur egg is hidden here. Click to hatch it.',
+              title: 'Something is moving inside...',
+              style: {
+                left: dinoEggPosition.value.left,
+                top: dinoEggPosition.value.top,
+              },
+              onClick: discoverDinosaurEgg,
+            }, '🥚')
+            : null,
+          h('div', {
+            class: 'lumen-dino-toast',
+            role: 'status',
+            'aria-live': 'polite',
+          }, dinoToast.value),
+          h('div', {
+            class: 'lumen-dino-countdown-overlay',
+            role: 'status',
+            'aria-live': 'assertive',
+          }, [
+            h('span', {}, 'ANCIENT SIGNAL DETECTED'),
+            h('strong', {}, String(dinoCountdown.value)),
+            h('span', {}, 'The ground is rumbling...'),
+          ]),
+          h('div', { class: 'lumen-dino-lockdown-overlay', 'aria-hidden': 'true' }, [
+            h('span', { class: 'lumen-dino-lockdown-label' }, 'EMERGENCY LOCKDOWN'),
+            h('span', { class: 'lumen-dino-trex' }, '🦖'),
+            h('span', { class: 'lumen-dino-lockdown-copy' }, 'Please remain calm. The T. rex is very friendly. Probably.'),
+          ]),
+          h('div', { class: 'lumen-dino-prehistoric' }, [
+            h('div', { class: 'lumen-dino-skyline', 'aria-hidden': 'true' }),
+            h('div', { class: 'lumen-dino-volcano', 'aria-hidden': 'true' }, '🌋'),
+            h('div', { class: 'lumen-dino-landscape', 'aria-hidden': 'true' }),
+            ...['🦕', '🦖', '🦴', '🦕', '🦖', '🥚'].map((dinosaur, index) =>
+              h('span', {
+                class: `lumen-dino-roamer lumen-dino-roamer-${index + 1}`,
+                'aria-hidden': 'true',
+              }, dinosaur),
+            ),
+            h('a', {
+              class: 'lumen-dino-era-label',
+              href: '/extinction',
+              'aria-label': 'Open the secret extinction discoverer count',
+              title: 'See how many explorers found the eggs',
+            }, 'WELCOME TO THE CRETACEOUS · OPEN THE FOSSIL COUNT'),
           ]),
           h('div', { class: 'lumen-mode-toast', role: 'status', 'aria-live': 'polite' }, minecraftToast.value),
           h('button', {

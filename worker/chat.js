@@ -109,6 +109,56 @@ async function submitBugReport(request, env, origin) {
   return respond({ ok: true }, 200, origin)
 }
 
+async function dinosaurDiscoveries(request, env, origin) {
+  if (!env.DINO_DISCOVERIES) {
+    return respond({ error: 'Dinosaur discovery counter is not configured' }, 503, origin)
+  }
+
+  const ip = request.headers.get('CF-Connecting-IP')
+  if (!ip) return respond({ error: 'Request could not be verified' }, 400, origin)
+  const rateLimit = await env.ASSISTANT_LIMITER.limit({ key: `dinosaur-discoveries:${ip}` })
+  if (!rateLimit.success) {
+    return respond({ error: 'Please wait before checking the dinosaur counter again' }, 429, origin)
+  }
+
+  let visitorId = ''
+  if (request.method === 'POST') {
+    const body = await request.text()
+    if (body.length > 200) return respond({ error: 'Request is too large' }, 413, origin)
+
+    let payload
+    try {
+      payload = JSON.parse(body)
+    } catch {
+      return respond({ error: 'Expected a JSON request' }, 400, origin)
+    }
+
+    visitorId = typeof payload?.visitorId === 'string' ? payload.visitorId : ''
+    if (!/^[\da-f]{8}-[\da-f]{4}-[1-8][\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/i.test(visitorId)) {
+      return respond({ error: 'A valid visitor ID is required' }, 400, origin)
+    }
+  }
+
+  try {
+    if (request.method === 'POST') {
+      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(visitorId))
+      const visitorHash = [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('')
+      await env.DINO_DISCOVERIES
+        .prepare('INSERT OR IGNORE INTO dinosaur_discoverers (visitor_hash, found_at) VALUES (?, ?)')
+        .bind(visitorHash, new Date().toISOString())
+        .run()
+    }
+
+    const result = await env.DINO_DISCOVERIES
+      .prepare('SELECT COUNT(*) AS count FROM dinosaur_discoverers')
+      .first()
+    return respond({ count: Number(result?.count ?? 0) }, 200, origin)
+  } catch (error) {
+    console.error('Dinosaur discovery counter database request failed:', error)
+    return respond({ error: 'Dinosaur discovery counter is temporarily unavailable' }, 503, origin)
+  }
+}
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get('Origin')
@@ -117,7 +167,7 @@ export default {
     }
 
     const path = new URL(request.url).pathname
-    if (path !== '/chat' && path !== '/bug-report') {
+    if (path !== '/chat' && path !== '/bug-report' && path !== '/dinosaur-discoveries') {
       return respond({ error: 'Not found' }, 404, origin)
     }
 
@@ -126,12 +176,19 @@ export default {
         status: 204,
         headers: {
           'Access-Control-Allow-Origin': origin,
-          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Methods': path === '/dinosaur-discoveries' ? 'GET, POST, OPTIONS' : 'POST, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type',
           'Access-Control-Max-Age': '86400',
           'Vary': 'Origin',
         },
       })
+    }
+
+    if (path === '/dinosaur-discoveries') {
+      if (request.method !== 'GET' && request.method !== 'POST') {
+        return respond({ error: 'Method not allowed' }, 405, origin)
+      }
+      return dinosaurDiscoveries(request, env, origin)
     }
 
     if (request.method !== 'POST') {

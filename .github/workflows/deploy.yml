@@ -46,6 +46,7 @@ jobs:
       - name: Build site
         env:
           VITE_DOCS_ASSISTANT_ENDPOINT: ${{ vars.DOCS_ASSISTANT_ENDPOINT }}
+          VITE_DINO_DISCOVERIES_ENDPOINT: ${{ vars.DINO_DISCOVERIES_ENDPOINT }}
         run: npm run docs:build
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
