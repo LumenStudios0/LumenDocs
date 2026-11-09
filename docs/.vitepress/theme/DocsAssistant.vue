@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { withBase } from 'vitepress'
 
 interface DocSection {
@@ -65,6 +65,7 @@ const open = ref(false)
 const query = ref('')
 const answers = ref<Answer[]>([])
 const input = ref<HTMLInputElement | null>(null)
+const conversation = ref<HTMLDivElement | null>(null)
 const searching = ref(false)
 const hasQuestion = computed(() => answers.value.length > 0)
 const clickSounds = ref(true)
@@ -281,6 +282,11 @@ async function askQuestion() {
   answers.value.push({ question, results, reply })
   query.value = ''
   searching.value = false
+  await nextTick()
+  conversation.value?.scrollTo({
+    top: conversation.value.scrollHeight,
+    behavior: 'smooth',
+  })
 }
 
 function focusInput() {
@@ -592,7 +598,7 @@ onUnmounted(() => {
         </div>
       </header>
 
-      <div class="assistant-conversation" aria-live="polite">
+      <div ref="conversation" class="assistant-conversation" aria-live="polite">
         <p v-if="!hasQuestion" class="assistant-welcome">
           What are you setting up? Ask about commands, permissions, versions, configuration, or troubleshooting.
         </p>
