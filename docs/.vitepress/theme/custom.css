@@ -2531,6 +2531,57 @@ html.lumen-track-cretaceous-sunrise .lumen-track-horizon {
   margin-left: 14px;
 }
 
+.lumen-nav-report-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lumen-auth-button {
+  display: inline-flex;
+  min-height: 34px;
+  max-width: 170px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 11px;
+  overflow: hidden;
+  border: 1px solid var(--lumen-card-border);
+  border-radius: 9px;
+  background: var(--lumen-card-bg);
+  color: var(--vp-c-text-1);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+}
+
+.lumen-auth-button:hover {
+  border-color: var(--vp-c-brand-1);
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1);
+}
+
+.lumen-auth-button:focus-visible {
+  outline: 2px solid var(--vp-c-brand-1);
+  outline-offset: 2px;
+}
+
+.lumen-auth-user img {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  border-radius: 50%;
+}
+
+.lumen-auth-user span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .lumen-report-button {
   display: inline-flex;
   min-height: 34px;
@@ -2632,6 +2683,23 @@ html.lumen-track-cretaceous-sunrise .lumen-track-horizon {
 @media (max-width: 640px) {
   .lumen-nav-actions {
     margin-left: 4px;
+  }
+
+  .lumen-nav-report-group {
+    gap: 5px;
+  }
+
+  .lumen-auth-button {
+    min-height: 32px;
+    max-width: 108px;
+    padding: 0 8px;
+    font-size: 11px;
+  }
+
+  .lumen-auth-user img {
+    width: 18px;
+    height: 18px;
+    flex-basis: 18px;
   }
 
   .lumen-report-button {

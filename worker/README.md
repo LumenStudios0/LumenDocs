@@ -16,6 +16,26 @@ The `/reports` endpoint sends bug reports, compatibility results, and feature re
 
 Compatibility reports require a plugin, server software, Minecraft version, one of `untested`, `broken`, `partial`, or `working`, and test details. Feature requests require a title and description. The legacy `/bug-report` endpoint remains available for the assistant's existing bug form.
 
+## Discord sign-in
+
+Discord sign-in is optional and does not restrict access to the documentation. It uses the Worker configured by `DOCS_ASSISTANT_ENDPOINT`; the Discord access token stays on the Worker, and the browser session token expires after one hour and is kept in the current tab's `sessionStorage`.
+
+1. Create an application in the [Discord Developer Portal](https://discord.com/developers/applications) and open **OAuth2**.
+2. Add the exact redirect URI `https://YOUR-WORKER-HOST/auth/callback`, replacing `YOUR-WORKER-HOST` with the deployed Worker host. Save the OAuth2 page.
+3. From the repository root, configure the Worker secrets. Wrangler prompts securely for each value:
+
+   ```sh
+   npx wrangler secret put DISCORD_CLIENT_ID
+   npx wrangler secret put DISCORD_CLIENT_SECRET
+   npx wrangler secret put AUTH_SIGNING_SECRET
+   ```
+
+   Use the application's client ID and client secret for the first two values. Generate a random value of at least 32 characters for `AUTH_SIGNING_SECRET` (for example, `openssl rand -hex 32`); never commit it or put it in a Pages build variable.
+4. Deploy the Worker with `npx wrangler deploy`.
+5. Confirm the GitHub Actions variable `DOCS_ASSISTANT_ENDPOINT` is set to the deployed Worker URL followed by `/chat`, then rebuild and deploy the GitHub Pages site.
+
+The Worker uses Discord's `identify` scope, validates OAuth state with a short-lived HttpOnly cookie, and signs a one-hour identity token. Users can sign out from the navigation; signing out clears the current tab's session token. The Pages workflow does not deploy Worker changes.
+
 ## Optional anonymous dinosaur discoverer total
 
 The secret `/extinction` page can show a site-wide total of unique browsers that completed the dinosaur egg hunt. Without this optional D1 database, the dinosaur event still works and the page reports that its global counter is not connected.

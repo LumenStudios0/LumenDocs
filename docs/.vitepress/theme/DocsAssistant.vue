@@ -27,6 +27,14 @@ interface AssistantApiResponse {
   answer?: unknown
 }
 
+interface DiscordUser {
+  id: string
+  username: string
+  globalName: string
+  avatarUrl: string
+  expiresAt: number
+}
+
 const sourceFiles = import.meta.glob('../../**/*.md', {
   query: '?raw',
   import: 'default',
@@ -94,6 +102,8 @@ const musicVolume = ref(35)
 const musicAnimationsEnabled = ref(true)
 const activeMusicTrack = ref('')
 const selectedMusicTrack = ref('')
+const discordUser = ref<DiscordUser | null>(null)
+const discordAuthNotice = ref('')
 const trackPositionSeconds = ref(0)
 const assistantEndpoint = import.meta.env.VITE_DOCS_ASSISTANT_ENDPOINT
 let audioContext: AudioContext | undefined
@@ -1142,6 +1152,94 @@ function showBugReport() {
   open.value = true
 }
 
+function getWorkerEndpoint(path: string) {
+  if (!assistantEndpoint) return ''
+
+  const endpoint = new URL(assistantEndpoint, window.location.origin)
+  endpoint.pathname = endpoint.pathname.replace(/\/chat\/?$/, '').replace(/\/$/, '') + path
+  endpoint.search = ''
+  return endpoint.toString()
+}
+
+function publishDiscordUser(user: DiscordUser | null) {
+  window.dispatchEvent(new CustomEvent('lumen-discord-user', { detail: user }))
+}
+
+async function initializeDiscordLogin() {
+  const hash = new URLSearchParams(window.location.hash.slice(1))
+  const callbackToken = hash.get('discord_token')
+  const callbackStatus = hash.get('discord_login')
+  if (callbackToken || callbackStatus) {
+    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`)
+  }
+
+  if (callbackToken) {
+    try {
+      sessionStorage.setItem('lumen-discord-session', callbackToken)
+    } catch (error) {
+      console.error('Unable to store the temporary Discord sign-in session:', error)
+    }
+  }
+  if (callbackStatus) {
+    discordAuthNotice.value = callbackStatus === 'unavailable'
+      ? 'Discord sign-in is not configured yet.'
+      : callbackStatus === 'cancelled'
+        ? 'Discord sign-in was cancelled.'
+        : 'Discord sign-in could not be completed. Please try again.'
+  }
+
+  let token = callbackToken ?? ''
+  if (!token) {
+    try {
+      token = sessionStorage.getItem('lumen-discord-session') ?? ''
+    } catch (error) {
+      console.error('Unable to read the temporary Discord sign-in session:', error)
+    }
+  }
+  if (!token || !assistantEndpoint) return
+
+  try {
+    const response = await fetch(getWorkerEndpoint('/auth/me'), {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const result = await response.json() as { user?: DiscordUser; error?: string }
+    if (!response.ok || !result.user) {
+      try {
+        sessionStorage.removeItem('lumen-discord-session')
+      } catch (error) {
+        console.error('Unable to clear the expired Discord sign-in session:', error)
+      }
+      if (callbackToken) discordAuthNotice.value = result.error ?? 'Discord sign-in expired. Please sign in again.'
+      return
+    }
+
+    discordUser.value = result.user
+    publishDiscordUser(result.user)
+  } catch (error) {
+    console.error('Unable to verify Discord sign-in:', error)
+    if (callbackToken) discordAuthNotice.value = 'Could not verify Discord sign-in. Please try again.'
+  }
+}
+
+function startDiscordLogin() {
+  const endpoint = getWorkerEndpoint('/auth/login')
+  if (!endpoint) {
+    discordAuthNotice.value = 'Discord sign-in is not configured yet.'
+    return
+  }
+  window.location.assign(endpoint)
+}
+
+function signOutDiscord() {
+  discordUser.value = null
+  try {
+    sessionStorage.removeItem('lumen-discord-session')
+  } catch (error) {
+    console.error('Unable to clear the Discord sign-in session:', error)
+  }
+  publishDiscordUser(null)
+}
+
 function getBugReportEndpoint() {
   if (!assistantEndpoint) return ''
 
@@ -1740,6 +1838,7 @@ onMounted(() => {
   window.addEventListener('lumen-theme-mode-change', handleThemeModeChange)
   window.addEventListener('lumen-dinosaur-soundtrack', handleDinosaurSoundtrack)
   window.addEventListener('keydown', onKeydown)
+  void initializeDiscordLogin()
 })
 
 onUnmounted(() => {
@@ -1763,6 +1862,27 @@ onUnmounted(() => {
 
 <template>
   <div class="lumen-assistant">
+    <Teleport to="#lumen-nav-auth">
+      <button
+        v-if="!discordUser"
+        class="lumen-auth-button"
+        type="button"
+        :title="discordAuthNotice || 'Sign in with Discord'"
+        @click="startDiscordLogin"
+      >
+        Log in
+      </button>
+      <button
+        v-else
+        class="lumen-auth-button lumen-auth-user"
+        type="button"
+        title="Sign out of Discord"
+        @click="signOutDiscord"
+      >
+        <img v-if="discordUser.avatarUrl" :src="discordUser.avatarUrl" alt="">
+        <span>{{ discordUser.globalName || discordUser.username }}</span>
+      </button>
+    </Teleport>
     <button
       v-if="!open"
       class="assistant-launcher"

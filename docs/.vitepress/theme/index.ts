@@ -821,16 +821,19 @@ export default {
           }),
         ],
         'nav-bar-content-after': () => h('div', { class: 'lumen-nav-actions' }, [
-          h('a', {
-            class: 'lumen-report-button',
-            href: '/reports/',
-            'aria-label': 'Open reports to submit a bug, compatibility report, or feature request',
-          }, [
-            h('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' }, [
-              h('path', { d: 'M12 8v9M8.5 10 5 7.5M15.5 10 19 7.5M8 13H4.5M16 13h3.5M9 5.5 7.5 3M15 5.5 16.5 3M8 17l-2 2M16 17l2 2' }),
-              h('path', { d: 'M8 11a4 4 0 0 1 8 0v5a4 4 0 0 1-8 0zM10 6h4' }),
+          h('div', { class: 'lumen-nav-report-group' }, [
+            h('a', {
+              class: 'lumen-report-button',
+              href: '/reports/',
+              'aria-label': 'Open reports to submit a bug, compatibility report, or feature request',
+            }, [
+              h('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' }, [
+                h('path', { d: 'M12 8v9M8.5 10 5 7.5M15.5 10 19 7.5M8 13H4.5M16 13h3.5M9 5.5 7.5 3M15 5.5 16.5 3M8 17l-2 2M16 17l2 2' }),
+                h('path', { d: 'M8 11a4 4 0 0 1 8 0v5a4 4 0 0 1-8 0zM10 6h4' }),
+              ]),
+              h('span', 'Submit a report'),
             ]),
-            h('span', 'Submit a report'),
+            h('div', { id: 'lumen-nav-auth' }),
           ]),
           h('div', { class: 'lumen-history-controls' }, [
             h('button', {

@@ -10,6 +10,264 @@ function respond(data, status, origin) {
   return new Response(JSON.stringify(data), { status, headers })
 }
 
+function base64UrlEncode(value) {
+  const bytes = typeof value === 'string' ? new TextEncoder().encode(value) : value
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return btoa(binary).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
+}
+
+function base64UrlDecode(value) {
+  const base64 = value.replace(/-/g, '+').replace(/_/g, '/')
+  const binary = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, '='))
+  return Uint8Array.from(binary, char => char.charCodeAt(0))
+}
+
+async function importSigningKey(secret) {
+  return crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign', 'verify'],
+  )
+}
+
+async function createLoginToken(user, env) {
+  const now = Math.floor(Date.now() / 1000)
+  const claims = {
+    iss: 'lumen-studios',
+    aud: 'lumen-docs',
+    sub: user.id,
+    username: user.username,
+    globalName: user.global_name || user.username,
+    avatarUrl: user.avatar
+      ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=64`
+      : '',
+    iat: now,
+    exp: now + 3600,
+  }
+  const unsigned = `${base64UrlEncode(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))}.${base64UrlEncode(JSON.stringify(claims))}`
+  const key = await importSigningKey(env.AUTH_SIGNING_SECRET)
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(unsigned))
+  return `${unsigned}.${base64UrlEncode(new Uint8Array(signature))}`
+}
+
+async function verifyLoginToken(token, env) {
+  if (!env.AUTH_SIGNING_SECRET || typeof token !== 'string' || token.length > 2000) return null
+  const parts = token.split('.')
+  if (parts.length !== 3) return null
+
+  try {
+    const header = JSON.parse(new TextDecoder().decode(base64UrlDecode(parts[0])))
+    const claims = JSON.parse(new TextDecoder().decode(base64UrlDecode(parts[1])))
+    if (header.alg !== 'HS256' || header.typ !== 'JWT') return null
+    const key = await importSigningKey(env.AUTH_SIGNING_SECRET)
+    const valid = await crypto.subtle.verify(
+      'HMAC',
+      key,
+      base64UrlDecode(parts[2]),
+      new TextEncoder().encode(`${parts[0]}.${parts[1]}`),
+    )
+    const now = Math.floor(Date.now() / 1000)
+    if (
+      !valid ||
+      claims.iss !== 'lumen-studios' ||
+      claims.aud !== 'lumen-docs' ||
+      typeof claims.sub !== 'string' ||
+      typeof claims.username !== 'string' ||
+      !Number.isInteger(claims.exp) ||
+      claims.exp <= now ||
+      claims.iat > now + 60
+    ) return null
+
+    return {
+      id: claims.sub,
+      username: claims.username,
+      globalName: claims.globalName,
+      avatarUrl: claims.avatarUrl,
+      expiresAt: claims.exp,
+    }
+  } catch {
+    return null
+  }
+}
+
+function redirectToSite(env, hash) {
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: `${env.ALLOWED_ORIGIN}/${hash}`,
+      'Cache-Control': 'no-store',
+      'Referrer-Policy': 'no-referrer',
+    },
+  })
+}
+
+function readCookie(request, name) {
+  const cookie = request.headers.get('Cookie') ?? ''
+  const value = cookie.split(';').map(part => part.trim()).find(part => part.startsWith(`${name}=`))
+  return value?.slice(name.length + 1) ?? ''
+}
+
+function constantTimeEqual(left, right) {
+  if (left.length !== right.length) return false
+  let difference = 0
+  for (let index = 0; index < left.length; index += 1) {
+    difference |= left.charCodeAt(index) ^ right.charCodeAt(index)
+  }
+  return difference === 0
+}
+
+async function startDiscordLogin(request, env) {
+  if (!env.DISCORD_CLIENT_ID || !env.DISCORD_CLIENT_SECRET || !env.AUTH_SIGNING_SECRET) {
+    return redirectToSite(env, '#discord_login=unavailable')
+  }
+
+  const stateBytes = crypto.getRandomValues(new Uint8Array(32))
+  const state = base64UrlEncode(stateBytes)
+  const callbackUrl = new URL('/auth/callback', request.url).toString()
+  const authorizeUrl = new URL('https://discord.com/oauth2/authorize')
+  authorizeUrl.searchParams.set('client_id', env.DISCORD_CLIENT_ID)
+  authorizeUrl.searchParams.set('redirect_uri', callbackUrl)
+  authorizeUrl.searchParams.set('response_type', 'code')
+  authorizeUrl.searchParams.set('scope', 'identify')
+  authorizeUrl.searchParams.set('state', state)
+
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: authorizeUrl.toString(),
+      'Cache-Control': 'no-store',
+      'Referrer-Policy': 'no-referrer',
+      'Set-Cookie': `lumen_discord_oauth_state=${state}; Path=/auth/callback; Max-Age=600; HttpOnly; Secure; SameSite=Lax`,
+    },
+  })
+}
+
+async function completeDiscordLogin(request, env) {
+  if (!env.DISCORD_CLIENT_ID || !env.DISCORD_CLIENT_SECRET || !env.AUTH_SIGNING_SECRET) {
+    return redirectToSite(env, '#discord_login=unavailable')
+  }
+
+  const url = new URL(request.url)
+  const state = url.searchParams.get('state') ?? ''
+  const savedState = readCookie(request, 'lumen_discord_oauth_state')
+  const clearStateCookie = 'lumen_discord_oauth_state=; Path=/auth/callback; Max-Age=0; HttpOnly; Secure; SameSite=Lax'
+  if (!state || !savedState || !constantTimeEqual(state, savedState)) {
+    return new Response('Discord sign-in could not be verified. Please try again.', {
+      status: 400,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'Set-Cookie': clearStateCookie },
+    })
+  }
+  if (url.searchParams.has('error')) {
+    return new Response(null, {
+      status: 302,
+      headers: { Location: `${env.ALLOWED_ORIGIN}/#discord_login=cancelled`, 'Cache-Control': 'no-store', 'Set-Cookie': clearStateCookie },
+    })
+  }
+
+  const code = url.searchParams.get('code') ?? ''
+  if (!code || code.length > 2048) {
+    return new Response('Discord did not provide a valid authorization code.', {
+      status: 400,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'Set-Cookie': clearStateCookie },
+    })
+  }
+
+  const callbackUrl = new URL('/auth/callback', request.url).toString()
+  let tokenResponse
+  try {
+    tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: env.DISCORD_CLIENT_ID,
+        client_secret: env.DISCORD_CLIENT_SECRET,
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: callbackUrl,
+      }),
+      signal: AbortSignal.timeout(10000),
+    })
+  } catch {
+    return new Response('Discord sign-in is temporarily unavailable.', {
+      status: 502,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'Set-Cookie': clearStateCookie },
+    })
+  }
+
+  if (!tokenResponse.ok) {
+    return new Response('Discord sign-in could not be completed. Please try again.', {
+      status: 502,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'Set-Cookie': clearStateCookie },
+    })
+  }
+
+  let tokenPayload
+  try {
+    tokenPayload = await tokenResponse.json()
+  } catch {
+    return new Response('Discord returned an invalid sign-in response.', {
+      status: 502,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'Set-Cookie': clearStateCookie },
+    })
+  }
+  if (typeof tokenPayload?.access_token !== 'string') {
+    return new Response('Discord returned an invalid sign-in response.', {
+      status: 502,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'Set-Cookie': clearStateCookie },
+    })
+  }
+
+  let profileResponse
+  try {
+    profileResponse = await fetch('https://discord.com/api/users/@me', {
+      headers: { Authorization: `Bearer ${tokenPayload.access_token}` },
+      signal: AbortSignal.timeout(10000),
+    })
+  } catch {
+    return new Response('Discord profile could not be loaded. Please try again.', {
+      status: 502,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'Set-Cookie': clearStateCookie },
+    })
+  }
+
+  if (!profileResponse.ok) {
+    return new Response('Discord profile could not be loaded. Please try again.', {
+      status: 502,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'Set-Cookie': clearStateCookie },
+    })
+  }
+
+  let user
+  try {
+    user = await profileResponse.json()
+  } catch {
+    return new Response('Discord returned an invalid profile.', {
+      status: 502,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'Set-Cookie': clearStateCookie },
+    })
+  }
+  if (typeof user?.id !== 'string' || typeof user?.username !== 'string') {
+    return new Response('Discord returned an invalid profile.', {
+      status: 502,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'Set-Cookie': clearStateCookie },
+    })
+  }
+
+  const token = await createLoginToken(user, env)
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: `${env.ALLOWED_ORIGIN}/#discord_token=${encodeURIComponent(token)}`,
+      'Cache-Control': 'no-store',
+      'Referrer-Policy': 'no-referrer',
+      'Set-Cookie': clearStateCookie,
+    },
+  })
+}
+
 function cleanReportValue(value, maxLength) {
   return value
     .trim()
@@ -200,13 +458,22 @@ async function dinosaurDiscoveries(request, env, origin) {
 
 export default {
   async fetch(request, env) {
+    const path = new URL(request.url).pathname
+    if (path === '/auth/login') {
+      if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 })
+      return startDiscordLogin(request, env)
+    }
+    if (path === '/auth/callback') {
+      if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 })
+      return completeDiscordLogin(request, env)
+    }
+
     const origin = request.headers.get('Origin')
     if (!origin || origin !== env.ALLOWED_ORIGIN) {
       return new Response('Forbidden', { status: 403 })
     }
 
-    const path = new URL(request.url).pathname
-    if (path !== '/chat' && path !== '/bug-report' && path !== '/reports' && path !== '/dinosaur-discoveries') {
+    if (path !== '/chat' && path !== '/bug-report' && path !== '/reports' && path !== '/dinosaur-discoveries' && path !== '/auth/me') {
       return respond({ error: 'Not found' }, 404, origin)
     }
 
@@ -215,12 +482,25 @@ export default {
         status: 204,
         headers: {
           'Access-Control-Allow-Origin': origin,
-          'Access-Control-Allow-Methods': path === '/dinosaur-discoveries' ? 'GET, POST, OPTIONS' : 'POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type',
+          'Access-Control-Allow-Methods': path === '/dinosaur-discoveries'
+            ? 'GET, POST, OPTIONS'
+            : path === '/auth/me'
+              ? 'GET, OPTIONS'
+              : 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Authorization, Content-Type',
           'Access-Control-Max-Age': '86400',
           'Vary': 'Origin',
         },
       })
+    }
+
+    if (path === '/auth/me') {
+      if (request.method !== 'GET') return respond({ error: 'Method not allowed' }, 405, origin)
+      const authorization = request.headers.get('Authorization') ?? ''
+      const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : ''
+      const user = await verifyLoginToken(token, env)
+      if (!user) return respond({ error: 'Sign-in has expired. Please sign in again.' }, 401, origin)
+      return respond({ user }, 200, origin)
     }
 
     if (path === '/dinosaur-discoveries') {
