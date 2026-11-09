@@ -51,7 +51,7 @@ export default {
     }
 
     const body = await request.text()
-    if (body.length > 12000) {
+    if (body.length > 6000) {
       return respond({ error: 'Request is too large' }, 413, origin)
     }
 
@@ -63,16 +63,17 @@ export default {
     }
 
     const question = typeof payload?.question === 'string' ? payload.question.trim() : ''
-    const context = Array.isArray(payload?.context) ? payload.context.slice(0, 5) : []
-    if (!question || question.length > 1000) {
-      return respond({ error: 'Question must be between 1 and 1000 characters' }, 400, origin)
+    const context = Array.isArray(payload?.context) ? payload.context.slice(0, 4) : []
+    if (!question || question.length > 500) {
+      return respond({ error: 'Question must be between 1 and 500 characters' }, 400, origin)
     }
 
     const excerpts = context
       .filter(item => typeof item?.title === 'string' && typeof item?.text === 'string')
-      .map(item => `## ${item.title.slice(0, 100)}\n${item.text.slice(0, 1800)}`)
+      .slice(0, 4)
+      .map(item => `## ${item.title.slice(0, 80)}\n${item.text.slice(0, 1000)}`)
       .join('\n\n')
-      .slice(0, 8500)
+      .slice(0, 4200)
 
     let upstream
     try {
@@ -85,11 +86,11 @@ export default {
         body: JSON.stringify({
           model: 'deepseek-chat',
           temperature: 0.3,
-          max_tokens: 300,
+          max_tokens: 90,
           messages: [
             {
               role: 'system',
-              content: 'You are the Lumen Studios documentation assistant for Minecraft server owners. Answer briefly and directly, usually in 1–3 short bullet points and under 80 words. Give only the most useful steps or details; avoid long explanations, repeated context, and unnecessary headings. Use only the supplied official documentation. Never invent commands, permissions, versions, configuration keys, product behavior, or server details. If the server version or platform matters but is unknown, ask one concise follow-up question. For troubleshooting, give the next safest check first. If the docs do not answer, say so briefly and point to https://discord.gg/lumenstudios.',
+              content: 'You are Lumen Studios’ Minecraft plugin docs assistant. Reply in at most 2 short bullets and 40 words. Use only supplied docs; never guess commands, permissions, versions, settings, or behavior. If unknown, say so and point to https://discord.gg/lumenstudios.',
             },
             { role: 'user', content: `Documentation excerpts:\n${excerpts || '(No matching excerpts found.)'}\n\nQuestion:\n${question}` },
           ],

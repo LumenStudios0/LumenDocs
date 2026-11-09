@@ -241,16 +241,18 @@ async function askQuestion() {
     .join('\n')
   const context = results
     .filter(section => (section.route.replace(/\/$/, '') || '/') !== currentPath)
-    .slice(0, 3)
-    .map(result => ({ title: result.title, text: result.text.slice(0, 1800) }))
+    .slice(0, 2)
+    .map(result => ({ title: result.title, text: result.text.slice(0, 1000) }))
 
   if (currentPageText) {
-    context.push({ title: 'Current documentation page', text: currentPageText.slice(0, 1800) })
+    context.push({ title: 'Current page', text: currentPageText.slice(0, 1000) })
   }
-  context.push({
-    title: 'Lumen Docs features and soundtracks',
-    text: `The documentation site uses dark and light themes, purple Lumen branding (#7B3FF2), animated background waves, browser back/forward controls, and copy buttons beside inline code and commands. Keyboard shortcuts: slash opens docs search, Ctrl/⌘+Shift+A opens the assistant, and Escape closes dialogs. Ambient music is optional and user-controlled. Available soundtracks: ${ambientTracks.map(track => `${track.name}: ${track.description}`).join(' ')} Currently playing: ${activeTrack?.name ?? 'none'}. Click sounds: ${clickSounds.value ? 'on' : 'off'}. Ambient music: ${ambientMusic.value ? 'on' : 'off'}.`,
-  })
+  if (/\b(site|music|sound|theme|assistant|shortcut|keyboard|wave|branding)\b/i.test(question)) {
+    context.push({
+      title: 'Site and soundtrack details',
+      text: `Lumen Studios docs use purple branding, animated waves, browser navigation, and copy buttons. Shortcuts: / opens search; Ctrl/⌘+Shift+A opens the assistant; Escape closes it. Optional soundscapes: ${ambientTracks.map(track => `${track.name}—${track.description}`).join(' ')} Currently playing: ${activeTrack?.name ?? 'none'}.`,
+    })
+  }
 
   let reply = results.length
     ? `I found ${results.length === 1 ? 'a useful guide' : 'some useful sections'} for that. Open the links below for step-by-step details.`
@@ -263,7 +265,7 @@ async function askQuestion() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question,
-          context: context.slice(0, 5),
+          context: context.slice(0, 4),
         }),
       })
       if (!response.ok) throw new Error(`Assistant request failed with status ${response.status}`)
@@ -630,7 +632,7 @@ onUnmounted(() => {
         <button type="submit" :disabled="!query.trim() || searching">{{ searching ? 'Thinking…' : 'Ask' }}</button>
       </form>
       <p class="assistant-note">
-        {{ assistantEndpoint ? 'Questions and matching guide excerpts are sent to DeepSeek for replies.' : 'Local guide search is active. AI replies need a secure backend.' }}
+        {{ assistantEndpoint ? 'Questions and selected guide excerpts are sent to DeepSeek. Full plugin source code and ZIP archives are not sent.' : 'Local guide search is active. AI replies need a secure backend.' }}
       </p>
     </section>
   </div>
