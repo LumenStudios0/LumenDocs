@@ -112,6 +112,7 @@ function getAudioContextConstructor() {
 interface AmbientTrack {
   name: string
   description: string
+  secret?: boolean
   chords: number[][]
   waveform: OscillatorType
   filterFrequency: number
@@ -228,6 +229,32 @@ const ambientTracks: AmbientTrack[] = [
       [293.66, 369.99, 440, 554.37],
       [246.94, 311.13, 392, 493.88],
       [220, 329.63, 392, 523.25],
+    ],
+  },
+  {
+    name: 'Hidden Signal',
+    description: 'A rare, original little melody drifting through a soft, dreamlike synth.',
+    secret: true,
+    waveform: 'triangle',
+    filterFrequency: 1450,
+    chordInterval: 7600,
+    chordVolume: 0.055,
+    notes: {
+      frequencies: [293.66, 369.99, 440, 554.37, 493.88, 369.99, 329.63, 440],
+      waveform: 'sine',
+      volume: 0.075,
+      attack: 0.12,
+      decay: 3.6,
+      interval: 2600,
+      partials: [
+        { ratio: 2, level: 0.12 },
+      ],
+    },
+    chords: [
+      [146.83, 220, 293.66],
+      [130.81, 196, 246.94],
+      [164.81, 220, 329.63],
+      [110, 164.81, 246.94],
     ],
   },
 ]
@@ -437,10 +464,15 @@ function startAmbientMusic() {
   }
 
   const now = audioContext.currentTime
+  const secretTrackIndex = ambientTracks.findIndex(track => track.secret)
+  const playSecretTrack = Math.random() < 0.01
   const availableTracks = ambientTracks
     .map((_, index) => index)
-    .filter(index => index !== lastMusicTrack)
-  const trackIndex = availableTracks[Math.floor(Math.random() * availableTracks.length)]
+    .filter(index => !ambientTracks[index].secret && index !== lastMusicTrack)
+  const trackIndex = playSecretTrack
+    ? secretTrackIndex
+    : availableTracks[Math.floor(Math.random() * availableTracks.length)]
+  if (trackIndex < 0) throw new Error('No ambient music tracks are available.')
   activeTrack = ambientTracks[trackIndex]
   activeMusicTrack.value = activeTrack.name
   lastMusicTrack = trackIndex
