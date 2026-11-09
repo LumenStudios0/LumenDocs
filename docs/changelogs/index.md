@@ -2,7 +2,9 @@
 
 Release notes can change with each plugin update. Use the official BuiltByBit resource pages below to check the latest release, update notes, and version-specific installation guidance. This documentation does not reproduce release history that may be out of date.
 
-[Browse recently collected updates](/changelogs/updates) · The update feed is refreshed automatically every 10 minutes when the official listings are reachable.
+[Browse recently collected updates](/changelogs/updates) · The update feed is refreshed every 10 minutes. BuiltByBit may block automated requests; a read-only `LUMEN_SOURCE_READ_TOKEN` Actions secret enables clearly labeled source-repository development updates as a fallback.
+
+To enable that fallback, add a fine-grained token with **Contents: read-only** access to the plugin repositories as the `LUMEN_SOURCE_READ_TOKEN` secret under the LumenDocs repository’s **Settings → Secrets and variables → Actions**. Never put the token in the site or source code.
 
 <div class="changelog-grid">
   <a href="https://builtbybit.com/resources/lumenauction.132967/" target="_blank" rel="noreferrer"><strong>LumenAuction</strong><span>Open official resource and release notes ↗</span></a>

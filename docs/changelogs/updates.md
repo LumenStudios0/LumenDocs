@@ -1,6 +1,6 @@
 # Recent product updates
 
-Verified update entries collected from each product’s official BuiltByBit page. The updater checks every 10 minutes; BuiltByBit availability and GitHub Actions scheduling may affect refresh timing.
+Official BuiltByBit updates are preferred. When a listing blocks automated access, recent source-repository commits are shown separately as development updates. The updater checks every 10 minutes; source availability and GitHub Actions scheduling may affect refresh timing.
 
 ## LumenAuction
 

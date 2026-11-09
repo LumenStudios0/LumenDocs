@@ -8,19 +8,20 @@ const outputPath = resolve(root, 'docs/changelogs/updates.md')
 const userAgent = 'LumenStudiosDocsChangelogBot/1.0 (+https://lumenstudio.fyi)'
 
 export const products = [
-  ['LumenAuction', 'lumenauction.132967'],
-  ['Gladiator', 'gladiator.132519'],
-  ['LumenSpoofer', 'lumenspoof.135950'],
-  ['LumenDuels', 'lumenduels.119760'],
-  ['LumenDuels Premium', 'lumenduels-premium.132188'],
-  ['LumenBounty', 'lumenbounty.132973'],
-  ['LumenEconomy', 'lumeneconomy.132341'],
-  ['LumenEssentials', 'lumenessentials.132966'],
-  ['LumenOrder', 'lumenorders.132969'],
-  ['LumenShards', 'lumenshards.116897'],
-  ['LumenSpawners', 'lumenspawners.132970'],
-].map(([name, slug]) => ({
+  ['LumenAuction', 'lumenauction.132967', 'LumenAuction'],
+  ['Gladiator', 'gladiator.132519', 'GLADIATOR'],
+  ['LumenSpoofer', 'lumenspoof.135950', 'LumenSpoofer'],
+  ['LumenDuels', 'lumenduels.119760', 'LumenDuels'],
+  ['LumenDuels Premium', 'lumenduels-premium.132188', 'LumenDuels-Premium'],
+  ['LumenBounty', 'lumenbounty.132973', null],
+  ['LumenEconomy', 'lumeneconomy.132341', 'LumenEconomy'],
+  ['LumenEssentials', 'lumenessentials.132966', 'LumenEssentials'],
+  ['LumenOrder', 'lumenorders.132969', 'LumenOrders'],
+  ['LumenShards', 'lumenshards.116897', 'LumenShards'],
+  ['LumenSpawners', 'lumenspawners.132970', 'LumenSpawners'],
+].map(([name, slug, repository]) => ({
   name,
+  repository,
   url: `https://builtbybit.com/resources/${slug}/`,
 }))
 
@@ -135,14 +136,14 @@ export function extractUpdateEntries(html, productUrl, pageUrl = productUrl) {
       : `${productUrl}updates/`
 
     if (!title || !date || text.length < 20) return []
-    return [{ title, date, text, url: href }]
+    return [{ title, date, text, url: href, source: 'builtbybit' }]
   })
 }
 
-async function fetchProductUpdates(product) {
+export async function fetchProductUpdates(product) {
   const baseUrl = new URL(product.url)
   const updateUrl = new URL('updates/', product.url)
-  const urls = [product.url, updateUrl.href]
+  const urls = [updateUrl.href, product.url]
   const pages = []
 
   for (const url of urls) {
@@ -153,16 +154,57 @@ async function fetchProductUpdates(product) {
       })
       if (!response.ok) {
         console.warn(`${product.name}: ${url} returned HTTP ${response.status}`)
+        if (response.status === 403 || response.status === 429) break
         continue
       }
       const html = await response.text()
-      pages.push(...extractUpdateEntries(html, baseUrl.href, url))
+      const entries = extractUpdateEntries(html, baseUrl.href, url)
+      pages.push(...entries)
+      if (entries.length || url === product.url) break
     } catch (error) {
       console.warn(`${product.name}: could not fetch ${url}: ${error.message}`)
     }
   }
 
   return [...new Map(pages.map(entry => [`${entry.date}|${entry.title}`, entry])).values()]
+}
+
+async function fetchRepositoryUpdates(product, token) {
+  if (!token || !product.repository) return []
+
+  const url = `https://api.github.com/repos/LumenStudios0/${product.repository}/commits?per_page=20`
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${token}`,
+        'X-GitHub-Api-Version': '2022-11-28',
+        'User-Agent': userAgent,
+      },
+      signal: AbortSignal.timeout(20000),
+    })
+    if (!response.ok) {
+      console.warn(`${product.name}: source repository returned HTTP ${response.status}`)
+      return []
+    }
+
+    const commits = await response.json()
+    return commits.flatMap(commit => {
+      const title = commit.commit?.message?.split('\n')[0]?.trim()
+      const date = commit.commit?.author?.date
+      if (!title || !date || !commit.html_url) return []
+      return [{
+        title,
+        date,
+        text: title,
+        url: commit.html_url,
+        source: 'github',
+      }]
+    })
+  } catch (error) {
+    console.warn(`${product.name}: could not fetch source repository updates: ${error.message}`)
+    return []
+  }
 }
 
 function escapeMarkdown(text) {
@@ -173,7 +215,10 @@ function renderMarkdown(cache) {
   const sections = products.map(product => {
     const entries = cache[product.name] ?? []
     const content = entries.length
-      ? entries.map(entry => `### ${escapeMarkdown(entry.title)}\n\n**${escapeMarkdown(entry.date)}** · [Official BuiltByBit update ↗](${entry.url})\n\n${escapeMarkdown(entry.text)}\n`).join('\n')
+      ? entries.map(entry => {
+        const source = entry.source === 'github' ? 'Source repository development update' : 'Official BuiltByBit update'
+        return `### ${escapeMarkdown(entry.title)}\n\n**${escapeMarkdown(entry.date)}** · [${source} ↗](${entry.url})\n\n${escapeMarkdown(entry.text)}\n`
+      }).join('\n')
       : '_No update entries have been published or could be verified for this product yet._'
     return `## ${product.name}\n\n${content}`
   })
@@ -181,7 +226,7 @@ function renderMarkdown(cache) {
   return [
     '# Recent product updates',
     '',
-    'Verified update entries collected from each product’s official BuiltByBit page. The updater checks every 10 minutes; BuiltByBit availability and GitHub Actions scheduling may affect refresh timing.',
+    'Official BuiltByBit updates are preferred. When a listing blocks automated access, recent source-repository commits are shown separately as development updates. The updater checks every 10 minutes; source availability and GitHub Actions scheduling may affect refresh timing.',
     '',
     ...sections.flatMap(section => [section, '']),
   ].join('\n').trimEnd() + '\n'
@@ -196,11 +241,17 @@ async function main() {
   }
 
   let receivedEntries = 0
+  const sourceToken = process.env.LUMEN_SOURCE_READ_TOKEN
+  if (!sourceToken) {
+    console.warn('LUMEN_SOURCE_READ_TOKEN is not configured; private repository fallback is disabled.')
+  }
   for (const product of products) {
-    const entries = await fetchProductUpdates(product)
+    const builtByBitEntries = await fetchProductUpdates(product)
+    const repositoryEntries = await fetchRepositoryUpdates(product, sourceToken)
+    const entries = [...builtByBitEntries, ...repositoryEntries]
     if (entries.length) {
       const combined = [...entries, ...(cache[product.name] ?? [])]
-      cache[product.name] = [...new Map(combined.map(entry => [`${entry.date}|${entry.title}`, entry])).values()]
+      cache[product.name] = [...new Map(combined.map(entry => [`${entry.source}|${entry.date}|${entry.title}`, entry])).values()]
         .sort((left, right) => String(right.date).localeCompare(String(left.date)))
         .slice(0, 100)
       receivedEntries += entries.length

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { extractUpdateEntries } from './refresh-changelogs.mjs'
+import { extractUpdateEntries, fetchProductUpdates } from './refresh-changelogs.mjs'
 
 test('extracts dated BuiltByBit resource updates and their official links', () => {
   const html = `
@@ -21,6 +21,7 @@ test('extracts dated BuiltByBit resource updates and their official links', () =
       date: '2026-11-08',
       text: 'Fixed auction listing persistence and added a reload option.',
       url: 'https://builtbybit.com/resources/lumenauction.132967/updates/123',
+      source: 'builtbybit',
     }],
   )
 })
@@ -44,4 +45,24 @@ test('only treats generic forum messages as release entries on the official upda
 
   assert.equal(extractUpdateEntries(message, productUrl).length, 0)
   assert.equal(extractUpdateEntries(message, productUrl, `${productUrl}updates/`).length, 1)
+})
+
+test('stops retrying a product when BuiltByBit blocks automation', async () => {
+  const originalFetch = globalThis.fetch
+  const requestedUrls = []
+  globalThis.fetch = async url => {
+    requestedUrls.push(url)
+    return new Response('Forbidden', { status: 403 })
+  }
+
+  try {
+    const entries = await fetchProductUpdates({
+      name: 'Example',
+      url: 'https://builtbybit.com/resources/example.1/',
+    })
+    assert.deepEqual(entries, [])
+    assert.equal(requestedUrls.length, 1)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })

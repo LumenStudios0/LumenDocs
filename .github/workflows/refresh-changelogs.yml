@@ -29,6 +29,8 @@ jobs:
       - name: Test changelog parser
         run: node --test scripts/refresh-changelogs.test.mjs
       - name: Collect official BuiltByBit updates
+        env:
+          LUMEN_SOURCE_READ_TOKEN: ${{ secrets.LUMEN_SOURCE_READ_TOKEN }}
         run: node scripts/refresh-changelogs.mjs
       - name: Commit changed updates
         id: changes
