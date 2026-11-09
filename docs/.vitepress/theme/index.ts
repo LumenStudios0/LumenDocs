@@ -1,11 +1,17 @@
 import DefaultTheme from 'vitepress/theme'
 import { h, defineComponent, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useData, useRouter } from 'vitepress'
+import AccountLicenseIps from './AccountLicenseIps.vue'
+import AccountProductCatalog from './AccountProductCatalog.vue'
 import DocsAssistant from './DocsAssistant.vue'
 import './custom.css'
 
 export default {
   ...DefaultTheme,
+  enhanceApp({ app }) {
+    app.component('AccountLicenseIps', AccountLicenseIps)
+    app.component('AccountProductCatalog', AccountProductCatalog)
+  },
   Layout: defineComponent({
     setup() {
       const router = useRouter()

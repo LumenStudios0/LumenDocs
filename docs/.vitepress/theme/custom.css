@@ -2708,6 +2708,72 @@ html.lumen-track-cretaceous-sunrise .lumen-track-horizon {
   text-overflow: ellipsis;
 }
 
+.lumen-account-dropdown {
+  position: relative;
+}
+
+.lumen-account-chevron {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+  transition: transform 160ms ease;
+}
+
+.lumen-auth-user[aria-expanded="true"] .lumen-account-chevron {
+  transform: rotate(180deg);
+}
+
+.lumen-account-menu {
+  position: absolute;
+  z-index: 110;
+  top: calc(100% + 10px);
+  right: 0;
+  display: grid;
+  width: 205px;
+  gap: 3px;
+  padding: 7px;
+  border: 1px solid var(--lumen-card-border);
+  border-radius: 12px;
+  background: var(--lumen-card-bg);
+  box-shadow: 0 16px 42px rgb(0 0 0 / 35%);
+  animation: lumen-nav-panel-enter 180ms ease-out both;
+}
+
+.lumen-account-menu a,
+.lumen-account-menu button {
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--vp-c-text-1);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.lumen-account-menu a:hover,
+.lumen-account-menu button:hover,
+.lumen-account-menu a:focus-visible,
+.lumen-account-menu button:focus-visible {
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1);
+  outline: none;
+}
+
+.lumen-account-menu button {
+  margin-top: 4px;
+  border-top: 1px solid var(--lumen-card-border);
+  border-radius: 0 0 8px 8px;
+}
+
 .lumen-report-button {
   display: inline-flex;
   min-height: 34px;

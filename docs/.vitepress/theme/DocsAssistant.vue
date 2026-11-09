@@ -104,6 +104,7 @@ const activeMusicTrack = ref('')
 const selectedMusicTrack = ref('')
 const discordUser = ref<DiscordUser | null>(null)
 const discordAuthNotice = ref('')
+const accountMenuOpen = ref(false)
 const trackPositionSeconds = ref(0)
 const assistantEndpoint = import.meta.env.VITE_DOCS_ASSISTANT_ENDPOINT
 let audioContext: AudioContext | undefined
@@ -1231,6 +1232,7 @@ function startDiscordLogin() {
 }
 
 function signOutDiscord() {
+  accountMenuOpen.value = false
   discordUser.value = null
   try {
     sessionStorage.removeItem('lumen-discord-session')
@@ -1238,6 +1240,17 @@ function signOutDiscord() {
     console.error('Unable to clear the Discord sign-in session:', error)
   }
   publishDiscordUser(null)
+}
+
+function handleAccountMenuPointerDown(event: PointerEvent) {
+  const target = event.target
+  if (target instanceof Element && !target.closest('.lumen-account-dropdown')) {
+    accountMenuOpen.value = false
+  }
+}
+
+function handleAccountMenuKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') accountMenuOpen.value = false
 }
 
 function getBugReportEndpoint() {
@@ -1838,6 +1851,8 @@ onMounted(() => {
   window.addEventListener('lumen-theme-mode-change', handleThemeModeChange)
   window.addEventListener('lumen-dinosaur-soundtrack', handleDinosaurSoundtrack)
   window.addEventListener('keydown', onKeydown)
+  document.addEventListener('pointerdown', handleAccountMenuPointerDown)
+  window.addEventListener('keydown', handleAccountMenuKeydown)
   void initializeDiscordLogin()
 })
 
@@ -1847,6 +1862,8 @@ onUnmounted(() => {
   window.removeEventListener('lumen-theme-mode-change', handleThemeModeChange)
   window.removeEventListener('lumen-dinosaur-soundtrack', handleDinosaurSoundtrack)
   window.removeEventListener('keydown', onKeydown)
+  document.removeEventListener('pointerdown', handleAccountMenuPointerDown)
+  window.removeEventListener('keydown', handleAccountMenuKeydown)
   window.clearInterval(musicTimer)
   window.clearInterval(noteTimer)
   window.clearInterval(progressTimer)
@@ -1872,16 +1889,36 @@ onUnmounted(() => {
       >
         Log in
       </button>
-      <button
-        v-else
-        class="lumen-auth-button lumen-auth-user"
-        type="button"
-        title="Sign out of Discord"
-        @click="signOutDiscord"
-      >
-        <img v-if="discordUser.avatarUrl" :src="discordUser.avatarUrl" alt="">
-        <span>{{ discordUser.globalName || discordUser.username }}</span>
-      </button>
+      <div v-else class="lumen-account-dropdown">
+        <button
+          class="lumen-auth-button lumen-auth-user"
+          type="button"
+          :aria-expanded="accountMenuOpen"
+          aria-haspopup="menu"
+          aria-controls="lumen-account-menu"
+          title="Open account menu"
+          @click="accountMenuOpen = !accountMenuOpen"
+        >
+          <img v-if="discordUser.avatarUrl" :src="discordUser.avatarUrl" alt="">
+          <span>{{ discordUser.globalName || discordUser.username }}</span>
+          <svg class="lumen-account-chevron" viewBox="0 0 12 12" aria-hidden="true">
+            <path d="m2 4 4 4 4-4" />
+          </svg>
+        </button>
+        <nav
+          v-if="accountMenuOpen"
+          id="lumen-account-menu"
+          class="lumen-account-menu"
+          aria-label="Account menu"
+          role="menu"
+        >
+          <a href="/account/" role="menuitem" @click="accountMenuOpen = false">Dashboard</a>
+          <a href="/account/licenses" role="menuitem" @click="accountMenuOpen = false">My licenses</a>
+          <a href="/account/products" role="menuitem" @click="accountMenuOpen = false">Products purchased</a>
+          <a href="/account/settings" role="menuitem" @click="accountMenuOpen = false">Account settings</a>
+          <button type="button" role="menuitem" @click="signOutDiscord">Sign out</button>
+        </nav>
+      </div>
     </Teleport>
     <button
       v-if="!open"

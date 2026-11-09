@@ -52,6 +52,16 @@ export default defineConfig({
       { text: 'Shortcuts', link: '/keyboard-shortcuts' },
     ],
     sidebar: [
+      {
+        text: 'Customer account',
+        collapsed: true,
+        items: [
+          { text: 'Dashboard', link: '/account/' },
+          { text: 'My licenses', link: '/account/licenses' },
+          { text: 'Products purchased', link: '/account/products' },
+          { text: 'Account settings', link: '/account/settings' },
+        ],
+      },
       { text: 'Reports', link: '/reports/' },
       {
         text: 'Getting started',
