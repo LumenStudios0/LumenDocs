@@ -434,7 +434,7 @@ html.lumen-moon-flooded .VPHome { --fall-x: 4vw; --fall-tilt: 3deg; animation-de
 @keyframes lumen-shooting-star {
   0%, 78%, 100% {
     opacity: 0;
-    transform: translate3d(0, 0, 0) rotate(-35deg);
+    transform: translate3d(0, 0, 0) rotate(145deg);
   }
 
   80% {
@@ -443,7 +443,7 @@ html.lumen-moon-flooded .VPHome { --fall-x: 4vw; --fall-tilt: 3deg; animation-de
 
   86% {
     opacity: 0;
-    transform: translate3d(-42vw, 36vh, 0) rotate(-35deg);
+    transform: translate3d(-42vw, 36vh, 0) rotate(145deg);
   }
 }
 
