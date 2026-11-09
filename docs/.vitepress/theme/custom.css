@@ -113,6 +113,7 @@ body {
   background-attachment: fixed;
   background-repeat: no-repeat;
   background-size: cover;
+  transition: background-color 1.2s ease, color 1.2s ease;
 }
 
 .dark body {
@@ -140,6 +141,58 @@ body::before {
 #app {
   position: relative;
   z-index: 1;
+}
+
+.lumen-day-night-fade {
+  position: fixed;
+  z-index: 2;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.lumen-day-night-fade::before,
+.lumen-day-night-fade::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  opacity: 0;
+  transition: opacity 1.4s ease;
+}
+
+.lumen-day-night-fade::before {
+  background:
+    radial-gradient(ellipse at 82% 10%, rgba(255, 197, 104, 0.1), transparent 44%),
+    linear-gradient(180deg, rgba(255, 231, 184, 0.035), transparent 52%);
+  opacity: 1;
+}
+
+html.dark .lumen-day-night-fade::before {
+  opacity: 0;
+}
+
+.lumen-day-night-fade::after {
+  background:
+    radial-gradient(ellipse at 78% 12%, rgba(123, 80, 207, 0.1), transparent 42%),
+    linear-gradient(180deg, rgba(19, 13, 39, 0.1), transparent 56%);
+}
+
+html.dark .lumen-day-night-fade::after {
+  opacity: 1;
+}
+
+.VPNav,
+.VPSidebar,
+.VPDoc .content-container,
+.VPHome .VPHero .main,
+.VPHome .VPFeature .box,
+.home-card,
+.plugin-card {
+  transition:
+    background-color 1.2s ease,
+    border-color 1.2s ease,
+    color 1.2s ease,
+    box-shadow 1.2s ease;
 }
 
 .dark body::before {
@@ -617,11 +670,49 @@ body::before {
   animation-name: lumen-moon-glow;
 }
 
+.lumen-pixel-moon {
+  background: none;
+}
+
+.lumen-pixel-moon::before,
+.lumen-pixel-moon::after {
+  position: absolute;
+  inset: 0;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+  content: "";
+  pointer-events: none;
+  transition: opacity 900ms ease;
+}
+
+.lumen-pixel-moon::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Ccircle cx='48' cy='48' r='21' fill='%23fff0a8'/%3E%3Cg fill='none' stroke='%23ffc85c' stroke-linecap='square' stroke-width='8'%3E%3Cpath d='M48 4v15m0 58v15M4 48h15m58 0h15M17 17l11 11m40 40 11 11M79 17 68 28M28 68 17 79'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+.lumen-pixel-moon::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Cpath d='M70 72A35 35 0 0 1 36 18a37 37 0 1 0 45 45 35 35 0 0 1-11 9Z' fill='%23e4d7ff' stroke='%23b990ff' stroke-width='3'/%3E%3Ccircle cx='47' cy='68' r='4' fill='%23b990ff'/%3E%3C/svg%3E");
+  opacity: 0;
+}
+
+html.dark .lumen-pixel-moon::before {
+  opacity: 0;
+}
+
+html.dark .lumen-pixel-moon::after {
+  opacity: 1;
+}
+
 html.lumen-banana .lumen-pixel-moon {
   background: url("/assets/banana-logo.svg") center / contain no-repeat;
   filter: drop-shadow(0 0 9px rgba(255, 208, 45, 0.85)) drop-shadow(0 0 24px rgba(214, 154, 14, 0.48));
   image-rendering: pixelated;
   animation-name: lumen-sun-glow;
+}
+
+html.lumen-banana .lumen-pixel-moon::before,
+html.lumen-banana .lumen-pixel-moon::after {
+  opacity: 0;
 }
 
 .lumen-banana .VPNavBarTitle img.logo {
@@ -3853,6 +3944,13 @@ html.lumen-track-cretaceous-sunrise .lumen-track-horizon {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .lumen-day-night-fade::before,
+  .lumen-day-night-fade::after,
+  .lumen-pixel-moon::before,
+  .lumen-pixel-moon::after {
+    transition: none;
+  }
+
   body::before {
     animation: none;
   }

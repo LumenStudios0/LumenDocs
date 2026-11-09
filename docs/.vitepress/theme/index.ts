@@ -604,6 +604,7 @@ export default {
 
       return () => h(DefaultTheme.Layout, null, {
         'layout-top': () => [
+          h('div', { class: 'lumen-day-night-fade', 'aria-hidden': 'true' }),
           h('div', { class: 'lumen-sky', 'aria-hidden': 'true' }, [
             ...Array.from({ length: 10 }, (_, index) =>
               h('span', { class: `lumen-pixel-star lumen-pixel-star-${index + 1}` }),
