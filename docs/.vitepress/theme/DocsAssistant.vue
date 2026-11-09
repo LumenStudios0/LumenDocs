@@ -1773,65 +1773,6 @@ onUnmounted(() => {
       <span class="assistant-spark" aria-hidden="true">✦</span>
       <span>Ask the docs</span>
     </button>
-    <button
-      v-if="!open"
-      class="assistant-report-launcher"
-      type="button"
-      aria-label="Report a plugin bug"
-      @click="showBugReport"
-    >
-      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        <path d="M12 8v9M8.5 10 5 7.5M15.5 10 19 7.5M8 13H4.5M16 13h3.5M9 5.5 7.5 3M15 5.5 16.5 3M8 17l-2 2M16 17l2 2" />
-        <path d="M8 11a4 4 0 0 1 8 0v5a4 4 0 0 1-8 0zM10 6h4" />
-      </svg>
-      <span>Report a bug</span>
-    </button>
-    <button
-      v-if="!open"
-      class="assistant-sound"
-      type="button"
-      :aria-label="clickSounds ? 'Turn off click sounds' : 'Turn on click sounds'"
-      :title="clickSounds ? 'Turn off click sounds' : 'Turn on click sounds'"
-      @click="toggleClickSounds"
-    >
-      {{ clickSounds ? '♪' : '♩' }}
-    </button>
-    <div v-if="ambientMusic && !open" class="assistant-music-control">
-      <label class="assistant-volume-control">
-        <span class="assistant-volume-icon" aria-hidden="true">♫</span>
-        <input
-          v-model.number="musicVolume"
-          type="range"
-          min="0"
-          max="300"
-          step="1"
-          aria-label="Ambient music volume"
-          :aria-valuetext="`${musicVolume}%`"
-          :style="{ '--assistant-volume': `${musicVolume / 3}%` }"
-          @input="updateMusicVolume"
-        >
-      </label>
-      <label class="assistant-animation-toggle" title="Toggle soundtrack animations">
-        <input
-          v-model="musicAnimationsEnabled"
-          type="checkbox"
-          aria-label="Enable soundtrack animations"
-          @change="updateMusicAnimationPreference"
-        >
-        <span>FX</span>
-      </label>
-    </div>
-    <button
-      v-if="!open"
-      class="assistant-sound assistant-music"
-      type="button"
-      :aria-label="ambientMusic ? `Turn off ${activeMusicTrack} music` : selectedMusicTrack ? `Play ${selectedMusicTrack} soundtrack` : 'Play a random ambient soundscape'"
-      :aria-pressed="ambientMusic"
-      :title="ambientMusic ? `Now playing: ${activeMusicTrack} (click to stop)` : selectedMusicTrack ? `Play ${selectedMusicTrack} soundtrack` : 'Play a random ambient soundscape'"
-      @click="toggleAmbientMusic"
-    >
-      {{ ambientMusic ? '♫' : '♬' }}
-    </button>
     <Transition name="assistant-popover">
       <section v-if="open" class="assistant-panel" aria-label="Lumen Docs Assistant">
         <header class="assistant-header">
@@ -1856,29 +1797,6 @@ onUnmounted(() => {
               {{ clickSounds ? '♪' : '♩' }}
             </button>
             <div class="assistant-music-control">
-              <label v-if="ambientMusic" class="assistant-volume-control">
-                <span class="assistant-volume-icon" aria-hidden="true">♫</span>
-                <input
-                  v-model.number="musicVolume"
-                  type="range"
-                  min="0"
-                  max="300"
-                  step="1"
-                  aria-label="Ambient music volume"
-                  :aria-valuetext="`${musicVolume}%`"
-                  :style="{ '--assistant-volume': `${musicVolume / 3}%` }"
-                  @input="updateMusicVolume"
-                >
-              </label>
-              <label v-if="ambientMusic" class="assistant-animation-toggle" title="Toggle soundtrack animations">
-                <input
-                  v-model="musicAnimationsEnabled"
-                  type="checkbox"
-                  aria-label="Enable soundtrack animations"
-                  @change="updateMusicAnimationPreference"
-                >
-                <span>FX</span>
-              </label>
               <button
                 class="assistant-sound assistant-music"
                 type="button"
@@ -1898,24 +1816,52 @@ onUnmounted(() => {
           </div>
         </header>
 
-        <label class="assistant-track-picker">
-          <span>Soundtrack</span>
-          <select
-            v-model="selectedMusicTrack"
-            aria-label="Select ambient soundtrack"
-            @change="handleMusicTrackSelection"
-          >
-            <option value="">Random ambient tracks</option>
-            <option
-              v-for="track in selectableAmbientTracks"
-              :key="track.name"
-              :value="track.name"
-              :title="track.description"
+        <details class="assistant-audio-settings">
+          <summary>Sound settings</summary>
+          <label class="assistant-track-picker">
+            <span>Soundtrack</span>
+            <select
+              v-model="selectedMusicTrack"
+              aria-label="Select ambient soundtrack"
+              @change="handleMusicTrackSelection"
             >
-              {{ track.name }}
-            </option>
-          </select>
-        </label>
+              <option value="">Random ambient tracks</option>
+              <option
+                v-for="track in selectableAmbientTracks"
+                :key="track.name"
+                :value="track.name"
+                :title="track.description"
+              >
+                {{ track.name }}
+              </option>
+            </select>
+          </label>
+          <div v-if="ambientMusic" class="assistant-audio-options">
+            <label class="assistant-volume-control">
+              <span class="assistant-volume-icon" aria-hidden="true">♫</span>
+              <input
+                v-model.number="musicVolume"
+                type="range"
+                min="0"
+                max="300"
+                step="1"
+                aria-label="Ambient music volume"
+                :aria-valuetext="`${musicVolume}%`"
+                :style="{ '--assistant-volume': `${musicVolume / 3}%` }"
+                @input="updateMusicVolume"
+              >
+            </label>
+            <label class="assistant-animation-toggle">
+              <input
+                v-model="musicAnimationsEnabled"
+                type="checkbox"
+                aria-label="Enable soundtrack animations"
+                @change="updateMusicAnimationPreference"
+              >
+              <span>Animations</span>
+            </label>
+          </div>
+        </details>
 
         <div ref="conversation" class="assistant-conversation" aria-live="polite">
           <template v-if="assistantView === 'chat'">
@@ -1925,9 +1871,9 @@ onUnmounted(() => {
               <p>Get quick answers from our plugin guides.</p>
               <div class="assistant-suggestions" aria-label="Suggested questions">
                 <button type="button" @click="useSuggestedQuestion('How do I install a plugin?')">Install a plugin</button>
-                <button type="button" @click="useSuggestedQuestion('Show me the available commands and permissions')">Commands &amp; permissions</button>
                 <button type="button" @click="useSuggestedQuestion('How do I configure a plugin?')">Configuration help</button>
               </div>
+              <button class="assistant-report-link" type="button" @click="showBugReport">Report a plugin issue</button>
             </div>
             <article v-for="(answer, index) in answers" :key="`${index}-${answer.question}`" class="assistant-answer">
               <p class="assistant-question">{{ answer.question }}</p>
