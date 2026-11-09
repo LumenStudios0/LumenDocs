@@ -125,16 +125,18 @@ body::before {
   position: absolute;
   top: 72px;
   right: clamp(12px, 4vw, 50px);
-  width: 40px;
+  width: 56px;
   aspect-ratio: 1;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'%3E%3Cg fill='%23ffc85c'%3E%3Cpath d='M30 0h20v10H30zM20 10h40v10H20zM10 20h60v10H10zM0 30h80v20H0zM10 50h60v10H10zM20 60h40v10H20zM30 70h20v10H30z'/%3E%3C/g%3E%3Cg fill='%23fff0a8'%3E%3Cpath d='M30 20h20v10H30zM20 30h40v20H20zM30 50h20v10H30z'/%3E%3C/g%3E%3C/svg%3E") center / contain no-repeat;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96' shape-rendering='crispEdges'%3E%3Cg fill='%23ffc85c'%3E%3Cpath d='M40 0h16v8H40zM40 88h16v8H40zM0 40h8v16H0zM88 40h8v16h-8zM16 16h8v8h-8zM72 16h8v8h-8zM16 72h8v8h-8zM72 72h8v8h-8zM40 16h16v8H40zM24 24h48v8H24zM16 32h64v8H16zM8 40h80v16H8zM16 56h64v8H16zM24 64h48v8H24zM40 72h16v8H40z'/%3E%3C/g%3E%3Cg fill='%23fff0a8'%3E%3Cpath d='M40 24h16v8H40zM24 32h16v8H24zM16 40h16v8H16zM24 56h24v8H24z'/%3E%3C/g%3E%3C/svg%3E") center / contain no-repeat;
+  image-rendering: pixelated;
   filter: drop-shadow(0 0 9px rgba(255, 194, 74, 0.58)) drop-shadow(0 0 24px rgba(255, 174, 56, 0.3));
   opacity: 0.75;
   animation: lumen-sun-glow 8s ease-in-out infinite;
 }
 
 .dark .lumen-pixel-moon {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'%3E%3Cg fill='%23e4d7ff'%3E%3Cpath d='M30 0h20v10H30zM20 10h40v10H20zM10 20h60v10H10zM0 30h70v10H0zM0 40h60v10H0zM10 50h50v10H10zM20 60h30v10H20zM30 70h10v10H30z'/%3E%3C/g%3E%3Cg fill='%23b990ff' opacity='.72'%3E%3Cpath d='M20 20h10v10H20zM40 40h10v10H40zM20 50h10v10H20z'/%3E%3C/g%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96' shape-rendering='crispEdges'%3E%3Cg fill='%23e4d7ff'%3E%3Cpath d='M40 8h16v8H40zM24 16h48v8H24zM16 24h64v8H16zM8 32h80v16H8zM8 48h80v16H8zM16 64h64v8H16zM24 72h48v8H24zM40 80h16v8H40z'/%3E%3C/g%3E%3Cg fill='%23b990ff'%3E%3Cpath d='M24 32h16v8H24zM56 24h16v8H56zM56 48h16v8H56zM40 64h16v8H40z'/%3E%3C/g%3E%3Cg fill='%23f8f2ff' opacity='.72'%3E%3Cpath d='M40 16h16v8H40zM16 40h8v16h-8z'/%3E%3C/g%3E%3C/svg%3E");
+  image-rendering: pixelated;
   filter: drop-shadow(0 0 10px rgba(192, 154, 255, 0.62)) drop-shadow(0 0 26px rgba(123, 63, 242, 0.3));
   animation-name: lumen-moon-glow;
 }
@@ -1404,7 +1406,7 @@ body::before {
   .lumen-pixel-moon {
     top: 68px;
     right: 10px;
-    width: 30px;
+    width: 44px;
   }
 
 }
