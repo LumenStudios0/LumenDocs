@@ -22,6 +22,8 @@ export default {
       const minecraftToast = ref('')
       let minecraftToastTimer: number | undefined
       let phraseBuffer = ''
+      let minecraftModeEnabled = false
+      let bananaModeEnabled = false
       let konamiIndex = 0
       const konamiCode = [
         'ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown',
@@ -32,9 +34,34 @@ export default {
         const root = document.documentElement
         const enabled = !root.classList.contains('lumen-minecraft')
         root.classList.toggle('lumen-minecraft', enabled)
+        minecraftModeEnabled = enabled
+        if (enabled && bananaModeEnabled) {
+          root.classList.remove('lumen-banana')
+          bananaModeEnabled = false
+        }
         minecraftToast.value = enabled ? 'Minecraft mode enabled' : 'Minecraft mode disabled'
         window.clearTimeout(minecraftToastTimer)
         minecraftToastTimer = window.setTimeout(() => { minecraftToast.value = '' }, 2400)
+      }
+
+      const toggleBananaMode = () => {
+        const root = document.documentElement
+        const enabled = !root.classList.contains('lumen-banana')
+        root.classList.toggle('lumen-banana', enabled)
+        bananaModeEnabled = enabled
+        if (enabled && minecraftModeEnabled) {
+          root.classList.remove('lumen-minecraft')
+          minecraftModeEnabled = false
+        }
+        minecraftToast.value = enabled ? '🍌 Banana mode! 🍌' : 'Banana mode off'
+        window.clearTimeout(minecraftToastTimer)
+        minecraftToastTimer = window.setTimeout(() => { minecraftToast.value = '' }, 2400)
+      }
+
+      const handlePointerMove = (event: PointerEvent) => {
+        if (!bananaModeEnabled) return
+        document.documentElement.style.setProperty('--lumen-cursor-x', `${event.clientX}px`)
+        document.documentElement.style.setProperty('--lumen-cursor-y', `${event.clientY}px`)
       }
 
       const handleSecretKeys = (event: KeyboardEvent) => {
@@ -61,10 +88,14 @@ export default {
 
         if (/^[a-z]$/.test(key)) {
           phraseBuffer = (phraseBuffer + key).slice(-'minecraft'.length)
-          if (phraseBuffer === 'minecraft') {
+          if (phraseBuffer.endsWith('minecraft')) {
             phraseBuffer = ''
             konamiIndex = 0
             toggleMinecraftMode()
+          } else if (phraseBuffer.endsWith('banana')) {
+            phraseBuffer = ''
+            konamiIndex = 0
+            toggleBananaMode()
           }
         } else if (!key.startsWith('Arrow')) {
           phraseBuffer = ''
@@ -170,6 +201,7 @@ export default {
         canGoBack.value = window.history.length > 1
         window.addEventListener('popstate', handlePopState)
         window.addEventListener('keydown', handleSecretKeys)
+        window.addEventListener('pointermove', handlePointerMove)
         addInlineCopyButtons()
         scheduleAmbientWeather()
       })
@@ -177,10 +209,13 @@ export default {
         router.onAfterRouteChange = previousRouteChanged
         window.removeEventListener('popstate', handlePopState)
         window.removeEventListener('keydown', handleSecretKeys)
+        window.removeEventListener('pointermove', handlePointerMove)
         window.clearTimeout(ambientWeatherTimer)
         window.clearTimeout(minecraftToastTimer)
         ambientWeatherTimers.forEach(timer => window.clearTimeout(timer))
         document.documentElement.classList.remove(
+          'lumen-minecraft',
+          'lumen-banana',
           'lumen-weather-meteors',
           'lumen-weather-rain',
           'lumen-weather-balloon-event',
@@ -216,6 +251,12 @@ export default {
             h('span', { class: 'lumen-tide-wave lumen-tide-wave-1' }),
             h('span', { class: 'lumen-tide-wave lumen-tide-wave-2' }),
           ]),
+          h('div', { class: 'lumen-banana-sky', 'aria-hidden': 'true' },
+            Array.from({ length: 24 }, (_, index) =>
+              h('span', { class: `lumen-falling-banana lumen-falling-banana-${index + 1}` }, '🍌'),
+            ),
+          ),
+          h('span', { class: 'lumen-banana-cursor', 'aria-hidden': 'true' }, '🍌'),
           h('div', { class: 'lumen-disaster-overlay', 'aria-hidden': 'true' }, [
             h('span', { class: 'lumen-disaster-flash' }),
             h('span', { class: 'lumen-disaster-ring' }),
@@ -226,7 +267,7 @@ export default {
               h('span', { class: `lumen-flood-wave lumen-flood-wave-${index + 1}` }),
             ),
           ]),
-          h('div', { class: 'lumen-minecraft-toast', role: 'status', 'aria-live': 'polite' }, minecraftToast.value),
+          h('div', { class: 'lumen-mode-toast', role: 'status', 'aria-live': 'polite' }, minecraftToast.value),
           h('button', {
             class: 'lumen-pixel-moon',
             type: 'button',

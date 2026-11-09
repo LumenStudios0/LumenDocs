@@ -99,6 +99,7 @@ let musicSources: AudioScheduledSourceNode[] = []
 let musicTimer: number | undefined
 let noteTimer: number | undefined
 let rainTimer: number | undefined
+let monkeyTimer: number | undefined
 let musicChordIndex = 0
 let musicNoteIndex = 0
 let lastMusicTrack = -1
@@ -113,6 +114,8 @@ interface AmbientTrack {
   name: string
   description: string
   secret?: boolean
+  modeOnly?: boolean
+  monkeyCalls?: boolean
   chords: number[][]
   waveform: OscillatorType
   filterFrequency: number
@@ -255,6 +258,31 @@ const ambientTracks: AmbientTrack[] = [
       [130.81, 196, 246.94],
       [164.81, 220, 329.63],
       [110, 164.81, 246.94],
+    ],
+  },
+  {
+    name: 'Banana Jungle',
+    description: 'A chaotic original jungle jam with chattery, cartoonish synth-monkey calls.',
+    modeOnly: true,
+    monkeyCalls: true,
+    waveform: 'triangle',
+    filterFrequency: 2100,
+    chordInterval: 2100,
+    chordVolume: 0.065,
+    texture: { filter: 'bandpass', frequency: 920, volume: 0.026, pulse: 0.02 },
+    notes: {
+      frequencies: [392, 523.25, 659.25, 587.33, 783.99, 523.25, 698.46, 440],
+      waveform: 'square',
+      volume: 0.045,
+      attack: 0.015,
+      decay: 0.36,
+      interval: 420,
+    },
+    chords: [
+      [130.81, 196, 261.63, 329.63],
+      [146.83, 220, 293.66, 369.99],
+      [123.47, 185, 246.94, 311.13],
+      [164.81, 220, 277.18, 349.23],
     ],
   },
 ]
@@ -464,14 +492,18 @@ function startAmbientMusic() {
   }
 
   const now = audioContext.currentTime
+  const bananaTrackIndex = ambientTracks.findIndex(track => track.modeOnly)
   const secretTrackIndex = ambientTracks.findIndex(track => track.secret)
-  const playSecretTrack = Math.random() < 0.01
+  const isBananaMode = document.documentElement.classList.contains('lumen-banana')
+  const playSecretTrack = !isBananaMode && Math.random() < 0.01
   const availableTracks = ambientTracks
     .map((_, index) => index)
-    .filter(index => !ambientTracks[index].secret && index !== lastMusicTrack)
-  const trackIndex = playSecretTrack
-    ? secretTrackIndex
-    : availableTracks[Math.floor(Math.random() * availableTracks.length)]
+    .filter(index => !ambientTracks[index].secret && !ambientTracks[index].modeOnly && index !== lastMusicTrack)
+  const trackIndex = isBananaMode
+    ? bananaTrackIndex
+    : playSecretTrack
+      ? secretTrackIndex
+      : availableTracks[Math.floor(Math.random() * availableTracks.length)]
   if (trackIndex < 0) throw new Error('No ambient music tracks are available.')
   activeTrack = ambientTracks[trackIndex]
   activeMusicTrack.value = activeTrack.name
@@ -558,6 +590,40 @@ function startAmbientMusic() {
     rainTimer = window.setTimeout(playRaindrop, 300)
   }
 
+  if (activeTrack.monkeyCalls) {
+    const playMonkeyCalls = () => {
+      if (!audioContext || !musicMaster || activeTrack?.name !== 'Banana Jungle') return
+
+      const callAt = audioContext.currentTime
+      for (let index = 0; index < 3; index += 1) {
+        const call = audioContext.createOscillator()
+        const callFilter = audioContext.createBiquadFilter()
+        const callVolume = audioContext.createGain()
+        const startAt = callAt + index * (0.08 + Math.random() * 0.07)
+        const pitch = 420 + Math.random() * 620
+        call.type = index === 1 ? 'sawtooth' : 'triangle'
+        call.frequency.setValueAtTime(pitch, startAt)
+        call.frequency.exponentialRampToValueAtTime(pitch * (1.2 + Math.random() * 0.5), startAt + 0.08)
+        call.frequency.exponentialRampToValueAtTime(pitch * (0.58 + Math.random() * 0.18), startAt + 0.24)
+        callFilter.type = 'bandpass'
+        callFilter.frequency.setValueAtTime(1350 + Math.random() * 900, startAt)
+        callFilter.Q.setValueAtTime(1.2, startAt)
+        callVolume.gain.setValueAtTime(0.0001, startAt)
+        callVolume.gain.linearRampToValueAtTime(0.12, startAt + 0.025)
+        callVolume.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.27)
+        call.connect(callFilter)
+        callFilter.connect(callVolume)
+        callVolume.connect(musicMaster)
+        call.start(startAt)
+        call.stop(startAt + 0.29)
+      }
+
+      monkeyTimer = window.setTimeout(playMonkeyCalls, 650 + Math.random() * 1250)
+    }
+
+    monkeyTimer = window.setTimeout(playMonkeyCalls, 500)
+  }
+
   musicChordIndex = 0
   musicTimer = window.setInterval(() => {
     if (!audioContext || !activeTrack) return
@@ -612,6 +678,8 @@ function stopAmbientMusic() {
   noteTimer = undefined
   window.clearTimeout(rainTimer)
   rainTimer = undefined
+  window.clearTimeout(monkeyTimer)
+  monkeyTimer = undefined
   const now = audioContext.currentTime
   musicMaster.gain.cancelScheduledValues(now)
   musicMaster.gain.setValueAtTime(musicMaster.gain.value, now)
@@ -696,6 +764,7 @@ onUnmounted(() => {
   window.clearInterval(musicTimer)
   window.clearInterval(noteTimer)
   window.clearTimeout(rainTimer)
+  window.clearTimeout(monkeyTimer)
   for (const source of musicSources) source.stop()
   void audioContext?.close()
   setAmbientTrackEffect()
