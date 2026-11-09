@@ -628,7 +628,9 @@ body::before {
 }
 
 .assistant-panel {
-  position: relative;
+  position: absolute;
+  right: 0;
+  bottom: 0;
   isolation: isolate;
   display: flex;
   width: min(420px, calc(100vw - 32px));

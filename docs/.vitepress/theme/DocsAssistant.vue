@@ -79,6 +79,7 @@ const bugReport = ref({
   plugin: '',
   serverSoftware: '',
   version: '',
+  discordUsername: '',
   productKey: '',
   consoleLog: '',
   description: '',
@@ -769,6 +770,10 @@ onUnmounted(() => {
                 <input v-model="bugReport.version" type="text" maxlength="60" required placeholder="e.g. 1.21.4">
               </label>
             </div>
+            <label>
+              <span>Discord username <small>Optional</small></span>
+              <input v-model="bugReport.discordUsername" type="text" maxlength="100" autocomplete="off" placeholder="How support can reach you">
+            </label>
             <label>
               <span>Product key <small>Optional</small></span>
               <input v-model="bugReport.productKey" type="text" maxlength="200" autocomplete="off" placeholder="Only if relevant to the issue">

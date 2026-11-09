@@ -45,6 +45,7 @@ async function submitBugReport(request, env, origin) {
     plugin: typeof payload?.plugin === 'string' ? payload.plugin.trim() : '',
     serverSoftware: typeof payload?.serverSoftware === 'string' ? payload.serverSoftware.trim() : '',
     version: typeof payload?.version === 'string' ? payload.version.trim() : '',
+    discordUsername: typeof payload?.discordUsername === 'string' ? payload.discordUsername.trim() : '',
     productKey: typeof payload?.productKey === 'string' ? payload.productKey.trim() : '',
     consoleLog: typeof payload?.consoleLog === 'string' ? payload.consoleLog.trim() : '',
     description: typeof payload?.description === 'string' ? payload.description.trim() : '',
@@ -56,6 +57,7 @@ async function submitBugReport(request, env, origin) {
     fields.plugin.length > 100 ||
     fields.serverSoftware.length > 100 ||
     fields.version.length > 60 ||
+    fields.discordUsername.length > 100 ||
     fields.productKey.length > 200 ||
     fields.consoleLog.length > 2000 ||
     fields.description.length > 2000
@@ -76,6 +78,7 @@ async function submitBugReport(request, env, origin) {
       color: 0x7B3FF2,
       fields: [
         embedField('Plugin', fields.plugin, 100),
+        embedField('Discord username', fields.discordUsername, 100),
         embedField('Server software', fields.serverSoftware, 100),
         embedField('Version number', fields.version, 60),
         embedField('Product key', fields.productKey, 200),

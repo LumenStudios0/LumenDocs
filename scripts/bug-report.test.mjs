@@ -48,6 +48,7 @@ test('bug report sends a formatted, mention-safe Discord embed', async t => {
 
   const response = await worker.fetch(makeRequest({
     plugin: 'LumenShards',
+    discordUsername: 'LumenPlayer',
     serverSoftware: 'Paper',
     version: '1.21.4',
     productKey: '',
@@ -61,7 +62,8 @@ test('bug report sends a formatted, mention-safe Discord embed', async t => {
   assert.deepEqual(sent.body.allowed_mentions, { parse: [] })
   assert.equal(sent.body.embeds[0].color, 0x7B3FF2)
   assert.equal(sent.body.embeds[0].fields[0].value, 'LumenShards')
-  assert.match(sent.body.embeds[0].fields[5].value, /@\u200beveryone/)
+  assert.equal(sent.body.embeds[0].fields[1].value, 'LumenPlayer')
+  assert.match(sent.body.embeds[0].fields[6].value, /@\u200beveryone/)
 })
 
 test('bug report returns an error when Discord rejects delivery', async t => {
