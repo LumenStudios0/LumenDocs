@@ -623,86 +623,88 @@ onUnmounted(() => {
     >
       {{ ambientMusic ? '♫' : '♬' }}
     </button>
-    <section v-if="open" class="assistant-panel" aria-label="Lumen Docs Assistant">
-      <header class="assistant-header">
-        <span class="assistant-brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 100 100" focusable="false">
-            <path d="M37 18h25L45 58h31L57 78H23z" />
-          </svg>
-        </span>
-        <div class="assistant-title">
-          <strong>Lumen Assistant</strong>
-          <span>Plugin guide answers</span>
-        </div>
-        <div class="assistant-header-actions">
-          <button
-            class="assistant-sound"
-            type="button"
-            :aria-label="clickSounds ? 'Turn off click sounds' : 'Turn on click sounds'"
-            :title="clickSounds ? 'Turn off click sounds' : 'Turn on click sounds'"
-            @click="toggleClickSounds"
-          >
-            {{ clickSounds ? '♪' : '♩' }}
-          </button>
-          <button
-            class="assistant-sound assistant-music"
-            type="button"
-            :aria-label="ambientMusic ? `Turn off ${activeMusicTrack} music` : 'Play a random ambient soundscape'"
-            :aria-pressed="ambientMusic"
-            :title="ambientMusic ? `Now playing: ${activeMusicTrack} (click to stop)` : 'Play a random ambient soundscape'"
-            @click="toggleAmbientMusic"
-          >
-            {{ ambientMusic ? '♫' : '♬' }}
-          </button>
-          <button class="assistant-close" type="button" aria-label="Close assistant" @click="open = false">
-            <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-              <path d="m5 5 10 10M15 5 5 15" />
+    <Transition name="assistant-popover">
+      <section v-if="open" class="assistant-panel" aria-label="Lumen Docs Assistant">
+        <header class="assistant-header">
+          <span class="assistant-brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 100 100" focusable="false">
+              <path d="M37 18h25L45 58h31L57 78H23z" />
             </svg>
-          </button>
-        </div>
-      </header>
-
-      <div ref="conversation" class="assistant-conversation" aria-live="polite">
-        <div v-if="!hasQuestion" class="assistant-welcome">
-          <span class="assistant-eyebrow">LUMEN STUDIOS</span>
-          <h2>How can I help?</h2>
-          <p>Get quick answers from our plugin guides.</p>
-          <div class="assistant-suggestions" aria-label="Suggested questions">
-            <button type="button" @click="useSuggestedQuestion('How do I install a plugin?')">Install a plugin</button>
-            <button type="button" @click="useSuggestedQuestion('Show me the available commands and permissions')">Commands &amp; permissions</button>
-            <button type="button" @click="useSuggestedQuestion('How do I configure a plugin?')">Configuration help</button>
+          </span>
+          <div class="assistant-title">
+            <strong>Lumen Assistant</strong>
+            <span>Plugin guide answers</span>
           </div>
-        </div>
-        <article v-for="(answer, index) in answers" :key="`${index}-${answer.question}`" class="assistant-answer">
-          <p class="assistant-question">{{ answer.question }}</p>
-          <p class="assistant-response">{{ answer.reply }}</p>
-          <a
-            v-for="result in answer.results"
-            :key="result.href"
-            class="assistant-result"
-            :href="result.href"
-          >
-            <strong>{{ result.title }}</strong>
-            <span>{{ result.text.slice(0, 220) }}{{ result.text.length > 220 ? '…' : '' }}</span>
-            <small>Open guide ↗</small>
-          </a>
-        </article>
-      </div>
+          <div class="assistant-header-actions">
+            <button
+              class="assistant-sound"
+              type="button"
+              :aria-label="clickSounds ? 'Turn off click sounds' : 'Turn on click sounds'"
+              :title="clickSounds ? 'Turn off click sounds' : 'Turn on click sounds'"
+              @click="toggleClickSounds"
+            >
+              {{ clickSounds ? '♪' : '♩' }}
+            </button>
+            <button
+              class="assistant-sound assistant-music"
+              type="button"
+              :aria-label="ambientMusic ? `Turn off ${activeMusicTrack} music` : 'Play a random ambient soundscape'"
+              :aria-pressed="ambientMusic"
+              :title="ambientMusic ? `Now playing: ${activeMusicTrack} (click to stop)` : 'Play a random ambient soundscape'"
+              @click="toggleAmbientMusic"
+            >
+              {{ ambientMusic ? '♫' : '♬' }}
+            </button>
+            <button class="assistant-close" type="button" aria-label="Close assistant" @click="open = false">
+              <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                <path d="m5 5 10 10M15 5 5 15" />
+              </svg>
+            </button>
+          </div>
+        </header>
 
-      <form class="assistant-form" @submit.prevent="askQuestion">
-        <input
-          ref="input"
-          v-model="query"
-          type="text"
-          placeholder="Ask about a plugin..."
-          aria-label="Ask a question about Lumen plugins"
-          autocomplete="off"
-        >
-        <button type="submit" :disabled="!query.trim() || searching">{{ searching ? 'Thinking…' : 'Ask' }}</button>
-      </form>
-      <p class="assistant-note">
-        {{ assistantEndpoint ? 'Questions and selected guide excerpts are sent to DeepSeek. Full plugin source code and ZIP archives are not sent.' : 'Local guide search is active. AI replies need a secure backend.' }}
-      </p>
-    </section>
+        <div ref="conversation" class="assistant-conversation" aria-live="polite">
+          <div v-if="!hasQuestion" class="assistant-welcome">
+            <span class="assistant-eyebrow">LUMEN STUDIOS</span>
+            <h2>How can I help?</h2>
+            <p>Get quick answers from our plugin guides.</p>
+            <div class="assistant-suggestions" aria-label="Suggested questions">
+              <button type="button" @click="useSuggestedQuestion('How do I install a plugin?')">Install a plugin</button>
+              <button type="button" @click="useSuggestedQuestion('Show me the available commands and permissions')">Commands &amp; permissions</button>
+              <button type="button" @click="useSuggestedQuestion('How do I configure a plugin?')">Configuration help</button>
+            </div>
+          </div>
+          <article v-for="(answer, index) in answers" :key="`${index}-${answer.question}`" class="assistant-answer">
+            <p class="assistant-question">{{ answer.question }}</p>
+            <p class="assistant-response">{{ answer.reply }}</p>
+            <a
+              v-for="result in answer.results"
+              :key="result.href"
+              class="assistant-result"
+              :href="result.href"
+            >
+              <strong>{{ result.title }}</strong>
+              <span>{{ result.text.slice(0, 220) }}{{ result.text.length > 220 ? '…' : '' }}</span>
+              <small>Open guide ↗</small>
+            </a>
+          </article>
+        </div>
+
+        <form class="assistant-form" @submit.prevent="askQuestion">
+          <input
+            ref="input"
+            v-model="query"
+            type="text"
+            placeholder="Ask about a plugin..."
+            aria-label="Ask a question about Lumen plugins"
+            autocomplete="off"
+          >
+          <button type="submit" :disabled="!query.trim() || searching">{{ searching ? 'Thinking…' : 'Ask' }}</button>
+        </form>
+        <p class="assistant-note">
+          {{ assistantEndpoint ? 'Questions and selected guide excerpts are sent to DeepSeek. Full plugin source code and ZIP archives are not sent.' : 'Local guide search is active. AI replies need a secure backend.' }}
+        </p>
+      </section>
+    </Transition>
   </div>
 </template>
