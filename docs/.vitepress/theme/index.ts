@@ -12,6 +12,7 @@ export default {
       const previousRouteChanged = router.onAfterRouteChange
       const canGoBack = ref(false)
       const canGoForward = ref(false)
+      const navMenuOpen = ref(false)
       const currentPath = ref(router.route.path)
       const dinoEggPath = ref('')
       const dinoEggPosition = ref({ left: '12%', top: '74%' })
@@ -19,6 +20,13 @@ export default {
       const dinoCountdown = ref(0)
       const dinoToast = ref('')
       let traversingHistory = false
+      const topNavigationItems = [
+        { text: 'Plugins', link: '/plugins/' },
+        { text: 'Reports', link: '/reports/' },
+        { text: 'Getting started', link: '/getting-started/' },
+        { text: 'Changelogs', link: '/changelogs/' },
+        { text: 'Shortcuts', link: '/keyboard-shortcuts' },
+      ]
       let slideFromLeft = true
       let sunClicks = 0
       let moonClicks = 0
@@ -507,6 +515,17 @@ export default {
         canGoBack.value = window.history.length > 1
       }
 
+      const handleNavMenuKeydown = (event: KeyboardEvent) => {
+        if (event.key === 'Escape') navMenuOpen.value = false
+      }
+
+      const handleNavMenuPointerDown = (event: PointerEvent) => {
+        const target = event.target
+        if (target instanceof Element && !target.closest('.lumen-nav-menu')) {
+          navMenuOpen.value = false
+        }
+      }
+
       const addInlineCopyButtons = () => {
         document.querySelectorAll<HTMLElement>('.VPDoc .vp-doc code:not(pre code)').forEach(code => {
           if (code.dataset.copyButton === 'true' || code.closest('a')) return
@@ -533,6 +552,7 @@ export default {
       }
 
       const animatePage = async (nextPath: string) => {
+        navMenuOpen.value = false
         await previousRouteChanged?.(nextPath)
         await nextTick()
         currentPath.value = nextPath
@@ -568,6 +588,8 @@ export default {
         dinoEggsFound.value = foundEggPages.size
         refreshDinosaurEgg()
         window.addEventListener('popstate', handlePopState)
+        document.addEventListener('pointerdown', handleNavMenuPointerDown)
+        window.addEventListener('keydown', handleNavMenuKeydown)
         window.addEventListener('keydown', handleSecretKeys)
         window.addEventListener('pointermove', handlePointerMove)
         addInlineCopyButtons()
@@ -576,6 +598,8 @@ export default {
       onUnmounted(() => {
         router.onAfterRouteChange = previousRouteChanged
         window.removeEventListener('popstate', handlePopState)
+        document.removeEventListener('pointerdown', handleNavMenuPointerDown)
+        window.removeEventListener('keydown', handleNavMenuKeydown)
         window.removeEventListener('keydown', handleSecretKeys)
         window.removeEventListener('pointermove', handlePointerMove)
         window.clearTimeout(ambientWeatherTimer)
@@ -821,6 +845,32 @@ export default {
           }),
         ],
         'nav-bar-content-after': () => h('div', { class: 'lumen-nav-actions' }, [
+          h('div', { class: 'lumen-nav-menu' }, [
+            h('button', {
+              class: ['lumen-nav-menu-button', navMenuOpen.value && 'is-open'],
+              type: 'button',
+              'aria-label': navMenuOpen.value ? 'Close site navigation' : 'Open site navigation',
+              'aria-expanded': String(navMenuOpen.value),
+              'aria-controls': 'lumen-nav-menu-panel',
+              onClick: () => { navMenuOpen.value = !navMenuOpen.value },
+            }, [
+              h('span', { 'aria-hidden': 'true' }),
+              h('span', { 'aria-hidden': 'true' }),
+              h('span', { 'aria-hidden': 'true' }),
+            ]),
+            navMenuOpen.value && h('nav', {
+              id: 'lumen-nav-menu-panel',
+              class: 'lumen-nav-menu-panel',
+              'aria-label': 'Main navigation',
+            }, topNavigationItems.map((item, index) =>
+              h('a', {
+                class: 'lumen-nav-menu-link',
+                href: item.link,
+                style: { '--menu-index': index },
+                onClick: () => { navMenuOpen.value = false },
+              }, item.text),
+            )),
+          ]),
           h('div', { class: 'lumen-nav-report-group' }, [
             h('a', {
               class: 'lumen-report-button',
