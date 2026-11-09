@@ -4,6 +4,7 @@ import { useData, useRouter } from 'vitepress'
 import AccountLicenseIps from './AccountLicenseIps.vue'
 import AccountProductCatalog from './AccountProductCatalog.vue'
 import AccountConnectedServers from './AccountConnectedServers.vue'
+import AccountDashboard from './AccountDashboard.vue'
 import DocsAssistant from './DocsAssistant.vue'
 import HomeExperience from './HomeExperience.vue'
 import './custom.css'
@@ -14,6 +15,7 @@ export default {
     app.component('AccountLicenseIps', AccountLicenseIps)
     app.component('AccountProductCatalog', AccountProductCatalog)
     app.component('AccountConnectedServers', AccountConnectedServers)
+    app.component('AccountDashboard', AccountDashboard)
     app.component('HomeExperience', HomeExperience)
   },
   Layout: defineComponent({
