@@ -270,11 +270,11 @@ const ambientTracks: AmbientTrack[] = [
     waveform: 'square',
     filterFrequency: 3200,
     chordInterval: 240,
-    chordVolume: 0.028,
+    chordVolume: 0.045,
     notes: {
       frequencies: [392, 659.25, 523.25, 783.99, 440, 698.46, 587.33, 880, 493.88, 783.99],
       waveform: 'square',
-      volume: 0.1,
+      volume: 0.14,
       attack: 0.006,
       decay: 0.19,
       interval: 155,
@@ -516,7 +516,7 @@ function startAmbientMusic() {
   musicFilter.frequency.setValueAtTime(activeTrack.filterFrequency, now)
   musicMaster.gain.setValueAtTime(0.0001, now)
   musicMaster.gain.linearRampToValueAtTime(
-    activeTrack.chaotic ? 0.032 : 0.022,
+    activeTrack.chaotic ? 0.12 : 0.022,
     now + (activeTrack.chaotic ? 0.12 : 2.5),
   )
   musicFilter.connect(musicMaster)
@@ -613,7 +613,7 @@ function startAmbientMusic() {
         callFilter.frequency.setValueAtTime(1350 + Math.random() * 900, startAt)
         callFilter.Q.setValueAtTime(1.2, startAt)
         callVolume.gain.setValueAtTime(0.0001, startAt)
-        callVolume.gain.linearRampToValueAtTime(0.14, startAt + 0.018)
+        callVolume.gain.linearRampToValueAtTime(0.2, startAt + 0.018)
         callVolume.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.27)
         call.connect(callFilter)
         callFilter.connect(callVolume)
