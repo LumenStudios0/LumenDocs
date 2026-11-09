@@ -625,7 +625,11 @@ onUnmounted(() => {
     </button>
     <section v-if="open" class="assistant-panel" aria-label="Lumen Docs Assistant">
       <header class="assistant-header">
-        <span class="assistant-brand-mark" aria-hidden="true">✦</span>
+        <span class="assistant-brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 100 100" focusable="false">
+            <path d="M37 18h25L45 58h31L57 78H23z" />
+          </svg>
+        </span>
         <div class="assistant-title">
           <strong>Lumen Assistant</strong>
           <span>Plugin guide answers</span>
@@ -650,7 +654,11 @@ onUnmounted(() => {
           >
             {{ ambientMusic ? '♫' : '♬' }}
           </button>
-          <button class="assistant-close" type="button" aria-label="Close assistant" @click="open = false">×</button>
+          <button class="assistant-close" type="button" aria-label="Close assistant" @click="open = false">
+            <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+              <path d="m5 5 10 10M15 5 5 15" />
+            </svg>
+          </button>
         </div>
       </header>
 
