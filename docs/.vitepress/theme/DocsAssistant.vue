@@ -91,6 +91,7 @@ const bugReportSent = ref(false)
 const clickSounds = ref(true)
 const ambientMusic = ref(false)
 const musicVolume = ref(35)
+const musicAnimationsEnabled = ref(true)
 const activeMusicTrack = ref('')
 const selectedMusicTrack = ref('')
 const trackPositionSeconds = ref(0)
@@ -125,6 +126,7 @@ interface AmbientTrack {
   name: string
   description: string
   secret?: boolean
+  rareChance?: number
   modeOnly?: 'banana' | 'minecraft' | 'dinosaur'
   chaotic?: boolean
   monkeyCalls?: boolean
@@ -690,6 +692,8 @@ const ambientTracks: AmbientTrack[] = [
   {
     name: 'Late Night Drive',
     description: 'An original coastal night-drive groove: steady low kick, rolling bass, a glassy lead, and a soft ocean-wind bed.',
+    secret: true,
+    rareChance: 1 / 5000,
     masterVolume: 0.075,
     pad: false,
     waveform: 'triangle',
@@ -960,9 +964,19 @@ function formatTrackTime(seconds: number) {
 function setAmbientTrackEffect(trackName?: string) {
   const root = document.documentElement
   root.classList.remove(...ambientTrackClasses)
+  root.classList.toggle('lumen-music-playing', Boolean(trackName))
+  root.classList.toggle('lumen-music-animations-off', Boolean(trackName) && !musicAnimationsEnabled.value)
   if (trackName) {
     root.classList.add(getTrackClass(trackName))
   }
+}
+
+function updateMusicAnimationPreference() {
+  const isPlaying = Boolean(activeTrack)
+  document.documentElement.classList.toggle(
+    'lumen-music-animations-off',
+    isPlaying && !musicAnimationsEnabled.value,
+  )
 }
 
 function findSections(question: string): DocSection[] {
@@ -1246,8 +1260,12 @@ function startAmbientMusic(forceTrackName?: string, startPositionSeconds = 0) {
   const selectedTrackIndex = ambientTracks.findIndex(track =>
     track.name === selectedMusicTrack.value && !track.secret && !track.modeOnly,
   )
-  const playSecretTrack = selectedTrackIndex < 0 &&
-    !isBananaMode && !isMinecraftMode && !isDinosaurMode && Math.random() < 0.01
+  const canPlayAmbientSecret = forcedTrackIndex < 0 && selectedTrackIndex < 0 &&
+    !isBananaMode && !isMinecraftMode && !isDinosaurMode
+  const rareTrackIndex = ambientTracks.findIndex(track => track.rareChance !== undefined)
+  const playRareTrack = canPlayAmbientSecret && rareTrackIndex >= 0 &&
+    Math.random() < (ambientTracks[rareTrackIndex]?.rareChance ?? 0)
+  const playSecretTrack = !playRareTrack && canPlayAmbientSecret && Math.random() < 0.01
   const availableTracks = ambientTracks
     .map((_, index) => index)
     .filter(index => !ambientTracks[index].secret && !ambientTracks[index].modeOnly && index !== lastMusicTrack)
@@ -1255,6 +1273,8 @@ function startAmbientMusic(forceTrackName?: string, startPositionSeconds = 0) {
     ? forcedTrackIndex
     : isDinosaurMode || isBananaMode || isMinecraftMode
       ? isDinosaurMode ? dinosaurTrackIndex : isBananaMode ? bananaTrackIndex : minecraftTrackIndex
+      : playRareTrack
+        ? rareTrackIndex
       : playSecretTrack
         ? secretTrackIndex
         : selectedTrackIndex >= 0
@@ -1786,6 +1806,15 @@ onUnmounted(() => {
           @input="updateMusicVolume"
         >
       </label>
+      <label class="assistant-animation-toggle" title="Toggle soundtrack animations">
+        <input
+          v-model="musicAnimationsEnabled"
+          type="checkbox"
+          aria-label="Enable soundtrack animations"
+          @change="updateMusicAnimationPreference"
+        >
+        <span>FX</span>
+      </label>
     </div>
     <button
       v-if="!open"
@@ -1835,6 +1864,15 @@ onUnmounted(() => {
                   :style="{ '--assistant-volume': `${musicVolume / 3}%` }"
                   @input="updateMusicVolume"
                 >
+              </label>
+              <label v-if="ambientMusic" class="assistant-animation-toggle" title="Toggle soundtrack animations">
+                <input
+                  v-model="musicAnimationsEnabled"
+                  type="checkbox"
+                  aria-label="Enable soundtrack animations"
+                  @change="updateMusicAnimationPreference"
+                >
+                <span>FX</span>
               </label>
               <button
                 class="assistant-sound assistant-music"
