@@ -2535,6 +2535,10 @@ html.lumen-track-cretaceous-sunrise .lumen-track-horizon {
   display: none !important;
 }
 
+.VPNavBar .VPNavBarAppearance {
+  display: none !important;
+}
+
 .lumen-nav-menu {
   position: relative;
 }
