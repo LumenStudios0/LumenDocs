@@ -109,6 +109,16 @@ export default {
               h('span', { class: `lumen-shooting-star lumen-shooting-star-${index + 1}` }),
             ),
           ]),
+          h('div', { class: 'lumen-disaster-overlay', 'aria-hidden': 'true' }, [
+            h('span', { class: 'lumen-disaster-flash' }),
+            h('span', { class: 'lumen-disaster-ring' }),
+            ...Array.from({ length: 12 }, (_, index) =>
+              h('span', { class: `lumen-disaster-debris lumen-disaster-debris-${index + 1}` }),
+            ),
+            ...Array.from({ length: 3 }, (_, index) =>
+              h('span', { class: `lumen-flood-wave lumen-flood-wave-${index + 1}` }),
+            ),
+          ]),
           h('button', {
             class: 'lumen-pixel-moon',
             type: 'button',
