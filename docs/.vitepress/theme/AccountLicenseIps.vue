@@ -70,6 +70,7 @@ function removeAddress(index: number) {
 function saveAddresses() {
   try {
     localStorage.setItem(storageKey, JSON.stringify(addresses.value))
+    window.dispatchEvent(new Event('lumen-license-preview-updated'))
     notice.value = 'Saved in this browser.'
     noticeIsError.value = false
   } catch (error) {
