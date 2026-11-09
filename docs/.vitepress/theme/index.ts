@@ -15,6 +15,21 @@ export default {
       let traversingHistory = false
       let currentPath = router.route.path
       let slideFromLeft = true
+      let sunClicks = 0
+      let moonClicks = 0
+
+      const handleSkyClick = () => {
+        const root = document.documentElement
+        if (root.classList.contains('lumen-sun-exploded') || root.classList.contains('lumen-moon-flooded')) return
+
+        if (root.classList.contains('dark')) {
+          moonClicks += 1
+          if (moonClicks === 10) root.classList.add('lumen-moon-flooded')
+        } else {
+          sunClicks += 1
+          if (sunClicks === 10) root.classList.add('lumen-sun-exploded')
+        }
+      }
 
       const handlePopState = () => {
         traversingHistory = true
@@ -85,15 +100,23 @@ export default {
       })
 
       return () => h(DefaultTheme.Layout, null, {
-        'layout-top': () => h('div', { class: 'lumen-sky', 'aria-hidden': 'true' }, [
-          h('div', { class: 'lumen-pixel-moon' }),
-          ...Array.from({ length: 10 }, (_, index) =>
-            h('span', { class: `lumen-pixel-star lumen-pixel-star-${index + 1}` }),
-          ),
-          ...Array.from({ length: 3 }, (_, index) =>
-            h('span', { class: `lumen-shooting-star lumen-shooting-star-${index + 1}` }),
-          ),
-        ]),
+        'layout-top': () => [
+          h('div', { class: 'lumen-sky', 'aria-hidden': 'true' }, [
+            ...Array.from({ length: 10 }, (_, index) =>
+              h('span', { class: `lumen-pixel-star lumen-pixel-star-${index + 1}` }),
+            ),
+            ...Array.from({ length: 3 }, (_, index) =>
+              h('span', { class: `lumen-shooting-star lumen-shooting-star-${index + 1}` }),
+            ),
+          ]),
+          h('button', {
+            class: 'lumen-pixel-moon',
+            type: 'button',
+            'aria-label': 'Sun or moon: click 10 times for a surprise',
+            title: 'Click 10 times for a surprise',
+            onClick: handleSkyClick,
+          }),
+        ],
         'nav-bar-content-after': () => h('div', { class: 'lumen-history-controls' }, [
           h('button', {
             type: 'button',
