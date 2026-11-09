@@ -1782,17 +1782,17 @@ html.dark .lumen-track-horizon::before {
 .lumen-track-moon {
   position: absolute;
   z-index: 1;
-  top: 50%;
   width: clamp(72px, 13vw, 154px);
   height: auto;
   will-change: transform, opacity;
   transition:
-    transform 4.8s cubic-bezier(0.2, 0.72, 0.22, 1),
-    opacity 3.6s ease,
-    filter 3.6s ease;
+    transform 5.2s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 5.2s ease,
+    filter 5.2s ease;
 }
 
 .lumen-track-sun {
+  top: 13%;
   left: 18%;
   transform: translate3d(-50%, -50%, 0);
   filter: drop-shadow(0 0 28px rgba(255, 194, 104, 0.36));
@@ -1800,21 +1800,22 @@ html.dark .lumen-track-horizon::before {
 }
 
 .lumen-track-moon {
+  top: 87%;
   left: 76%;
-  transform: translate3d(-50%, 125vh, 0);
-  opacity: 0;
+  transform: translate3d(-50%, -50%, 0);
+  opacity: 0.18;
   filter: drop-shadow(0 0 26px rgba(181, 151, 255, 0.32));
 }
 
 html.dark .lumen-track-sun {
-  transform: translate3d(-50%, 125vh, 0);
-  opacity: 0;
-  filter: drop-shadow(0 0 8px rgba(255, 194, 104, 0.12));
+  transform: translate3d(-50%, -50%, 0) translateY(74vh);
+  opacity: 0.18;
+  filter: drop-shadow(0 0 8px rgba(255, 194, 104, 0.16));
 }
 
 html.dark .lumen-track-moon {
-  transform: translate3d(-50%, -50%, 0);
-  opacity: 0.78;
+  transform: translate3d(-50%, -50%, 0) translateY(-74vh);
+  opacity: 0.86;
   filter: drop-shadow(0 0 30px rgba(181, 151, 255, 0.42));
 }
 
