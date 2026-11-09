@@ -447,6 +447,221 @@ html.lumen-moon-flooded .VPHome { --fall-x: 4vw; --fall-tilt: 3deg; animation-de
   }
 }
 
+.lumen-weather-sky {
+  position: fixed;
+  z-index: 4;
+  inset: 0;
+  overflow: hidden;
+  display: none;
+  pointer-events: none;
+}
+
+html.lumen-weather-meteors .lumen-weather-sky,
+html.lumen-track-starlight .lumen-weather-sky,
+html.lumen-weather-rain .lumen-weather-sky,
+html.lumen-track-rain .lumen-weather-sky,
+html.lumen-track-mountain-wind .lumen-weather-sky,
+html.lumen-track-forest .lumen-weather-sky,
+html.lumen-track-tides .lumen-weather-sky {
+  display: block;
+}
+
+.lumen-event-meteor {
+  position: absolute;
+  width: 118px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, rgba(220, 199, 255, 0.14) 35%, #fff 100%);
+  filter: drop-shadow(0 0 5px rgba(205, 176, 255, 0.95));
+  opacity: 0;
+  transform: rotate(145deg);
+  transform-origin: right center;
+  animation: lumen-meteor-fall 5s ease-in infinite;
+}
+
+@keyframes lumen-meteor-fall {
+  0%, 12%, 100% { opacity: 0; transform: translate3d(0, 0, 0) rotate(145deg); }
+  17% { opacity: 1; }
+  36% { opacity: 0; transform: translate3d(-44vw, 42vh, 0) rotate(145deg); }
+}
+
+.lumen-event-meteor-1 { top: 4%; left: 92%; animation-delay: -0.2s; }
+.lumen-event-meteor-2 { top: 13%; left: 72%; animation-delay: -1.4s; animation-duration: 5.4s; }
+.lumen-event-meteor-3 { top: 20%; left: 98%; animation-delay: -2.6s; animation-duration: 4.7s; }
+.lumen-event-meteor-4 { top: 28%; left: 62%; animation-delay: -3.1s; animation-duration: 5.7s; }
+.lumen-event-meteor-5 { top: 35%; left: 88%; animation-delay: -0.9s; animation-duration: 4.8s; }
+.lumen-event-meteor-6 { top: 42%; left: 78%; animation-delay: -2.1s; animation-duration: 5.5s; }
+.lumen-event-meteor-7 { top: 50%; left: 100%; animation-delay: -3.8s; animation-duration: 4.9s; }
+.lumen-event-meteor-8 { top: 57%; left: 68%; animation-delay: -1.7s; animation-duration: 5.8s; }
+.lumen-event-meteor-9 { top: 64%; left: 94%; animation-delay: -2.9s; animation-duration: 5.1s; }
+.lumen-event-meteor-10 { top: 71%; left: 80%; animation-delay: -0.6s; animation-duration: 5.6s; }
+.lumen-event-meteor-11 { top: 79%; left: 98%; animation-delay: -3.4s; animation-duration: 4.6s; }
+.lumen-event-meteor-12 { top: 87%; left: 74%; animation-delay: -2.4s; animation-duration: 5.3s; }
+
+.lumen-weather-cloud {
+  position: absolute;
+  top: -8%;
+  width: min(390px, 42vw);
+  height: 170px;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse at 22% 78%, currentColor 0 24%, transparent 25%),
+    radial-gradient(ellipse at 43% 58%, currentColor 0 34%, transparent 35%),
+    radial-gradient(ellipse at 65% 68%, currentColor 0 30%, transparent 31%),
+    radial-gradient(ellipse at 82% 82%, currentColor 0 19%, transparent 20%);
+  color: rgba(91, 101, 122, 0.38);
+  filter: blur(1px);
+  opacity: 0;
+  transform: translateX(-30vw);
+}
+
+@keyframes lumen-cloud-drift {
+  0% { opacity: 0; transform: translateX(-35vw); }
+  14%, 72% { opacity: 0.9; }
+  100% { opacity: 0; transform: translateX(125vw); }
+}
+
+html:not(.dark).lumen-weather-rain .lumen-weather-cloud {
+  animation: lumen-cloud-drift 14s ease-in-out both;
+}
+
+@keyframes lumen-cloud-cover {
+  0% { opacity: 0.68; transform: translateX(-8vw); }
+  100% { opacity: 0.9; transform: translateX(8vw); }
+}
+
+html:not(.dark).lumen-track-rain .lumen-weather-cloud,
+html.dark.lumen-track-rain .lumen-weather-cloud {
+  color: rgba(91, 115, 145, 0.44);
+  animation: lumen-cloud-cover 12s ease-in-out infinite alternate;
+}
+
+html.dark.lumen-track-mountain-wind .lumen-weather-cloud {
+  color: rgba(169, 134, 255, 0.2);
+  animation: lumen-cloud-drift 26s ease-in-out infinite alternate;
+}
+
+html:not(.dark).lumen-track-mountain-wind .lumen-weather-cloud {
+  color: rgba(116, 128, 147, 0.24);
+  animation: lumen-cloud-drift 26s ease-in-out infinite alternate;
+}
+
+.lumen-weather-cloud-1 { left: -12%; }
+.lumen-weather-cloud-2 { top: 2%; left: 34%; transform: translateX(-20vw) scale(0.82); }
+.lumen-weather-cloud-3 { top: -5%; left: 72%; transform: translateX(-25vw) scale(1.12); }
+
+.lumen-rain-drop {
+  position: absolute;
+  top: -12%;
+  left: 1%;
+  width: 2px;
+  height: 22px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, transparent, rgba(113, 179, 255, 0.72));
+  opacity: 0;
+}
+
+@keyframes lumen-rain-fall {
+  0% { opacity: 0; transform: translate3d(0, 0, 0) rotate(12deg); }
+  10% { opacity: 0.75; }
+  100% { opacity: 0; transform: translate3d(-10vw, 125vh, 0) rotate(12deg); }
+}
+
+html:not(.dark).lumen-weather-rain .lumen-rain-drop,
+html:not(.dark).lumen-track-rain .lumen-rain-drop,
+html.lumen-track-rain .lumen-rain-drop {
+  animation: lumen-rain-fall 850ms linear infinite;
+}
+
+.lumen-rain-drop-1 { left: 3%; animation-delay: -0.1s; }
+.lumen-rain-drop-2 { left: 6%; animation-delay: -0.6s; }
+.lumen-rain-drop-3 { left: 9%; animation-delay: -0.3s; }
+.lumen-rain-drop-4 { left: 12%; animation-delay: -0.8s; }
+.lumen-rain-drop-5 { left: 15%; animation-delay: -0.2s; }
+.lumen-rain-drop-6 { left: 18%; animation-delay: -0.5s; }
+.lumen-rain-drop-7 { left: 21%; animation-delay: -0.9s; }
+.lumen-rain-drop-8 { left: 24%; animation-delay: -0.4s; }
+.lumen-rain-drop-9 { left: 27%; animation-delay: -0.7s; }
+.lumen-rain-drop-10 { left: 30%; animation-delay: -0.1s; }
+.lumen-rain-drop-11 { left: 33%; animation-delay: -0.6s; }
+.lumen-rain-drop-12 { left: 36%; animation-delay: -0.3s; }
+.lumen-rain-drop-13 { left: 39%; animation-delay: -0.8s; }
+.lumen-rain-drop-14 { left: 42%; animation-delay: -0.2s; }
+.lumen-rain-drop-15 { left: 45%; animation-delay: -0.5s; }
+.lumen-rain-drop-16 { left: 48%; animation-delay: -0.9s; }
+.lumen-rain-drop-17 { left: 51%; animation-delay: -0.4s; }
+.lumen-rain-drop-18 { left: 54%; animation-delay: -0.7s; }
+.lumen-rain-drop-19 { left: 57%; animation-delay: -0.1s; }
+.lumen-rain-drop-20 { left: 60%; animation-delay: -0.6s; }
+.lumen-rain-drop-21 { left: 63%; animation-delay: -0.3s; }
+.lumen-rain-drop-22 { left: 66%; animation-delay: -0.8s; }
+.lumen-rain-drop-23 { left: 69%; animation-delay: -0.2s; }
+.lumen-rain-drop-24 { left: 72%; animation-delay: -0.5s; }
+.lumen-rain-drop-25 { left: 75%; animation-delay: -0.9s; }
+.lumen-rain-drop-26 { left: 78%; animation-delay: -0.4s; }
+.lumen-rain-drop-27 { left: 81%; animation-delay: -0.7s; }
+.lumen-rain-drop-28 { left: 84%; animation-delay: -0.1s; }
+.lumen-rain-drop-29 { left: 87%; animation-delay: -0.6s; }
+.lumen-rain-drop-30 { left: 90%; animation-delay: -0.3s; }
+.lumen-rain-drop-31 { left: 93%; animation-delay: -0.8s; }
+.lumen-rain-drop-32 { left: 96%; animation-delay: -0.2s; }
+
+.lumen-firefly {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #d7ff9a;
+  box-shadow: 0 0 10px 4px rgba(182, 255, 126, 0.68);
+  opacity: 0;
+}
+
+@keyframes lumen-firefly-drift {
+  0%, 100% { opacity: 0; transform: translate3d(0, 12px, 0) scale(0.5); }
+  50% { opacity: 0.9; transform: translate3d(18px, -20px, 0) scale(1.2); }
+}
+
+html.lumen-track-forest .lumen-firefly {
+  animation: lumen-firefly-drift 3.8s ease-in-out infinite;
+}
+
+.lumen-firefly-1 { top: 28%; left: 12%; animation-delay: -0.4s; }
+.lumen-firefly-2 { top: 43%; left: 24%; animation-delay: -2.1s; }
+.lumen-firefly-3 { top: 65%; left: 17%; animation-delay: -1.3s; }
+.lumen-firefly-4 { top: 76%; left: 38%; animation-delay: -2.8s; }
+.lumen-firefly-5 { top: 34%; left: 61%; animation-delay: -1.7s; }
+.lumen-firefly-6 { top: 57%; left: 73%; animation-delay: -0.9s; }
+.lumen-firefly-7 { top: 81%; left: 84%; animation-delay: -2.4s; }
+.lumen-firefly-8 { top: 22%; left: 89%; animation-delay: -1.1s; }
+
+.lumen-tide-wave {
+  position: absolute;
+  left: -20%;
+  bottom: 8%;
+  width: 140%;
+  height: 18%;
+  border-top: 2px solid rgba(115, 205, 255, 0.58);
+  border-radius: 50%;
+  filter: drop-shadow(0 0 12px rgba(89, 180, 255, 0.7));
+  opacity: 0;
+}
+
+@keyframes lumen-tide-glow {
+  0%, 100% { opacity: 0.08; transform: translateX(-4%); }
+  50% { opacity: 0.78; transform: translateX(4%); }
+}
+
+html.lumen-track-tides .lumen-tide-wave {
+  animation: lumen-tide-glow 5s ease-in-out infinite;
+}
+
+.lumen-tide-wave-2 {
+  bottom: 2%;
+  height: 22%;
+  border-color: rgba(123, 63, 242, 0.52);
+  animation-delay: -2.5s !important;
+}
+
 .VPNavBarTitle .title {
   font-weight: 700;
   letter-spacing: -0.025em;
@@ -1667,6 +1882,10 @@ html.lumen-moon-flooded .VPHome { --fall-x: 4vw; --fall-tilt: 3deg; animation-de
 @media (prefers-reduced-motion: reduce) {
   body::before {
     animation: none;
+  }
+
+  .lumen-weather-sky {
+    display: none !important;
   }
 
   .lumen-pixel-moon,

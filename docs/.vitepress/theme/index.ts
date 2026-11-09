@@ -17,6 +17,23 @@ export default {
       let slideFromLeft = true
       let sunClicks = 0
       let moonClicks = 0
+      let ambientWeatherTimer: number | undefined
+
+      const scheduleAmbientWeather = () => {
+        ambientWeatherTimer = window.setTimeout(() => {
+          const root = document.documentElement
+          const isDark = root.classList.contains('dark')
+          const eventClass = isDark ? 'lumen-weather-meteors' : 'lumen-weather-rain'
+          const chance = isDark ? 0.22 : 0.24
+
+          if (Math.random() < chance) {
+            root.classList.add(eventClass)
+            window.setTimeout(() => root.classList.remove(eventClass), 15000)
+          }
+
+          scheduleAmbientWeather()
+        }, 40000 + Math.random() * 35000)
+      }
 
       const handleSkyClick = () => {
         const root = document.documentElement
@@ -93,10 +110,13 @@ export default {
         canGoBack.value = window.history.length > 1
         window.addEventListener('popstate', handlePopState)
         addInlineCopyButtons()
+        scheduleAmbientWeather()
       })
       onUnmounted(() => {
         router.onAfterRouteChange = previousRouteChanged
         window.removeEventListener('popstate', handlePopState)
+        window.clearTimeout(ambientWeatherTimer)
+        document.documentElement.classList.remove('lumen-weather-meteors', 'lumen-weather-rain')
       })
 
       return () => h(DefaultTheme.Layout, null, {
@@ -108,6 +128,22 @@ export default {
             ...Array.from({ length: 3 }, (_, index) =>
               h('span', { class: `lumen-shooting-star lumen-shooting-star-${index + 1}` }),
             ),
+          ]),
+          h('div', { class: 'lumen-weather-sky', 'aria-hidden': 'true' }, [
+            ...Array.from({ length: 12 }, (_, index) =>
+              h('span', { class: `lumen-event-meteor lumen-event-meteor-${index + 1}` }),
+            ),
+            ...Array.from({ length: 3 }, (_, index) =>
+              h('span', { class: `lumen-weather-cloud lumen-weather-cloud-${index + 1}` }),
+            ),
+            ...Array.from({ length: 32 }, (_, index) =>
+              h('span', { class: `lumen-rain-drop lumen-rain-drop-${index + 1}` }),
+            ),
+            ...Array.from({ length: 8 }, (_, index) =>
+              h('span', { class: `lumen-firefly lumen-firefly-${index + 1}` }),
+            ),
+            h('span', { class: 'lumen-tide-wave lumen-tide-wave-1' }),
+            h('span', { class: 'lumen-tide-wave lumen-tide-wave-2' }),
           ]),
           h('div', { class: 'lumen-disaster-overlay', 'aria-hidden': 'true' }, [
             h('span', { class: 'lumen-disaster-flash' }),

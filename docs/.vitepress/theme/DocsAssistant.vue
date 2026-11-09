@@ -232,6 +232,18 @@ const ambientTracks: AmbientTrack[] = [
   },
 ]
 
+const ambientTrackClasses = ambientTracks.map(track =>
+  `lumen-track-${track.name.toLowerCase().replace(/\s+/g, '-')}`,
+)
+
+function setAmbientTrackEffect(trackName?: string) {
+  const root = document.documentElement
+  root.classList.remove(...ambientTrackClasses)
+  if (trackName) {
+    root.classList.add(`lumen-track-${trackName.toLowerCase().replace(/\s+/g, '-')}`)
+  }
+}
+
 function findSections(question: string): DocSection[] {
   const terms = question.toLowerCase().match(/[a-z0-9][a-z0-9-]*/g) ?? []
   const filteredTerms = terms.filter(term => term.length > 2)
@@ -555,9 +567,11 @@ function startAmbientMusic() {
     noteTimer = window.setInterval(playTrackNote, activeTrack.notes.interval)
   }
 
+  setAmbientTrackEffect(activeTrack.name)
 }
 
 function stopAmbientMusic() {
+  setAmbientTrackEffect()
   if (!audioContext || !musicMaster) return
 
   window.clearInterval(musicTimer)
@@ -652,6 +666,7 @@ onUnmounted(() => {
   window.clearTimeout(rainTimer)
   for (const source of musicSources) source.stop()
   void audioContext?.close()
+  setAmbientTrackEffect()
 })
 </script>
 
