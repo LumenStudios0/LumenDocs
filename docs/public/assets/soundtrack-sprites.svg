@@ -38,4 +38,94 @@
     <path d="M44 96c-21 0-35-14-35-32 0-17 13-31 31-32 8-20 26-31 47-27 17 3 29 15 34 31 22-6 46 8 49 30 18-3 39 8 41 25 3 19-12 34-34 34H45Z" fill="#f7fbff" stroke="#b8cce8" stroke-linejoin="round" stroke-width="5"/>
     <path d="M39 87c8-13 22-17 35-12M108 38c14 2 23 11 27 24M159 80c15-6 31 0 39 12" fill="none" stroke="#fff" stroke-linecap="round" stroke-width="7" opacity=".9"/>
   </symbol>
+  <symbol id="pine" viewBox="0 0 180 360">
+    <path d="M76 236h28v114H76z" fill="#76553e"/>
+    <path d="m90 8 71 112h-31l39 65h-43l42 68H12l42-68H11l39-65H19z" fill="#174c42" stroke="#82c98b" stroke-linejoin="round" stroke-width="5"/>
+    <path d="m90 8 1 245H12l42-68H11l39-65H19z" fill="#28785a"/>
+    <path d="M44 121h82M32 185h116M23 249h134" fill="none" stroke="#a3e6a1" stroke-linecap="round" stroke-width="5" opacity=".64"/>
+    <path d="M76 278h28M76 300h28" stroke="#b98254" stroke-width="4" opacity=".7"/>
+  </symbol>
+  <symbol id="mountain" viewBox="0 0 640 300">
+    <path d="m0 276 155-187 60 74L347 18l146 170 56-67 91 155z" fill="#344c75" stroke="#b7cfff" stroke-linejoin="round" stroke-width="8"/>
+    <path d="m155 89 60 74 35-48-36 11-27-28zM347 18l66 77-37-15-30 27-21-26-29 12zM493 188l56-67 31 41-29-8-27 29z" fill="#eef5ff" opacity=".96"/>
+    <path d="m0 276 155-187 60 74 95 113zM261 276 347 18l146 170 56-67 91 155z" fill="#263a60" opacity=".42"/>
+  </symbol>
+  <symbol id="wave" viewBox="0 0 600 180">
+    <path d="M0 94c76-66 141 49 216-4s145-51 208 0 118 36 176-6" fill="none" stroke="#70d9ff" stroke-linecap="round" stroke-width="18" opacity=".72"/>
+    <path d="M0 134c76-66 141 49 216-4s145-51 208 0 118 36 176-6" fill="none" stroke="#a6eaff" stroke-linecap="round" stroke-width="7" opacity=".9"/>
+    <path d="M0 164c76-66 141 49 216-4s145-51 208 0 118 36 176-6" fill="none" stroke="#438be8" stroke-linecap="round" stroke-width="12" opacity=".58"/>
+  </symbol>
+  <symbol id="flare" viewBox="0 0 180 300">
+    <path d="M91 8c14 56-44 66-17 130 14-28 31-33 42-69 45 63 48 116 19 174-30 61-115 53-131 2-17-55 19-96 52-126-4 38 3 53 16 65C71 133 122 90 91 8Z" fill="#fb355d" stroke="#ffb5c3" stroke-linejoin="round" stroke-width="5"/>
+    <path d="M89 151c12 30-12 45-5 70 18-13 25-32 23-48 24 31 21 55 4 73-16 17-44 11-49-9-5-21 7-44 27-86Z" fill="#ffe38d"/>
+  </symbol>
+  <symbol id="crystal" viewBox="0 0 180 260">
+    <path d="m88 8 55 67-13 142-44 35-48-38L25 79z" fill="#86eaff" fill-opacity=".72" stroke="#ddffff" stroke-width="5"/>
+    <path d="m88 8 2 244-48-38L25 79z" fill="#62a9ed" fill-opacity=".74"/>
+    <path d="m88 8 19 96-17 148 40-35 13-142z" fill="#d2b5ff" fill-opacity=".72"/>
+    <path d="m25 79 65 25 53-29M42 214l48-110 47 113" fill="none" stroke="#fff" stroke-opacity=".72" stroke-width="4"/>
+    <path d="M87 52h5M55 139h6M113 159h5" stroke="#fff" stroke-linecap="round" stroke-width="7"/>
+  </symbol>
+  <symbol id="firefly" viewBox="0 0 100 100">
+    <circle cx="50" cy="50" r="13" fill="#fff8b0"/>
+    <circle cx="50" cy="50" r="28" fill="#d8ff91" opacity=".3"/>
+    <path d="M31 45Q18 32 13 44q7 13 20 10M69 45q13-13 18-1-7 13-20 10M42 39l-8-13m24 13 8-13" fill="none" stroke="#c7e88f" stroke-linecap="round" stroke-width="5"/>
+    <path d="m42 61-9 13m25-13 9 13" stroke="#a9c978" stroke-linecap="round" stroke-width="4"/>
+  </symbol>
+  <symbol id="chrome-orb" viewBox="0 0 140 140">
+    <defs>
+      <radialGradient id="orb-sheen" cx=".28" cy=".2" r=".82">
+        <stop stop-color="#fff"/>
+        <stop offset=".18" stop-color="#d8e6ff"/>
+        <stop offset=".42" stop-color="#6e82a8"/>
+        <stop offset=".62" stop-color="#f8c5ff"/>
+        <stop offset=".82" stop-color="#39445f"/>
+        <stop offset="1" stop-color="#d3dded"/>
+      </radialGradient>
+    </defs>
+    <circle cx="70" cy="70" r="57" fill="url(#orb-sheen)" stroke="#fff" stroke-opacity=".82" stroke-width="3"/>
+    <path d="M31 49c14-22 41-31 64-21M27 67c18-14 40-20 67-14" fill="none" stroke="#fff" stroke-linecap="round" stroke-width="5" opacity=".68"/>
+    <ellipse cx="70" cy="70" rx="66" ry="20" fill="none" stroke="#ff82be" stroke-opacity=".6" stroke-width="2" transform="rotate(-35 70 70)"/>
+  </symbol>
+  <symbol id="coast-drive" viewBox="0 0 1440 900">
+    <defs>
+      <linearGradient id="drive-sky" x2="0" y2="1">
+        <stop stop-color="#101b3b"/>
+        <stop offset=".53" stop-color="#6d527f"/>
+        <stop offset="1" stop-color="#f0937a"/>
+      </linearGradient>
+      <linearGradient id="drive-sea" x2="0" y2="1">
+        <stop stop-color="#245a82"/>
+        <stop offset="1" stop-color="#071b35"/>
+      </linearGradient>
+      <linearGradient id="drive-lamp" x2="0" y2="1">
+        <stop stop-color="#ffe8a6" stop-opacity=".85"/>
+        <stop offset="1" stop-color="#ffe8a6" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <path fill="url(#drive-sky)" d="M0 0h1440v500H0z"/>
+    <circle cx="1120" cy="340" r="54" fill="#ffd7b3" opacity=".9"/>
+    <path d="M0 430q190-88 368 0t374 0 360 0 338 5v465H0z" fill="url(#drive-sea)"/>
+    <path d="M840 454q90 18 204-5t218 0v8q-109 15-216 8t-206 2zM972 481q90 12 211-4t257 0v5q-142 12-258 8t-210 3z" fill="#b5dffc" opacity=".44"/>
+    <path d="M0 457q130-8 235-70l123-55 124 55q129 61 223 42l167-37 124 69 151 16 151-47 142 44v426H0z" fill="#1e304a"/>
+    <path d="m0 510 263-98 112 44 117 79 183 38 186-83 160 58 154-22 265 48v326H0z" fill="#101d32"/>
+    <path d="M0 641c215-94 359-100 540-27 156 63 246 34 355-32 151-92 351-91 545-37" fill="none" stroke="#f6eee0" stroke-linecap="round" stroke-width="16"/>
+    <path d="M0 641c215-94 359-100 540-27 156 63 246 34 355-32 151-92 351-91 545-37" fill="none" stroke="#222630" stroke-linecap="round" stroke-width="9"/>
+    <path d="M1036 546 965 721l-235 179h555l-98-237-92-117Z" fill="#262b37" stroke="#8a94a5" stroke-width="7"/>
+    <path d="m1041 582-58 130m-130 110 107-73m124-32 64 105" stroke="#f1dca3" stroke-dasharray="16 26" stroke-linecap="round" stroke-width="8" opacity=".82"/>
+    <g transform="translate(670 564)">
+      <path d="m8 54 28-29q15-16 45-19l77-5q26 0 46 25l35 25 12 31H0z" fill="#a92f57" stroke="#ffe0bd" stroke-width="5"/>
+      <path d="m80 18 69-2q18 1 31 22H64z" fill="#9adcf5" stroke="#283752" stroke-width="5"/>
+      <path d="M9 53h222v22H2z" fill="#d64f65"/>
+      <circle cx="51" cy="83" r="18" fill="#111827" stroke="#d7e3ef" stroke-width="6"/>
+      <circle cx="185" cy="83" r="18" fill="#111827" stroke="#d7e3ef" stroke-width="6"/>
+      <path d="M3 59h35M208 59h24" stroke="#ffe7aa" stroke-linecap="round" stroke-width="10"/>
+      <path d="m218 64 128 45m-127-31 147 82" stroke="url(#drive-lamp)" stroke-linecap="round" stroke-width="24" opacity=".64"/>
+    </g>
+    <path d="M106 714h230m-145 45h170m-89 48h201" stroke="#9de4ff" stroke-linecap="round" stroke-width="5" opacity=".46"/>
+    <g fill="#d8c8a9">
+      <circle cx="238" cy="380" r="4"/><circle cx="310" cy="402" r="3"/><circle cx="1330" cy="398" r="4"/>
+      <circle cx="1268" cy="421" r="3"/><circle cx="114" cy="432" r="3"/><circle cx="1386" cy="451" r="3"/>
+    </g>
+  </symbol>
 </svg>

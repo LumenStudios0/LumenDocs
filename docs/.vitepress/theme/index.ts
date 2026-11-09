@@ -638,6 +638,44 @@ export default {
             h('span', { class: 'lumen-tide-wave lumen-tide-wave-2' }),
             h('div', { class: 'lumen-track-visuals', 'aria-hidden': 'true' }, [
               h('div', { class: 'lumen-track-horizon' }, [
+                h('div', { class: 'lumen-track-illustrations' }, [
+                  ...Array.from({ length: 5 }, (_, index) =>
+                    h('svg', { class: `lumen-track-pine lumen-track-pine-${index + 1}`, viewBox: '0 0 180 360', focusable: 'false' }, [
+                      h('use', { href: '/assets/soundtrack-sprites.svg#pine' }),
+                    ]),
+                  ),
+                  h('svg', { class: 'lumen-track-mountain-art', viewBox: '0 0 640 300', focusable: 'false' }, [
+                    h('use', { href: '/assets/soundtrack-sprites.svg#mountain' }),
+                  ]),
+                  ...Array.from({ length: 3 }, (_, index) =>
+                    h('svg', { class: `lumen-track-wave-art lumen-track-wave-art-${index + 1}`, viewBox: '0 0 600 180', focusable: 'false' }, [
+                      h('use', { href: '/assets/soundtrack-sprites.svg#wave' }),
+                    ]),
+                  ),
+                  ...Array.from({ length: 3 }, (_, index) =>
+                    h('svg', { class: `lumen-track-flare lumen-track-flare-${index + 1}`, viewBox: '0 0 180 300', focusable: 'false' }, [
+                      h('use', { href: '/assets/soundtrack-sprites.svg#flare' }),
+                    ]),
+                  ),
+                  ...Array.from({ length: 4 }, (_, index) =>
+                    h('svg', { class: `lumen-track-orb lumen-track-orb-${index + 1}`, viewBox: '0 0 140 140', focusable: 'false' }, [
+                      h('use', { href: '/assets/soundtrack-sprites.svg#chrome-orb' }),
+                    ]),
+                  ),
+                  ...Array.from({ length: 4 }, (_, index) =>
+                    h('svg', { class: `lumen-track-crystal lumen-track-crystal-${index + 1}`, viewBox: '0 0 180 260', focusable: 'false' }, [
+                      h('use', { href: '/assets/soundtrack-sprites.svg#crystal' }),
+                    ]),
+                  ),
+                  ...Array.from({ length: 6 }, (_, index) =>
+                    h('svg', { class: `lumen-track-firefly-art lumen-track-firefly-art-${index + 1}`, viewBox: '0 0 100 100', focusable: 'false' }, [
+                      h('use', { href: '/assets/soundtrack-sprites.svg#firefly' }),
+                    ]),
+                  ),
+                  h('svg', { class: 'lumen-track-coast-drive', viewBox: '0 0 1440 900', focusable: 'false' }, [
+                    h('use', { href: '/assets/soundtrack-sprites.svg#coast-drive' }),
+                  ]),
+                ]),
                 h('svg', { class: 'lumen-track-sun', viewBox: '0 0 128 128', focusable: 'false' }, [
                   h('use', { href: '/assets/soundtrack-sprites.svg#sun' }),
                 ]),
