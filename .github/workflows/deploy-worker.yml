@@ -41,6 +41,11 @@ jobs:
           node --input-type=module <<'NODE'
           const endpoint = 'https://lumenstudio.fyi/api/admin/users'
           const origin = 'https://lumenstudio.fyi'
+          const dnsResponse = await fetch('https://dns.google/resolve?name=lumenstudio.fyi&type=A', {
+            headers: { Accept: 'application/dns-json' },
+          })
+          const dnsResult = await dnsResponse.json()
+          console.log(`lumenstudio.fyi A records: ${(dnsResult.Answer ?? []).map(answer => answer.data).join(', ') || 'none'}`)
           const preflight = await fetch(endpoint, {
             method: 'OPTIONS',
             headers: {
