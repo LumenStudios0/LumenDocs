@@ -116,8 +116,8 @@ onUnmounted(() => {
         <article class="home-feature-card home-key-card home-reveal" @pointermove="handleFeatureTilt" @pointerleave="resetFeatureTilt">
           <div class="home-feature-copy">
             <span class="home-feature-label">PRODUCT ACCESS</span>
-            <h3>One account for your Lumen tools.</h3>
-            <p>Keep your products together and find their setup guides without digging around.</p>
+            <h3>One key for every Lumen plugin.</h3>
+            <p>Use the same Lumen license key across your plugins instead of keeping a separate key for each one.</p>
           </div>
           <div class="home-key-visual" aria-hidden="true">
             <span class="home-key-orbit" />
@@ -181,6 +181,34 @@ onUnmounted(() => {
           </div>
           <span class="home-card-corner" aria-hidden="true">04</span>
         </article>
+      </div>
+    </section>
+
+    <section class="home-license home-reveal" aria-labelledby="home-license-title">
+      <div class="home-license-art" aria-hidden="true">
+        <span class="home-license-halo" />
+        <span class="home-license-orbit home-license-orbit-one" />
+        <span class="home-license-orbit home-license-orbit-two" />
+        <div class="home-license-token">
+          <span>✦</span>
+          <small>ONE KEY</small>
+        </div>
+        <div class="home-license-chip home-license-chip-one"><i>LA</i> Lumen Auction</div>
+        <div class="home-license-chip home-license-chip-two"><i>LD</i> Lumen Duels</div>
+        <div class="home-license-chip home-license-chip-three"><i>LS</i> Lumen Shards</div>
+        <span class="home-license-spark home-license-spark-one">✧</span>
+        <span class="home-license-spark home-license-spark-two">✦</span>
+      </div>
+      <div class="home-license-copy">
+        <span class="home-eyebrow"><span class="home-pulse" /> SIMPLER LICENSES, LESS FRICTION</span>
+        <h2 id="home-license-title">One key.<br><span>Every Lumen plugin.</span></h2>
+        <p>Your Lumen license key is shared across your plugins, so you don’t need to keep a different key for every product.</p>
+        <div class="home-license-steps">
+          <div><span>01</span><p><strong>Use your Lumen key</strong><small>One key for your Lumen plugins.</small></p></div>
+          <div><span>02</span><p><strong>Add it to each plugin</strong><small>Enter the same key in each plugin’s license setting.</small></p></div>
+          <div><span>03</span><p><strong>Follow the plugin guide</strong><small>Check product-specific setup and activation steps.</small></p></div>
+        </div>
+        <a class="home-button home-button-primary" href="/getting-started/licensing">Read the license guide <span>↗</span></a>
       </div>
     </section>
 
@@ -368,6 +396,217 @@ onUnmounted(() => {
   background:
     radial-gradient(ellipse at 78% 50%, rgb(123 63 242 / 13%), transparent 48%),
     linear-gradient(135deg, var(--vp-c-bg-soft), var(--vp-c-bg));
+}
+
+.home-license {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  align-items: center;
+  gap: clamp(24px, 5vw, 70px);
+  margin: 48px 0 0;
+  padding: clamp(28px, 5vw, 58px);
+  overflow: hidden;
+  border: 1px solid rgb(123 63 242 / 24%);
+  border-radius: 24px;
+  background:
+    radial-gradient(ellipse at 18% 52%, rgb(123 63 242 / 15%), transparent 43%),
+    linear-gradient(135deg, var(--vp-c-bg-soft), var(--vp-c-bg));
+}
+
+.home-license::after {
+  position: absolute;
+  right: -100px;
+  bottom: -180px;
+  width: 380px;
+  height: 300px;
+  border-radius: 50%;
+  background: rgb(123 63 242 / 10%);
+  content: "";
+  filter: blur(80px);
+  pointer-events: none;
+}
+
+.home-license-art {
+  position: relative;
+  display: grid;
+  min-height: 330px;
+  place-items: center;
+  perspective: 700px;
+}
+
+.home-license-halo {
+  position: absolute;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(123 63 242 / 30%), rgb(123 63 242 / 8%) 46%, transparent 72%);
+  filter: blur(5px);
+  animation: home-breathe 4.5s ease-in-out infinite;
+}
+
+.home-license-orbit {
+  position: absolute;
+  width: 255px;
+  height: 128px;
+  border: 1px solid rgb(169 134 255 / 28%);
+  border-radius: 50%;
+  transform: rotate(-24deg);
+  animation: home-key-orbit 16s linear infinite;
+}
+
+.home-license-orbit-two {
+  width: 300px;
+  height: 178px;
+  border-color: rgb(84 216 154 / 22%);
+  border-style: dashed;
+  animation-direction: reverse;
+  animation-duration: 24s;
+}
+
+.home-license-token {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 116px;
+  height: 116px;
+  align-content: center;
+  justify-items: center;
+  gap: 5px;
+  border: 1px solid rgb(224 210 255 / 68%);
+  border-radius: 32px;
+  background: linear-gradient(145deg, #a77cff, #6731c4 78%);
+  box-shadow: 0 0 48px rgb(123 63 242 / 48%), inset 0 0 25px rgb(255 255 255 / 16%);
+  color: #fff;
+  transform: rotate(-8deg);
+  animation: home-token-float 4s ease-in-out infinite;
+}
+
+.home-license-token > span {
+  font-size: 2.8rem;
+  line-height: 1;
+  text-shadow: 0 0 20px rgb(255 255 255 / 56%);
+}
+
+.home-license-token small {
+  font-size: 0.56rem;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+}
+
+.home-license-chip {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 11px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--vp-c-bg) 88%, transparent);
+  box-shadow: 0 10px 25px rgb(0 0 0 / 12%);
+  color: var(--home-ink);
+  font-size: 0.65rem;
+  font-weight: 650;
+  backdrop-filter: blur(10px);
+  animation: home-card-float 5s ease-in-out infinite;
+}
+
+.home-license-chip i {
+  display: grid;
+  width: 23px;
+  height: 23px;
+  place-items: center;
+  border-radius: 7px;
+  background: rgb(123 63 242 / 15%);
+  color: #a986ff;
+  font-size: 0.55rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.home-license-chip-one { top: 17%; left: 1%; }
+.home-license-chip-two { top: 24%; right: 0; animation-delay: -1.7s; }
+.home-license-chip-three { bottom: 13%; left: 12%; animation-delay: -3.2s; }
+
+.home-license-spark {
+  position: absolute;
+  color: #c3a9ff;
+  animation: home-sparkle 3s ease-in-out infinite;
+}
+
+.home-license-spark-one { top: 13%; right: 18%; font-size: 1.4rem; }
+.home-license-spark-two { bottom: 17%; right: 13%; font-size: 1.1rem; animation-delay: -1.4s; }
+
+.home-license-copy {
+  position: relative;
+  z-index: 1;
+}
+
+.home-license-copy h2 {
+  margin: 16px 0 12px;
+  font-size: clamp(2.1rem, 4vw, 3.2rem);
+  font-weight: 740;
+  letter-spacing: -0.055em;
+  line-height: 1.06;
+}
+
+.home-license-copy h2 span {
+  color: var(--home-purple);
+}
+
+.home-license-copy > p {
+  max-width: 510px;
+  margin: 0;
+  color: var(--home-muted);
+  font-size: 0.92rem;
+  line-height: 1.7;
+}
+
+.home-license-steps {
+  display: grid;
+  gap: 13px;
+  margin: 24px 0;
+}
+
+.home-license-steps > div {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.home-license-steps > div > span {
+  display: grid;
+  width: 27px;
+  height: 27px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgb(123 63 242 / 25%);
+  border-radius: 8px;
+  background: rgb(123 63 242 / 10%);
+  color: var(--home-purple);
+  font-size: 0.58rem;
+  font-weight: 800;
+}
+
+.home-license-steps p {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+}
+
+.home-license-steps strong {
+  font-size: 0.76rem;
+}
+
+.home-license-steps small {
+  color: var(--home-muted);
+  font-size: 0.71rem;
+  line-height: 1.5;
+}
+
+.home-license-copy .home-button {
+  width: fit-content;
 }
 
 .home-proof-copy,
@@ -1452,6 +1691,9 @@ onUnmounted(() => {
   .home-feature-grid { gap: 12px; }
   .home-entry { grid-template-columns: 1fr; gap: 9px; }
   .home-entry-card { padding: 11px 13px; }
+  .home-license { grid-template-columns: 1fr; gap: 12px; padding: 30px 24px; }
+  .home-license-art { min-height: 270px; }
+  .home-license-copy { padding: 0 4px 8px; }
   .home-proof,
   .home-portal {
     grid-template-columns: 1fr;
@@ -1491,6 +1733,14 @@ onUnmounted(() => {
   .home-search-result > small { font-size: 0.48rem; }
   .home-proof,
   .home-portal { padding: 28px 18px; }
+  .home-license { padding: 24px 18px; }
+  .home-license-art { min-height: 240px; }
+  .home-license-orbit { width: 215px; height: 108px; }
+  .home-license-orbit-two { width: 250px; height: 150px; }
+  .home-license-chip { padding: 7px 8px; font-size: 0.58rem; }
+  .home-license-chip-one { left: 0; }
+  .home-license-chip-two { right: 0; }
+  .home-license-chip-three { left: 4%; }
   .home-proof-actions { align-items: flex-start; flex-direction: column; gap: 13px; }
   .home-float-card-top { right: 0; }
   .home-float-card-bottom { right: -4px; }
