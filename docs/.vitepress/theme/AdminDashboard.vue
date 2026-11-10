@@ -105,7 +105,7 @@ async function adminRequest<T>(path: string, init: RequestInit = {}): Promise<T>
     })
   } catch (requestError) {
     console.error('Admin dashboard could not reach its Worker API:', requestError)
-    throw new Error('The admin service could not be reached. The service is online, but the connection from this page is failing. This site needs its API route enabled through Cloudflare DNS before the dashboard can connect reliably.')
+    throw new Error('Could not connect to the Lumen admin API. The site currently connects directly to its Cloudflare Worker; it does not need a same-origin /api route. If the site layout is also broken, ask Cloudflare to switch the lumenstudio.fyi apex A records to DNS only (gray cloud), then reload.')
   }
   let result: T & { detail?: string; error?: string }
   try {
