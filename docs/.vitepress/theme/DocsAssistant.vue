@@ -1158,7 +1158,13 @@ function showBugReport() {
 function getWorkerEndpoint(path: string) {
   if (!assistantEndpoint) return ''
 
-  const endpoint = new URL(assistantEndpoint, window.location.origin)
+  const loginEndpoint = path === '/auth/login' ? import.meta.env.VITE_DOCS_ASSISTANT_LOGIN_ENDPOINT : undefined
+  const endpoint = new URL(loginEndpoint || assistantEndpoint, window.location.origin)
+  if (loginEndpoint) {
+    endpoint.pathname = endpoint.pathname.replace(/\/$/, '') + path
+    endpoint.search = ''
+    return endpoint.toString()
+  }
   endpoint.pathname = endpoint.pathname.replace(/\/chat\/?$/, '').replace(/\/$/, '') + path
   endpoint.search = ''
   return endpoint.toString()

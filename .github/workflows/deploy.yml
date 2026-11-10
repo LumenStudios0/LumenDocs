@@ -46,6 +46,7 @@ jobs:
       - name: Build site
         env:
           VITE_DOCS_ASSISTANT_ENDPOINT: https://lumenstudio.fyi/api/chat
+          VITE_DOCS_ASSISTANT_LOGIN_ENDPOINT: https://lumen-docs-assistant.lumennetwork0.workers.dev
           VITE_DINO_DISCOVERIES_ENDPOINT: ${{ vars.DINO_DISCOVERIES_ENDPOINT }}
         run: npm run docs:build
       - name: Upload Pages artifact
