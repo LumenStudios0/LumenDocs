@@ -546,7 +546,7 @@ test('owner admin requests proxy with server-only credentials and actor attribut
   let deletion
   try {
     response = await worker.fetch(
-      request('/admin/users?query=1400375985211441242', {
+      request('/api/admin/users?query=1400375985211441242', {
         origin,
         authorization: `Bearer ${token}`,
       }),
@@ -556,7 +556,7 @@ test('owner admin requests proxy with server-only credentials and actor attribut
       }),
     )
     deletion = await worker.fetch(
-      request('/admin/users/123456789012345678', {
+      request('/api/admin/users/123456789012345678', {
         method: 'DELETE',
         origin,
         authorization: `Bearer ${token}`,
@@ -577,6 +577,22 @@ test('owner admin requests proxy with server-only credentials and actor attribut
   assert.equal((await response.json()).total, 0)
   assert.equal(deletion.status, 200)
   assert.equal(upstreamRequest.options.method, 'DELETE')
+})
+
+test('same-origin API login keeps Discord OAuth on the Worker callback URL', async () => {
+  const response = await worker.fetch(
+    request('/api/auth/login'),
+    env({
+      DISCORD_CALLBACK_URL: 'https://lumen-docs-assistant.lumennetwork0.workers.dev/auth/callback',
+    }),
+  )
+  const authorizeUrl = new URL(response.headers.get('Location'))
+
+  assert.equal(response.status, 302)
+  assert.equal(
+    authorizeUrl.searchParams.get('redirect_uri'),
+    'https://lumen-docs-assistant.lumennetwork0.workers.dev/auth/callback',
+  )
 })
 
 test('admin worker failures return a CORS-enabled JSON error instead of a browser fetch failure', async t => {
