@@ -49,11 +49,29 @@ onUnmounted(() => {
 
 <template>
   <div ref="experienceRoot" class="home-experience">
+    <nav class="home-entry" aria-label="Explore Lumen Studios">
+      <a class="home-entry-card" href="/docs/">
+        <span class="home-entry-icon home-entry-icon-docs" aria-hidden="true">⌘</span>
+        <span class="home-entry-copy"><strong>Documentation</strong><small>Setup guides and answers</small></span>
+        <span class="home-entry-arrow" aria-hidden="true">↗</span>
+      </a>
+      <a class="home-entry-card" href="/plugins/">
+        <span class="home-entry-icon home-entry-icon-plugins" aria-hidden="true">✦</span>
+        <span class="home-entry-copy"><strong>Plugin library</strong><small>Find tools for your server</small></span>
+        <span class="home-entry-arrow" aria-hidden="true">↗</span>
+      </a>
+      <a class="home-entry-card" href="/account/">
+        <span class="home-entry-icon home-entry-icon-account" aria-hidden="true">◈</span>
+        <span class="home-entry-copy"><strong>Customer portal</strong><small>Your products and account</small></span>
+        <span class="home-entry-arrow" aria-hidden="true">↗</span>
+      </a>
+    </nav>
+
     <section class="home-proof" aria-label="Lumen Studios principles">
       <div class="home-proof-copy">
-        <span class="home-eyebrow"><span class="home-pulse" /> BUILT FOR THE PEOPLE RUNNING SERVERS</span>
-        <h2>Less setup friction.<br><span>More time in game.</span></h2>
-        <p>Pick a tool, understand what it needs, and bring it online with confidence. The details are easy to find, and your customer tools have their own dedicated space.</p>
+        <span class="home-eyebrow"><span class="home-pulse" /> BUILT FOR THE PEOPLE BEHIND THE SERVER</span>
+        <h2>Make your server<br><span>feel like yours.</span></h2>
+        <p>Discover thoughtful tools for your community, follow clear guides, and keep your Lumen products together in one place.</p>
         <div class="home-proof-actions">
           <a class="home-button home-button-primary" href="/plugins/">Find your plugin <span>↗</span></a>
           <a class="home-text-link" href="/account/">Go to customer portal <span>→</span></a>
@@ -119,7 +137,7 @@ onUnmounted(() => {
           <div class="home-feature-copy">
             <span class="home-feature-label">LICENSE CONTROLS</span>
             <h3>Room for three server IPs.</h3>
-            <p>Review and prepare your IP list in the customer portal. Live license syncing is coming later.</p>
+            <p>Keep track of the server addresses associated with your Lumen products from your customer space.</p>
           </div>
           <div class="home-ip-visual" aria-hidden="true">
             <div class="home-ip-slot home-ip-slot-one"><span>01</span><i /><b>Server IP</b><em>READY</em></div>
@@ -135,7 +153,7 @@ onUnmounted(() => {
           <div class="home-feature-copy">
             <span class="home-feature-label">SERVER CONNECTIONS</span>
             <h3>See what’s connected.</h3>
-            <p>A dedicated place for license-linked servers. Connection data will appear when licensing is wired up.</p>
+            <p>Find your connected-server view alongside the rest of your product and license details.</p>
           </div>
           <div class="home-server-visual" aria-hidden="true">
             <div class="home-server-node home-server-node-main"><span class="home-node-cube">L</span><b>License</b><i>PREVIEW</i></div>
@@ -250,6 +268,89 @@ onUnmounted(() => {
 
 .home-experience a {
   text-decoration: none;
+}
+
+.home-entry {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0 0 22px;
+}
+
+.home-entry-card {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 42px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 15px;
+  background: linear-gradient(145deg, var(--vp-c-bg-soft), var(--vp-c-bg));
+  color: var(--home-ink);
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.home-entry-card:hover {
+  transform: translateY(-3px);
+  border-color: rgb(123 63 242 / 52%);
+  box-shadow: 0 12px 30px rgb(46 22 89 / 12%);
+}
+
+.home-entry-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid rgb(123 63 242 / 24%);
+  border-radius: 13px;
+  background: rgb(123 63 242 / 10%);
+  color: var(--home-purple);
+  font-size: 1.15rem;
+}
+
+.home-entry-icon-plugins {
+  border-color: rgb(84 216 154 / 24%);
+  background: rgb(84 216 154 / 10%);
+  color: #36b980;
+}
+
+.home-entry-icon-account {
+  border-color: rgb(88 167 255 / 24%);
+  background: rgb(88 167 255 / 10%);
+  color: #5599e7;
+}
+
+.home-entry-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.home-entry-copy strong {
+  overflow: hidden;
+  font-size: 0.83rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-entry-copy small {
+  overflow: hidden;
+  color: var(--home-muted);
+  font-size: 0.69rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-entry-arrow {
+  color: var(--vp-c-text-3);
+  font-size: 0.9rem;
+  transition: transform 180ms ease, color 180ms ease;
+}
+
+.home-entry-card:hover .home-entry-arrow {
+  transform: translate(2px, -2px);
+  color: var(--home-purple);
 }
 
 .home-proof,
@@ -1349,6 +1450,8 @@ onUnmounted(() => {
   .home-feature-showcase { padding: 68px 2px 20px; }
   .home-feature-card { min-height: 380px; padding-inline: 21px; }
   .home-feature-grid { gap: 12px; }
+  .home-entry { grid-template-columns: 1fr; gap: 9px; }
+  .home-entry-card { padding: 11px 13px; }
   .home-proof,
   .home-portal {
     grid-template-columns: 1fr;

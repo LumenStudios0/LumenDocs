@@ -45,26 +45,24 @@ export default defineConfig({
       },
     },
     nav: [
-      { text: 'Docs', link: '/docs/' },
+      { text: 'Documentation', link: '/docs/' },
       { text: 'Plugins', link: '/plugins/' },
       { text: 'Customer portal', link: '/account/' },
-      { text: 'Reports', link: '/reports/' },
-      { text: 'Getting started', link: '/getting-started/' },
-      { text: 'Changelogs', link: '/changelogs/' },
-      { text: 'Shortcuts', link: '/keyboard-shortcuts' },
+      { text: 'Support', link: '/reports/' },
     ],
     sidebar: {
       '/admin/': [
         {
-          text: 'Administration',
+          text: 'Studio tools',
           items: [
             { text: 'Admin dashboard', link: '/admin/' },
+            { text: 'Customer portal', link: '/account/' },
           ],
         },
       ],
       '/account/': [
         {
-          text: 'Customer portal',
+          text: 'Your account',
           items: [
             { text: 'Dashboard', link: '/account/' },
             { text: 'My licenses', link: '/account/licenses' },
@@ -72,169 +70,153 @@ export default defineConfig({
             { text: 'Account settings', link: '/account/settings' },
           ],
         },
+        {
+          text: 'Need help?',
+          items: [
+            { text: 'Browse plugins', link: '/plugins/' },
+            { text: 'Documentation', link: '/docs/' },
+            { text: 'Contact support', link: '/reports/' },
+          ],
+        },
+      ],
+      '/docs/': [
+        {
+          text: 'Documentation',
+          items: [
+            { text: 'Docs home', link: '/docs/' },
+            { text: 'Getting started', link: '/getting-started/' },
+            { text: 'Plugin catalog', link: '/plugins/' },
+            { text: 'Troubleshooting', link: '/troubleshooting' },
+          ],
+        },
+        {
+          text: 'Popular guides',
+          items: [
+            { text: 'Installation', link: '/getting-started/installation' },
+            { text: 'Compatibility', link: '/getting-started/compatibility' },
+            { text: 'Licensing', link: '/getting-started/licensing' },
+          ],
+        },
+        {
+          text: 'More',
+          items: [
+            { text: 'Release notes', link: '/changelogs/' },
+            { text: 'Support & requests', link: '/reports/' },
+          ],
+        },
+      ],
+      '/getting-started/': [
+        {
+          text: 'Getting started',
+          items: [
+            { text: 'Overview', link: '/getting-started/' },
+            { text: 'Installation', link: '/getting-started/installation' },
+            { text: 'Compatibility', link: '/getting-started/compatibility' },
+            { text: 'Licensing', link: '/getting-started/licensing' },
+          ],
+        },
+        {
+          text: 'Explore',
+          items: [
+            { text: 'Plugin catalog', link: '/plugins/' },
+            { text: 'Troubleshooting', link: '/troubleshooting' },
+            { text: 'Contact support', link: '/reports/' },
+          ],
+        },
+      ],
+      '/plugins/': [
+        {
+          text: 'Product library',
+          items: [
+            { text: 'Browse all plugins', link: '/plugins/' },
+            { text: 'Getting started', link: '/getting-started/' },
+            { text: 'Compatibility', link: '/getting-started/compatibility' },
+          ],
+        },
+        {
+          text: 'Popular guides',
+          items: [
+            { text: 'Installation', link: '/getting-started/installation' },
+            { text: 'Licensing', link: '/getting-started/licensing' },
+            { text: 'Troubleshooting', link: '/troubleshooting' },
+          ],
+        },
+      ],
+      '/products/': [
+        {
+          text: 'Product guides',
+          items: [
+            { text: 'Gladiator', link: '/products/gladiator' },
+            { text: 'LumenAuction', link: '/products/lumen-auction' },
+            { text: 'LumenBounty', link: '/products/lumen-bounty' },
+            { text: 'LumenDuels', link: '/products/lumen-duels' },
+            { text: 'LumenDuels Premium', link: '/products/lumen-duels-premium' },
+            { text: 'LumenEconomy', link: '/products/lumen-economy' },
+            { text: 'LumenEssentials', link: '/products/lumen-essentials' },
+            { text: 'LumenOrder', link: '/products/lumen-order' },
+            { text: 'LumenShards', link: '/products/lumen-shards' },
+            { text: 'LumenSpoofer', link: '/products/lumen-spoofer' },
+            { text: 'LumenSpawners', link: '/products/lumen-spawners' },
+          ],
+        },
+        {
+          text: 'Help',
+          items: [
+            { text: 'Plugin catalog', link: '/plugins/' },
+            { text: 'Troubleshooting', link: '/troubleshooting' },
+          ],
+        },
+      ],
+      '/changelogs/': [
+        {
+          text: 'Release notes',
+          items: [
+            { text: 'All updates', link: '/changelogs/' },
+            { text: 'Recent product updates', link: '/changelogs/updates' },
+          ],
+        },
+        {
+          text: 'Explore',
+          items: [
+            { text: 'Plugin catalog', link: '/plugins/' },
+            { text: 'Documentation', link: '/docs/' },
+          ],
+        },
+      ],
+      '/reports/': [
+        {
+          text: 'Support center',
+          items: [
+            { text: 'Send a report', link: '/reports/' },
+            { text: 'Troubleshooting', link: '/troubleshooting' },
+            { text: 'Compatibility guide', link: '/getting-started/compatibility' },
+          ],
+        },
+        {
+          text: 'Documentation',
+          items: [
+            { text: 'Getting started', link: '/getting-started/' },
+            { text: 'Plugin catalog', link: '/plugins/' },
+          ],
+        },
       ],
       '/': [
-      { text: 'Documentation', link: '/docs/' },
-      { text: 'Reports', link: '/reports/' },
-      {
-        text: 'Getting started',
-        items: [
-          { text: 'Welcome', link: '/getting-started/' },
-          { text: 'Installation', link: '/getting-started/installation' },
-          { text: 'Compatibility', link: '/getting-started/compatibility' },
-          { text: 'Getting a license', link: '/getting-started/licensing' },
-        ],
-      },
-      {
-        text: 'Plugins',
-        link: '/plugins/',
-        items: [
-          {
-            text: 'LumenAuction',
-            collapsed: true,
-            items: [
-              { text: 'Overview', link: '/products/lumen-auction' },
-              { text: 'Installation', link: '/products/lumen-auction#installation' },
-              { text: 'Commands & permissions', link: '/products/lumen-auction#commands-and-permissions' },
-              { text: 'Configuration', link: '/products/lumen-auction#configuration' },
-              { text: 'What it does', link: '/products/lumen-auction#features' },
-              { text: 'Troubleshooting', link: '/products/lumen-auction#troubleshooting' },
-            ],
-          },
-          {
-            text: 'Gladiator',
-            collapsed: true,
-            items: [
-              { text: 'Overview', link: '/products/gladiator' },
-              { text: 'Installation', link: '/products/gladiator#installation' },
-              { text: 'Commands & permissions', link: '/products/gladiator#commands-and-permissions' },
-              { text: 'Configuration', link: '/products/gladiator#configuration' },
-              { text: 'What it does', link: '/products/gladiator#features' },
-              { text: 'Troubleshooting', link: '/products/gladiator#troubleshooting' },
-            ],
-          },
-          {
-            text: 'LumenSpoofer',
-            collapsed: true,
-            items: [
-              { text: 'Overview', link: '/products/lumen-spoofer' },
-              { text: 'Installation', link: '/products/lumen-spoofer#installation' },
-              { text: 'Commands', link: '/products/lumen-spoofer#commands' },
-              { text: 'What it does', link: '/products/lumen-spoofer#what-it-does' },
-              { text: 'Troubleshooting', link: '/products/lumen-spoofer#troubleshooting' },
-            ],
-          },
-          {
-            text: 'LumenDuels',
-            collapsed: true,
-            items: [
-              { text: 'Overview', link: '/products/lumen-duels' },
-              { text: 'Installation', link: '/products/lumen-duels#installation' },
-              { text: 'Commands & permissions', link: '/products/lumen-duels#commands-and-permissions' },
-              { text: 'Configuration', link: '/products/lumen-duels#configuration' },
-              { text: 'What it does', link: '/products/lumen-duels#features' },
-              { text: 'Troubleshooting', link: '/products/lumen-duels#troubleshooting' },
-            ],
-          },
-          {
-            text: 'LumenDuels Premium',
-            collapsed: true,
-            items: [
-              { text: 'Overview', link: '/products/lumen-duels-premium' },
-              { text: 'Installation', link: '/products/lumen-duels-premium#installation' },
-              { text: 'Commands', link: '/products/lumen-duels-premium#commands' },
-              { text: 'Configuration', link: '/products/lumen-duels-premium#configuration' },
-              { text: 'What it does', link: '/products/lumen-duels-premium#what-it-does' },
-            ],
-          },
-          {
-            text: 'LumenBounty',
-            collapsed: true,
-            items: [
-              { text: 'Overview', link: '/products/lumen-bounty' },
-              { text: 'BuiltByBit', link: 'https://builtbybit.com/resources/lumenbounty.132973/' },
-            ],
-          },
-          {
-            text: 'LumenEconomy',
-            collapsed: true,
-            items: [
-              { text: 'Overview', link: '/products/lumen-economy' },
-              { text: 'Installation', link: '/products/lumen-economy#installation' },
-              { text: 'Commands & permissions', link: '/products/lumen-economy#commands-and-permissions' },
-              { text: 'Configuration', link: '/products/lumen-economy#configuration' },
-              { text: 'What it does', link: '/products/lumen-economy#features' },
-              { text: 'Troubleshooting', link: '/products/lumen-economy#troubleshooting' },
-            ],
-          },
-          {
-            text: 'LumenEssentials',
-            collapsed: true,
-            items: [
-              { text: 'Overview', link: '/products/lumen-essentials' },
-              { text: 'Installation', link: '/products/lumen-essentials#installation' },
-              { text: 'Commands & permissions', link: '/products/lumen-essentials#commands-and-permissions' },
-              { text: 'Configuration', link: '/products/lumen-essentials#configuration' },
-              { text: 'What it does', link: '/products/lumen-essentials#features' },
-              { text: 'Troubleshooting', link: '/products/lumen-essentials#troubleshooting' },
-            ],
-          },
-          {
-            text: 'LumenOrder',
-            collapsed: true,
-            items: [
-              { text: 'Overview', link: '/products/lumen-order' },
-              { text: 'Installation', link: '/products/lumen-order#installation' },
-              { text: 'Commands & permissions', link: '/products/lumen-order#commands-and-permissions' },
-              { text: 'Configuration', link: '/products/lumen-order#configuration' },
-              { text: 'What it does', link: '/products/lumen-order#features' },
-              { text: 'Troubleshooting', link: '/products/lumen-order#troubleshooting' },
-            ],
-          },
-          {
-            text: 'LumenShards',
-            collapsed: true,
-            items: [
-              { text: 'Overview', link: '/products/lumen-shards' },
-              { text: 'Installation', link: '/products/lumen-shards#installation' },
-              { text: 'Commands & permissions', link: '/products/lumen-shards#commands-and-permissions' },
-              { text: 'Configuration', link: '/products/lumen-shards#configuration' },
-              { text: 'What it does', link: '/products/lumen-shards#features' },
-              { text: 'Troubleshooting', link: '/products/lumen-shards#troubleshooting' },
-            ],
-          },
-          {
-            text: 'LumenSpawners',
-            collapsed: true,
-            items: [
-              { text: 'Overview', link: '/products/lumen-spawners' },
-              { text: 'Installation', link: '/products/lumen-spawners#installation' },
-              { text: 'Commands & permissions', link: '/products/lumen-spawners#commands-and-permissions' },
-              { text: 'Configuration', link: '/products/lumen-spawners#configuration' },
-              { text: 'What it does', link: '/products/lumen-spawners#features' },
-              { text: 'Troubleshooting', link: '/products/lumen-spawners#troubleshooting' },
-            ],
-          },
-          {
-            text: 'Coming soon',
-            collapsed: true,
-            items: [
-              { text: 'LumenTeam', link: '/coming-soon?product=LumenTeam' },
-              { text: 'LumenIntellegance', link: '/coming-soon?product=LumenIntellegance' },
-              { text: 'Sentinel', link: '/coming-soon?product=Sentinel' },
-            ],
-          },
-        ],
-      },
-      { text: 'Troubleshooting', link: '/troubleshooting' },
-      {
-        text: 'Reference',
-        items: [
-          { text: 'Changelogs', link: '/changelogs/' },
-          { text: 'Recent product updates', link: '/changelogs/updates' },
-          { text: 'Keyboard shortcuts', link: '/keyboard-shortcuts' },
-        ],
-      },
+        {
+          text: 'Documentation',
+          items: [
+            { text: 'Docs home', link: '/docs/' },
+            { text: 'Getting started', link: '/getting-started/' },
+            { text: 'Plugin catalog', link: '/plugins/' },
+          ],
+        },
+        {
+          text: 'Reference',
+          items: [
+            { text: 'Troubleshooting', link: '/troubleshooting' },
+            { text: 'Release notes', link: '/changelogs/' },
+            { text: 'Keyboard shortcuts', link: '/keyboard-shortcuts' },
+          ],
+        },
       ],
     },
     socialLinks: [

@@ -41,12 +41,11 @@ export default {
       let traversingHistory = false
       const topNavigationItems = [
         { text: 'Documentation', link: '/docs/' },
-        { text: 'Browse plugins', link: '/plugins/' },
+        { text: 'Plugin catalog', link: '/plugins/' },
         { text: 'Customer portal', link: '/account/' },
         { text: 'Getting started', link: '/getting-started/' },
-        { text: 'Reports', link: '/reports/' },
-        { text: 'Changelogs', link: '/changelogs/' },
-        { text: 'Keyboard shortcuts', link: '/keyboard-shortcuts' },
+        { text: 'Support & requests', link: '/reports/' },
+        { text: 'Release notes', link: '/changelogs/' },
       ]
       let slideFromLeft = true
       let sunClicks = 0
