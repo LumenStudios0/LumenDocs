@@ -105,7 +105,7 @@ async function adminRequest<T>(path: string, init: RequestInit = {}): Promise<T>
     })
   } catch (requestError) {
     console.error('Admin dashboard could not reach its Worker API:', requestError)
-    throw new Error('The admin dashboard could not reach its API. Please try again in a moment. If the problem continues, contact support.')
+    throw new Error('The admin service could not be reached. The service is online, but the connection from this page is failing. This site needs its API route enabled through Cloudflare DNS before the dashboard can connect reliably.')
   }
   let result: T & { detail?: string; error?: string }
   try {

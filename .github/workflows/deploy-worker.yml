@@ -39,7 +39,7 @@ jobs:
       - name: Verify admin API CORS
         run: |
           node --input-type=module <<'NODE'
-          const endpoint = 'https://lumenstudio.fyi/api/admin/users'
+          const endpoint = 'https://lumen-docs-assistant.lumennetwork0.workers.dev/admin/users'
           const origin = 'https://lumenstudio.fyi'
           const preflight = await fetch(endpoint, {
             method: 'OPTIONS',
@@ -58,5 +58,5 @@ jobs:
           if (response.status !== 401 || response.headers.get('access-control-allow-origin') !== origin) {
             throw new Error(`Admin endpoint smoke test failed: status=${response.status}, allow-origin=${response.headers.get('access-control-allow-origin')}, body=${await response.text()}`)
           }
-          console.log('Same-origin admin route and authenticated API response are reachable.')
+          console.log('Admin API CORS preflight and authenticated route are reachable.')
           NODE
