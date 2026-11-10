@@ -194,7 +194,7 @@ async function startDiscordLogin(request, env) {
 
   const stateBytes = crypto.getRandomValues(new Uint8Array(32))
   const state = base64UrlEncode(stateBytes)
-  const callbackUrl = env.DISCORD_CALLBACK_URL || new URL('/auth/callback', request.url).toString()
+  const callbackUrl = new URL('/auth/callback', request.url).toString()
   const authorizeUrl = new URL('https://discord.com/oauth2/authorize')
   authorizeUrl.searchParams.set('client_id', env.DISCORD_CLIENT_ID)
   authorizeUrl.searchParams.set('redirect_uri', callbackUrl)
@@ -1061,10 +1061,7 @@ async function adminApi(request, env, origin, path) {
 
 export default {
   async fetch(request, env) {
-    const requestUrl = new URL(request.url)
-    const path = requestUrl.pathname.startsWith('/api/')
-      ? requestUrl.pathname.slice('/api'.length)
-      : requestUrl.pathname
+    const path = new URL(request.url).pathname
     if (path === '/auth/login') {
       if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 })
       return startDiscordLogin(request, env)
