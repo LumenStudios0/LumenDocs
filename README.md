@@ -26,7 +26,7 @@ The VitePress `base` is `/LumenDocs/`, matching this repository's GitHub Pages p
 
 ## Assistant and bug reports
 
-The assistant and bug-report form use the Cloudflare Worker in `worker/chat.js`. Set the GitHub Actions repository variable `DOCS_ASSISTANT_ENDPOINT` to the worker's `/chat` URL. Configure the Discord webhook only as a Cloudflare Worker secret, then deploy the worker:
+The assistant, Discord sign-in, and admin dashboard use the Cloudflare Worker in `worker/chat.js`. The Pages workflows build against the deployed Worker URL `https://lumen-docs-assistant.lumennetwork0.workers.dev/chat`. Configure the Discord webhook only as a Cloudflare Worker secret, then deploy the worker:
 
 ```sh
 npx wrangler secret put DISCORD_BUG_REPORT_WEBHOOK

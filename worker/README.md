@@ -5,7 +5,7 @@ The documentation site is hosted on GitHub Pages, which cannot keep an AI API ke
 1. Install Wrangler and authenticate to the Cloudflare account that will host the Worker.
 2. Revoke the key shared in chat and create a fresh one. From the repository root, store the new DeepSeek key as a Worker secret with `npx wrangler secret put DEEPSEEK_API_KEY`. Paste the key only into Wrangler's secure prompt; do not put it in a file, build variable, or commit.
 3. Deploy the Worker with `npx wrangler deploy`.
-4. In the GitHub repository, open **Settings → Secrets and variables → Actions → Variables**, add `DOCS_ASSISTANT_ENDPOINT` with the deployed Worker URL followed by `/chat`.
+4. The GitHub Pages workflows use the deployed Worker URL followed by `/chat`; the endpoint is configured in `.github/workflows/deploy.yml` and `.github/workflows/refresh-changelogs.yml`.
 5. Push a commit to `main` to rebuild the GitHub Pages site with the endpoint configured.
 
 The Worker only accepts requests from the configured site origin, limits each IP to 10 questions per minute, bounds question and documentation-context sizes, and does not log prompts or provider responses. `ALLOWED_ORIGIN` is set to `https://lumenstudio.fyi`. The assistant sends the question and matching documentation excerpts to DeepSeek when enabled; the page's local guide search remains the fallback if no endpoint is configured.
@@ -18,7 +18,7 @@ Compatibility reports require a plugin, server software, Minecraft version, one 
 
 ## Discord sign-in
 
-Discord sign-in is optional and does not restrict access to the documentation. It uses the Worker configured by `DOCS_ASSISTANT_ENDPOINT`; the Discord access token stays on the Worker. Customer sessions persist in browser local storage and expire after 30 days of inactivity; staff sessions expire after 8 hours. Active sessions are renewed before expiry, and signing out clears the stored token.
+Discord sign-in is optional and does not restrict access to the documentation. It uses the Worker endpoint embedded by the Pages workflow; the Discord access token stays on the Worker. Customer sessions persist in browser local storage and expire after 30 days of inactivity; staff sessions expire after 8 hours. Active sessions are renewed before expiry, and signing out clears the stored token.
 
 1. Create an application in the [Discord Developer Portal](https://discord.com/developers/applications) and open **OAuth2**.
 2. Add the exact redirect URI `https://YOUR-WORKER-HOST/auth/callback`, replacing `YOUR-WORKER-HOST` with the deployed Worker host. Save the OAuth2 page.
@@ -32,7 +32,7 @@ Discord sign-in is optional and does not restrict access to the documentation. I
 
    Use the application's client ID and client secret for the first two values. Generate a random value of at least 32 characters for `AUTH_SIGNING_SECRET` (for example, `openssl rand -hex 32`); never commit it or put it in a Pages build variable.
 4. Deploy the Worker with `npx wrangler deploy`.
-5. Confirm the GitHub Actions variable `DOCS_ASSISTANT_ENDPOINT` is set to the deployed Worker URL followed by `/chat`, then rebuild and deploy the GitHub Pages site.
+5. Confirm the GitHub Pages workflows use the deployed Worker URL followed by `/chat`, then rebuild and deploy the GitHub Pages site.
 
 The Worker uses Discord's `identify` scope, validates OAuth state with a short-lived HttpOnly cookie, and signs a persistent browser session. Customer sessions are stored in browser local storage and expire after 30 days of inactivity; `/auth/me` renews them while they're active. Staff sessions expire after 8 hours and refresh during use. Signing out clears the saved browser session. Tokens stay in the browser and are never embedded in the Pages build. The Pages workflow does not deploy Worker changes.
 
@@ -56,7 +56,7 @@ To connect the dashboard after the licensing API is available over HTTPS:
 
    Enter the HTTPS API base URL (for example `https://licenses.example.com`) and the same strong administrator token configured on the licensing API. Do not put either value in Pages variables, source files, or this repository.
 3. If adding other staff, set `ADMIN_DISCORD_IDS` in `wrangler.toml` to comma-separated Discord account IDs. The two built-in owner accounts are always authorized.
-4. Deploy the Worker with `npx wrangler deploy`, then push the site changes so GitHub Pages builds the `/admin/` dashboard. Confirm `DOCS_ASSISTANT_ENDPOINT` points to the deployed Worker `/chat` endpoint.
+4. Deploy the Worker with `npx wrangler deploy`, then push the site changes so GitHub Pages builds the `/admin/` dashboard. The Pages workflow embeds the deployed Worker `/chat` endpoint at build time.
 5. Apply the licensing backend changes and run its tests before using account controls. To remove an entitlement, revoke its license; records are retained for audit history. Each license supports at most three numeric IPv4/IPv6 addresses.
 
 Until the Worker secrets and licensing service are configured, admin actions return an explicit `LICENSE_SERVICE_UNAVAILABLE` response. GitHub Pages deployment alone does not deploy the Worker or licensing backend.
