@@ -105,6 +105,12 @@ async function adminRequest<T>(path: string, init: RequestInit = {}): Promise<T>
     })
   } catch (requestError) {
     console.error('Admin dashboard could not reach its Worker API:', requestError)
+    if (
+      requestError instanceof Error &&
+      /content security policy|connect-src|refused to connect/i.test(requestError.message)
+    ) {
+      throw new Error('Your current browser page is blocking the admin API. Open https://lumenstudio.fyi/admin/ directly in a new browser tab, not inside GitHub or an embedded preview.')
+    }
     throw new Error('Could not reach the admin service. Check your connection and try again; if it continues, the Worker may need to be deployed or its allowed site origin corrected.')
   }
   let result: T & { detail?: string; error?: string }
