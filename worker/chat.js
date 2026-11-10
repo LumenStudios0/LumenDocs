@@ -13,6 +13,13 @@ function respond(data, status, origin) {
   return new Response(JSON.stringify(data), { status, headers })
 }
 
+function licenseServiceUnavailable(origin) {
+  return respond({
+    error: 'The licensing backend is not configured on this Worker. Set the LICENSE_API_URL Worker setting and LICENSE_ADMIN_API_TOKEN secret, and make sure the backend is reachable over HTTPS.',
+    code: 'LICENSE_SERVICE_UNAVAILABLE',
+  }, 503, origin)
+}
+
 function isAllowedOrigin(origin, env) {
   const allowedOrigins = new Set([
     env.ALLOWED_ORIGIN,
@@ -608,7 +615,7 @@ async function accountLicenseApi(request, env, origin, path) {
       return respond({ error: 'BuiltByBit purchase linking is not configured' }, 503, origin)
     }
     if (!env.LICENSE_API_URL || !env.LICENSE_ADMIN_API_TOKEN) {
-      return respond({ error: 'Automatic licensing is not connected yet' }, 503, origin)
+      return licenseServiceUnavailable(origin)
     }
 
     const body = await request.text()
@@ -792,7 +799,7 @@ async function accountLicenseApi(request, env, origin, path) {
 
   if (path === '/account/license-key') {
     if (!env.LICENSE_API_URL || !env.LICENSE_ADMIN_API_TOKEN) {
-      return respond({ error: 'Automatic licensing is not connected yet' }, 503, origin)
+      return licenseServiceUnavailable(origin)
     }
     let apiBase
     try {
@@ -855,10 +862,7 @@ async function accountLicenseApi(request, env, origin, path) {
 
   if (path === '/account/license-ips') {
     if (!env.LICENSE_API_URL || !env.LICENSE_ADMIN_API_TOKEN) {
-      return respond({
-        error: 'The licensing service is not connected yet',
-        code: 'LICENSE_SERVICE_UNAVAILABLE',
-      }, 503, origin)
+      return licenseServiceUnavailable(origin)
     }
 
     let apiBase
@@ -904,10 +908,7 @@ async function accountLicenseApi(request, env, origin, path) {
 
   if (path === '/account/profile' || path === '/account/delete') {
     if (!env.LICENSE_API_URL || !env.LICENSE_ADMIN_API_TOKEN) {
-      return respond({
-        error: 'The licensing service is not connected yet',
-        code: 'LICENSE_SERVICE_UNAVAILABLE',
-      }, 503, origin)
+      return licenseServiceUnavailable(origin)
     }
 
     let apiBase
@@ -958,10 +959,7 @@ async function accountLicenseApi(request, env, origin, path) {
     }
   }
 
-  return respond({
-    error: 'The license service is not connected yet',
-    code: 'LICENSE_SERVICE_UNAVAILABLE',
-  }, 503, origin)
+  return licenseServiceUnavailable(origin)
 }
 
 function isAllowedAdminRoute(path, method) {
@@ -1002,10 +1000,7 @@ async function adminApi(request, env, origin, path) {
     return respond({ error: 'Please wait before using the admin dashboard again' }, 429, origin)
   }
   if (!env.LICENSE_API_URL || !env.LICENSE_ADMIN_API_TOKEN) {
-    return respond({
-      error: 'The licensing service is not connected yet',
-      code: 'LICENSE_SERVICE_UNAVAILABLE',
-    }, 503, origin)
+    return licenseServiceUnavailable(origin)
   }
 
   let baseUrl

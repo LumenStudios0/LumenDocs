@@ -388,7 +388,9 @@ test('account IP endpoint validates addresses and reports an unconnected license
 
   assert.equal(invalid.status, 400)
   assert.equal(valid.status, 503)
-  assert.equal((await valid.json()).code, 'LICENSE_SERVICE_UNAVAILABLE')
+  const result = await valid.json()
+  assert.equal(result.code, 'LICENSE_SERVICE_UNAVAILABLE')
+  assert.match(result.error, /LICENSE_API_URL.*LICENSE_ADMIN_API_TOKEN/)
 })
 
 test('account IP endpoint proxies reads and updates for the signed-in Discord account', async t => {
@@ -520,6 +522,19 @@ test('admin routes deny non-admin Discord sessions before contacting the license
     env({ LICENSE_API_URL: 'https://licenses.example', LICENSE_ADMIN_API_TOKEN: 'server-secret' }),
   )
   assert.equal(response.status, 403)
+})
+
+test('admin reports the exact missing licensing backend configuration', async t => {
+  const token = await createSessionToken(t, '1400375985211441242')
+  const response = await worker.fetch(
+    request('/admin/users', { origin, authorization: `Bearer ${token}` }),
+    env(),
+  )
+  const result = await response.json()
+
+  assert.equal(response.status, 503)
+  assert.equal(result.code, 'LICENSE_SERVICE_UNAVAILABLE')
+  assert.match(result.error, /LICENSE_API_URL.*LICENSE_ADMIN_API_TOKEN/)
 })
 
 test('additional staff IDs can be authorized through the Worker configuration', async t => {

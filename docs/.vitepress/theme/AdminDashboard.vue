@@ -107,14 +107,19 @@ async function adminRequest<T>(path: string, init: RequestInit = {}): Promise<T>
     console.error('Admin dashboard could not reach its Worker API:', requestError)
     throw new Error('The admin dashboard could not reach its API. Please try again in a moment. If the problem continues, contact support.')
   }
-  let result: T & { detail?: string; error?: string }
+  let result: T & { detail?: string; error?: string; code?: string }
   try {
     result = await response.json() as T & { detail?: string; error?: string }
   } catch (parseError) {
     console.error('Admin dashboard received a non-JSON API response:', parseError)
     throw new Error(`The admin service returned an invalid response (${response.status}). Check the Worker deployment and logs.`)
   }
-  if (!response.ok) throw new Error(result.detail ?? result.error ?? `Admin request failed (${response.status}).`)
+  if (!response.ok) {
+    if (result.code === 'LICENSE_SERVICE_UNAVAILABLE') {
+      throw new Error(result.error ?? 'The license backend is not configured in Cloudflare yet. Set the Worker setting LICENSE_API_URL and secret LICENSE_ADMIN_API_TOKEN.')
+    }
+    throw new Error(result.detail ?? result.error ?? `Admin request failed (${response.status}).`)
+  }
   return result
 }
 

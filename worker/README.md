@@ -47,19 +47,19 @@ The staff directory lists non-deleted customers with licenses or a customer prof
 To connect the dashboard after the licensing API is available over HTTPS:
 
 1. Deploy the updated licensing service and apply its database migration (`alembic upgrade head`, or restart the provided Docker Compose stack, which applies migrations during API startup). Keep the API private behind HTTPS and ensure its `ADMIN_API_TOKEN` is configured.
-2. Authenticate Wrangler for the account that owns the Worker. From the repository root, configure the upstream URL and administrator credential as Worker secrets:
+2. Set `LICENSE_API_URL` to the licensing API's HTTPS base URL and set `LICENSE_ADMIN_API_TOKEN` to the exact `ADMIN_API_TOKEN` configured in the VPS `.env`. The repository's current VPS address is `https://178.238.238.15`; first confirm `https://178.238.238.15/healthz` returns `{"status":"ok"}`. In **Cloudflare → Workers & Pages → lumen-docs-assistant → Settings → Variables and Secrets**, add `LICENSE_API_URL` as a Worker setting and `LICENSE_ADMIN_API_TOKEN` as a secret. Never paste the administrator token into an AI chat, Pages variable, source file, or this repository. Alternatively, with authenticated Wrangler, use:
 
    ```sh
    npx wrangler secret put LICENSE_API_URL
    npx wrangler secret put LICENSE_ADMIN_API_TOKEN
    ```
 
-   Enter the HTTPS API base URL (for example `https://licenses.example.com`) and the same strong administrator token configured on the licensing API. Do not put either value in Pages variables, source files, or this repository.
+   Enter the HTTPS API base URL and the same administrator token used by the licensing API.
 3. If adding other staff, set `ADMIN_DISCORD_IDS` in `wrangler.toml` to comma-separated Discord account IDs. The two built-in owner accounts are always authorized.
 4. Deploy the Worker with `npx wrangler deploy`, then push the site changes so GitHub Pages builds the `/admin/` dashboard. The Pages workflow embeds the deployed Worker `/chat` endpoint at build time.
 5. Apply the licensing backend changes and run its tests before using account controls. To remove an entitlement, revoke its license; records are retained for audit history. Each license supports at most three numeric IPv4/IPv6 addresses.
 
-Until the Worker secrets and licensing service are configured, admin actions return an explicit `LICENSE_SERVICE_UNAVAILABLE` response. GitHub Pages deployment alone does not deploy the Worker or licensing backend.
+If the dashboard says `LICENSE_SERVICE_UNAVAILABLE`, one or both Worker settings are missing. If both are present but calls time out, check that `/healthz` is reachable from the public internet over HTTPS and that ports 80 and 443 are open on the VPS. GitHub Pages deployment alone does not configure the Worker secrets or deploy the licensing backend.
 
 ## BuiltByBit purchase claims and customer license controls
 
