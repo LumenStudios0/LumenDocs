@@ -2,6 +2,7 @@ import DefaultTheme from 'vitepress/theme'
 import { h, defineComponent, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useData, useRouter } from 'vitepress'
 import AccountLicenseIps from './AccountLicenseIps.vue'
+import AccountLicenseClaim from './AccountLicenseClaim.vue'
 import AccountProductCatalog from './AccountProductCatalog.vue'
 import AccountConnectedServers from './AccountConnectedServers.vue'
 import AccountDashboard from './AccountDashboard.vue'
@@ -16,6 +17,7 @@ export default {
   ...DefaultTheme,
   enhanceApp({ app }) {
     app.component('AccountLicenseIps', AccountLicenseIps)
+    app.component('AccountLicenseClaim', AccountLicenseClaim)
     app.component('AccountProductCatalog', AccountProductCatalog)
     app.component('AccountConnectedServers', AccountConnectedServers)
     app.component('AccountDashboard', AccountDashboard)

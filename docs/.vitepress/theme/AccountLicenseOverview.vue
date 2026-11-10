@@ -1,31 +1,49 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
+import { getDiscordSession } from './discord-session'
 
 const savedIpCount = ref(0)
+const ipStatus = ref('Sign in to view your allowlist')
 
-function refreshIpCount() {
+function endpointFor(path: string) {
+  const assistantEndpoint = import.meta.env.VITE_DOCS_ASSISTANT_ENDPOINT
+  if (!assistantEndpoint) return ''
+
+  const endpoint = new URL(assistantEndpoint, window.location.origin)
+  endpoint.pathname = endpoint.pathname.replace(/\/chat\/?$/, '').replace(/\/$/, '') + path
+  endpoint.search = ''
+  return endpoint.toString()
+}
+
+async function refreshIpCount() {
   try {
-    const saved = localStorage.getItem('lumen-account-license-ips')
-    if (!saved) {
-      savedIpCount.value = 0
+    const token = getDiscordSession()
+    const endpoint = endpointFor('/account/license-ips')
+    if (!token || !endpoint) {
+      ipStatus.value = 'Sign in to view your allowlist'
       return
     }
-
-    const parsed: unknown = JSON.parse(saved)
-    savedIpCount.value = Array.isArray(parsed)
-      ? Math.min(parsed.filter(value => typeof value === 'string').length, 3)
-      : 0
+    const response = await fetch(endpoint, { headers: { Authorization: `Bearer ${token}` } })
+    const result = await response.json() as { addresses?: unknown }
+    if (response.ok && Array.isArray(result.addresses)) {
+      savedIpCount.value = Math.min(result.addresses.length, 3)
+      ipStatus.value = 'Live shared-license allowlist'
+    } else {
+      savedIpCount.value = 0
+      ipStatus.value = response.status === 404 ? 'Claim a license to add server IPs' : 'License service unavailable'
+    }
   } catch (error) {
-    console.error('Unable to read the browser-only license IP preview:', error)
+    console.error('Unable to load the customer license overview:', error)
+    ipStatus.value = 'License service unavailable'
   }
 }
 
 onMounted(() => {
-  refreshIpCount()
-  window.addEventListener('lumen-license-preview-updated', refreshIpCount)
+  void refreshIpCount()
+  window.addEventListener('lumen-license-ips-updated', refreshIpCount)
 })
 
-onUnmounted(() => window.removeEventListener('lumen-license-preview-updated', refreshIpCount))
+onUnmounted(() => window.removeEventListener('lumen-license-ips-updated', refreshIpCount))
 </script>
 
 <template>
@@ -34,28 +52,28 @@ onUnmounted(() => window.removeEventListener('lumen-license-preview-updated', re
       <div>
         <span class="license-overview-kicker">LICENSE CENTER</span>
         <h2>Your server access, at a glance.</h2>
-        <p>Manage your IP preview here, then check connected-server activity below.</p>
+        <p>Claim one shared key for your eligible plugins and manage its server access here.</p>
       </div>
-      <span class="license-preview-chip"><i /> PREVIEW MODE</span>
+      <span class="license-preview-chip"><i /> LICENSE CENTER</span>
     </div>
 
     <div class="license-overview-stats">
       <article class="license-overview-stat">
         <span class="license-stat-icon">⌁</span>
-        <span><small>LICENSE RECORDS</small><strong>Not connected</strong><i>Purchase sync is not set up</i></span>
+        <span><small>LICENSE KEY</small><strong>One shared key</strong><i>Use it across eligible plugins</i></span>
       </article>
       <article class="license-overview-stat">
         <span class="license-stat-icon license-stat-green">⌖</span>
-        <span><small>IP SLOTS IN THIS BROWSER</small><strong>{{ savedIpCount }} <em>/ 3</em></strong><i>Preview only · not live</i></span>
+        <span><small>SERVER IP ADDRESSES</small><strong>{{ savedIpCount }} <em>/ 3</em></strong><i>{{ ipStatus }}</i></span>
       </article>
       <article class="license-overview-stat">
         <span class="license-stat-icon license-stat-orange">▤</span>
-        <span><small>CONNECTED SERVERS</small><strong>Awaiting service</strong><i>Server data will appear here later</i></span>
+        <span><small>PURCHASE VERIFICATION</small><strong>BuiltByBit</strong><i>Connect a buyer account to claim</i></span>
       </article>
     </div>
 
     <div class="license-overview-steps">
-      <span><b>01</b> Find your product key</span><i />
+      <span><b>01</b> Verify a purchase</span><i />
       <span><b>02</b> Add up to three IPs</span><i />
       <span><b>03</b> Review server activity</span>
     </div>

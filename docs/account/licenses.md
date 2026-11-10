@@ -5,6 +5,8 @@ description: View Lumen Studios licenses and manage server IP addresses
 
 # My licenses
 
+<AccountLicenseClaim />
+
 <AccountLicenseOverview />
 
 ## Manage server IPs

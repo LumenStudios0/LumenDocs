@@ -201,6 +201,148 @@ test('active customer sessions renew before expiring', async () => {
   assert.ok(refreshedClaims.exp - Math.floor(Date.now() / 1000) > 29 * 24 * 60 * 60)
 })
 
+test('BuiltByBit linking starts an OAuth flow bound to the signed-in Discord account', async t => {
+  const token = await createSessionToken(t)
+  const response = await worker.fetch(
+    request('/account/builtbybit/authorize', {
+      method: 'POST',
+      origin,
+      authorization: `Bearer ${token}`,
+    }),
+    env({
+      BUILDBYBIT_CLIENT_ID: 'bb-client-id',
+      BUILDBYBIT_CLIENT_SECRET: 'bb-client-secret',
+      BUILDBYBIT_RESOURCE_IDS: '7001,7002',
+    }),
+  )
+  const result = await response.json()
+  const authorizeUrl = new URL(result.authorizeUrl)
+
+  assert.equal(response.status, 200)
+  assert.equal(authorizeUrl.origin, 'https://builtbybit.com')
+  assert.equal(authorizeUrl.pathname, '/account/external/authorize')
+  assert.equal(authorizeUrl.searchParams.get('client_id'), 'bb-client-id')
+  assert.equal(authorizeUrl.searchParams.get('redirect_uri'), `${origin}/account/licenses/`)
+  assert.equal(authorizeUrl.searchParams.get('response_type'), 'code')
+  assert.equal(authorizeUrl.searchParams.get('state'), result.state)
+  assert.equal(result.state.split('.').length, 3)
+})
+
+test('BuiltByBit claim verifies the OAuth buyer and proxies only licensed resources', async t => {
+  const token = await createSessionToken(t)
+  const originalFetch = globalThis.fetch
+  const requests = []
+  globalThis.fetch = async (url, options = {}) => {
+    requests.push({ url: String(url), options })
+    if (String(url).endsWith('/oauth2/token')) {
+      return Response.json({ access_token: 'builtbybit-user-token' })
+    }
+    if (String(url).endsWith('/v2/members/self')) {
+      assert.equal(options.headers.Authorization, 'Bearer builtbybit-user-token')
+      return Response.json({ result: 'success', data: { self: { user_id: '998877' } } })
+    }
+    if (String(url).includes('/v2/resources/discover/licenses')) {
+      assert.equal(options.headers.Authorization, 'Bearer builtbybit-user-token')
+      return Response.json({
+        result: 'success',
+        data: {
+          licenses: [
+            { content_type: 'resource', content_id: 7001, buyer_id: 998877, permanent: true, active: true },
+            { content_type: 'resource', content_id: 9001, buyer_id: 998877, permanent: true, active: true },
+            { content_type: 'resource', content_id: 7002, buyer_id: 123456, permanent: true, active: true },
+          ],
+        },
+      })
+    }
+    if (String(url) === 'https://licenses.example/v1/admin/users/123456789/builtbybit/claim') {
+      assert.equal(options.method, 'POST')
+      assert.equal(options.headers.Authorization, 'Bearer license-admin-token')
+      return Response.json({
+        licenseKey: 'LUMEN-shared-customer-license',
+        claimedProductIds: ['auction'],
+      }, { status: 201 })
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  }
+  t.after(() => { globalThis.fetch = originalFetch })
+
+  const workerEnv = env({
+    BUILDBYBIT_CLIENT_ID: 'bb-client-id',
+    BUILDBYBIT_CLIENT_SECRET: 'bb-client-secret',
+    BUILDBYBIT_RESOURCE_IDS: '7001,7002',
+    LICENSE_API_URL: 'https://licenses.example',
+    LICENSE_ADMIN_API_TOKEN: 'license-admin-token',
+  })
+  const authorize = await worker.fetch(
+    request('/account/builtbybit/authorize', {
+      method: 'POST',
+      origin,
+      authorization: `Bearer ${token}`,
+    }),
+    workerEnv,
+  )
+  const { state } = await authorize.json()
+  const response = await worker.fetch(
+    request('/account/builtbybit/claim', {
+      method: 'POST',
+      origin,
+      authorization: `Bearer ${token}`,
+      body: { code: 'short-lived-auth-code', state },
+    }),
+    workerEnv,
+  )
+  const result = await response.json()
+
+  assert.equal(response.status, 201)
+  assert.equal(result.licenseKey, 'LUMEN-shared-customer-license')
+  assert.equal(requests.length, 4)
+  const tokenRequest = requests.find(item => item.url.endsWith('/oauth2/token'))
+  assert.match(tokenRequest.options.headers.Authorization, /^Basic /)
+  assert.match(tokenRequest.options.body.toString(), /grant_type=authorization_code/)
+  const claimRequest = requests.at(-1)
+  const claimBody = JSON.parse(claimRequest.options.body)
+  assert.equal(claimBody.buyerId, '998877')
+  assert.deepEqual(claimBody.licenses.map(item => item.resourceId), [7001])
+})
+
+test('BuiltByBit claim rejects state issued for another Discord account', async t => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => {
+    throw new Error('BuiltByBit must not be contacted for mismatched state')
+  }
+  t.after(() => { globalThis.fetch = originalFetch })
+
+  const ownerToken = await createSessionToken(t, '123456789')
+  const otherToken = await createSessionToken(t, '987654321')
+  const workerEnv = env({
+    BUILDBYBIT_CLIENT_ID: 'bb-client-id',
+    BUILDBYBIT_CLIENT_SECRET: 'bb-client-secret',
+    BUILDBYBIT_RESOURCE_IDS: '7001,7002',
+    LICENSE_API_URL: 'https://licenses.example',
+    LICENSE_ADMIN_API_TOKEN: 'license-admin-token',
+  })
+  const authorize = await worker.fetch(
+    request('/account/builtbybit/authorize', {
+      method: 'POST',
+      origin,
+      authorization: `Bearer ${ownerToken}`,
+    }),
+    workerEnv,
+  )
+  const { state } = await authorize.json()
+  const response = await worker.fetch(
+    request('/account/builtbybit/claim', {
+      method: 'POST',
+      origin,
+      authorization: `Bearer ${otherToken}`,
+      body: { code: 'unused-code', state },
+    }),
+    workerEnv,
+  )
+
+  assert.equal(response.status, 400)
+})
+
 test('account license endpoints require a valid Discord session', async () => {
   const response = await worker.fetch(
     request('/account/servers', { origin }),
@@ -223,7 +365,7 @@ test('account server endpoint clearly reports the unconnected license service', 
   assert.equal(result.code, 'LICENSE_SERVICE_UNAVAILABLE')
 })
 
-test('account IP endpoint enforces three unique valid IPs before license integration', async t => {
+test('account IP endpoint validates addresses and reports an unconnected license service', async t => {
   const token = await createSessionToken(t)
   const invalid = await worker.fetch(
     request('/account/license-ips', {
@@ -247,6 +389,44 @@ test('account IP endpoint enforces three unique valid IPs before license integra
   assert.equal(invalid.status, 400)
   assert.equal(valid.status, 503)
   assert.equal((await valid.json()).code, 'LICENSE_SERVICE_UNAVAILABLE')
+})
+
+test('account IP endpoint proxies reads and updates for the signed-in Discord account', async t => {
+  const token = await createSessionToken(t)
+  const actualFetch = globalThis.fetch
+  const requests = []
+  globalThis.fetch = async (url, options = {}) => {
+    requests.push({ url: String(url), options })
+    return Response.json({ addresses: ['203.0.113.8'], maxAddresses: 3 })
+  }
+  t.after(() => { globalThis.fetch = actualFetch })
+
+  const workerEnv = env({
+    LICENSE_API_URL: 'https://licenses.example',
+    LICENSE_ADMIN_API_TOKEN: 'server-only-secret',
+  })
+  const readResponse = await worker.fetch(
+    request('/account/license-ips', { origin, authorization: 'Bearer ' + token }),
+    workerEnv,
+  )
+  const updateResponse = await worker.fetch(
+    request('/account/license-ips', {
+      method: 'PUT',
+      origin,
+      authorization: 'Bearer ' + token,
+      body: { addresses: ['203.0.113.9'] },
+    }),
+    workerEnv,
+  )
+
+  assert.equal(readResponse.status, 200)
+  assert.equal(updateResponse.status, 200)
+  assert.equal(requests.length, 2)
+  assert.equal(requests[0].url, 'https://licenses.example/v1/admin/users/123456789/license-ips')
+  assert.equal(requests[0].options.method, 'GET')
+  assert.equal(requests[1].options.method, 'PUT')
+  assert.equal(requests[1].options.headers.Authorization, 'Bearer ' + workerEnv.LICENSE_ADMIN_API_TOKEN)
+  assert.deepEqual(JSON.parse(requests[1].options.body), { addresses: ['203.0.113.9'] })
 })
 
 test('customer profile sync uses the verified Discord identity, not a browser-supplied ID', async t => {

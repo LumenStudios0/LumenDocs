@@ -1,11 +1,27 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { getDiscordSession } from './discord-session'
 
-const storageKey = 'lumen-account-license-ips'
 const addresses = ref<string[]>([])
 const newAddress = ref('')
 const notice = ref('')
 const noticeIsError = ref(false)
+const loading = ref(true)
+const saving = ref(false)
+
+function endpointFor(path: string) {
+  const assistantEndpoint = import.meta.env.VITE_DOCS_ASSISTANT_ENDPOINT
+  if (!assistantEndpoint) return ''
+
+  const endpoint = new URL(assistantEndpoint, window.location.origin)
+  endpoint.pathname = endpoint.pathname.replace(/\/chat\/?$/, '').replace(/\/$/, '') + path
+  endpoint.search = ''
+  return endpoint.toString()
+}
+
+function errorText(result: { error?: string; detail?: string }) {
+  return result.error ?? result.detail ?? 'The license service could not complete this request.'
+}
 
 function isIpAddress(value: string) {
   if (value.includes(':')) {
@@ -22,19 +38,40 @@ function isIpAddress(value: string) {
   )
 }
 
-onMounted(() => {
+onMounted(async () => {
+  let token = ''
   try {
-    const saved = localStorage.getItem(storageKey)
-    if (!saved) return
-    const parsed: unknown = JSON.parse(saved)
-    if (Array.isArray(parsed) && parsed.length <= 3 && parsed.every(value => typeof value === 'string')) {
-      addresses.value = parsed
-    }
+    token = getDiscordSession()
   } catch (error) {
-    console.error('Unable to load saved license IP addresses:', error)
-    notice.value = 'Could not load the saved addresses from this browser.'
+    console.error('Unable to access the Discord sign-in session:', error)
+    notice.value = 'This browser could not access your sign-in session.'
     noticeIsError.value = true
   }
+  const endpoint = endpointFor('/account/license-ips')
+  if (!token) {
+    notice.value = 'Sign in with Discord to manage your license IP addresses.'
+    noticeIsError.value = true
+  } else if (!endpoint) {
+    notice.value = 'The customer licensing service is not connected yet.'
+    noticeIsError.value = true
+  } else {
+    try {
+      const response = await fetch(endpoint, { headers: { Authorization: `Bearer ${token}` } })
+      const result = await response.json() as { addresses?: unknown; error?: string; detail?: string }
+      if (!response.ok || !Array.isArray(result.addresses) || !result.addresses.every(value => typeof value === 'string')) {
+        notice.value = errorText(result)
+        noticeIsError.value = true
+      } else {
+        addresses.value = result.addresses
+        window.dispatchEvent(new Event('lumen-license-ips-updated'))
+      }
+    } catch (error) {
+      console.error('Unable to load license IP addresses:', error)
+      notice.value = 'Could not load your license IP addresses. Please try again later.'
+      noticeIsError.value = true
+    }
+  }
+  loading.value = false
 })
 
 function addAddress() {
@@ -57,26 +94,50 @@ function addAddress() {
     return
   }
 
-  addresses.value.push(address)
+  const nextAddresses = [...addresses.value, address]
   newAddress.value = ''
-  saveAddresses()
+  void saveAddresses(nextAddresses)
 }
 
 function removeAddress(index: number) {
-  addresses.value.splice(index, 1)
-  saveAddresses()
+  void saveAddresses(addresses.value.filter((_, addressIndex) => addressIndex !== index))
 }
 
-function saveAddresses() {
-  try {
-    localStorage.setItem(storageKey, JSON.stringify(addresses.value))
-    window.dispatchEvent(new Event('lumen-license-preview-updated'))
-    notice.value = 'Saved in this browser.'
-    noticeIsError.value = false
-  } catch (error) {
-    console.error('Unable to save license IP addresses:', error)
-    notice.value = 'Could not save addresses in this browser.'
+async function saveAddresses(nextAddresses: string[]) {
+  notice.value = ''
+  noticeIsError.value = false
+  const token = getDiscordSession()
+  const endpoint = endpointFor('/account/license-ips')
+  if (!token || !endpoint) {
+    notice.value = 'Sign in and connect the customer licensing service before saving.'
     noticeIsError.value = true
+    return
+  }
+  saving.value = true
+  try {
+    const response = await fetch(endpoint, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ addresses: nextAddresses }),
+    })
+    const result = await response.json() as { addresses?: unknown; error?: string; detail?: string }
+    if (!response.ok || !Array.isArray(result.addresses) || !result.addresses.every(value => typeof value === 'string')) {
+      notice.value = errorText(result)
+      noticeIsError.value = true
+      return
+    }
+    addresses.value = result.addresses
+    window.dispatchEvent(new Event('lumen-license-ips-updated'))
+    notice.value = 'Your server IP allowlist has been saved.'
+  } catch (error) {
+    console.error('Unable to update license IP addresses:', error)
+    notice.value = 'Could not save your IP addresses. Please try again later.'
+    noticeIsError.value = true
+  } finally {
+    saving.value = false
   }
 }
 </script>
@@ -91,18 +152,19 @@ function saveAddresses() {
       <span class="license-ip-count">{{ addresses.length }} / 3</span>
     </div>
     <p class="license-ip-note">
-      This preview saves addresses only in this browser. It is not connected to a live license yet.
+      Add the public IP address of each server using your shared Lumen license. Up to three addresses are supported.
     </p>
 
-    <ul v-if="addresses.length" class="license-ip-list">
+    <p v-if="loading" class="license-ip-empty">Loading your saved IP addresses…</p>
+    <ul v-else-if="addresses.length" class="license-ip-list">
       <li v-for="(address, index) in addresses" :key="`${address}-${index}`">
         <code>{{ address }}</code>
-        <button type="button" :aria-label="`Remove ${address}`" @click="removeAddress(index)">
+        <button type="button" :disabled="saving" :aria-label="`Remove ${address}`" @click="removeAddress(index)">
           Remove
         </button>
       </li>
     </ul>
-    <p v-else class="license-ip-empty">No IP addresses added yet.</p>
+    <p v-else-if="!noticeIsError" class="license-ip-empty">No IP addresses added yet.</p>
 
     <form class="license-ip-add" @submit.prevent="addAddress">
       <label for="license-ip-input">Add an IP address</label>
@@ -114,9 +176,9 @@ function saveAddresses() {
           inputmode="url"
           autocomplete="off"
           placeholder="Example: 203.0.113.10"
-          :disabled="addresses.length >= 3"
+          :disabled="loading || saving || addresses.length >= 3"
         >
-        <button type="submit" :disabled="addresses.length >= 3">Add IP</button>
+        <button type="submit" :disabled="loading || saving || addresses.length >= 3">{{ saving ? 'Saving…' : 'Add IP' }}</button>
       </div>
     </form>
 

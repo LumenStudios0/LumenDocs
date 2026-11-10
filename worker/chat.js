@@ -104,6 +104,55 @@ async function verifyLoginToken(token, env) {
   }
 }
 
+async function createBuiltByBitState(discordId, env) {
+  const now = Math.floor(Date.now() / 1000)
+  const unsigned = `${base64UrlEncode(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))}.${base64UrlEncode(JSON.stringify({
+    iss: 'lumen-studios',
+    aud: 'lumen-builtbybit',
+    sub: discordId,
+    nonce: base64UrlEncode(crypto.getRandomValues(new Uint8Array(32))),
+    iat: now,
+    exp: now + 10 * 60,
+  }))}`
+  const key = await importSigningKey(env.AUTH_SIGNING_SECRET)
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(unsigned))
+  return `${unsigned}.${base64UrlEncode(new Uint8Array(signature))}`
+}
+
+async function verifyBuiltByBitState(state, discordId, env) {
+  if (typeof state !== 'string' || state.length > 2000) return false
+  const parts = state.split('.')
+  if (parts.length !== 3) return false
+
+  try {
+    const header = JSON.parse(new TextDecoder().decode(base64UrlDecode(parts[0])))
+    const claims = JSON.parse(new TextDecoder().decode(base64UrlDecode(parts[1])))
+    const key = await importSigningKey(env.AUTH_SIGNING_SECRET)
+    const valid = await crypto.subtle.verify(
+      'HMAC',
+      key,
+      base64UrlDecode(parts[2]),
+      new TextEncoder().encode(`${parts[0]}.${parts[1]}`),
+    )
+    const now = Math.floor(Date.now() / 1000)
+    return Boolean(
+      valid &&
+      header.alg === 'HS256' &&
+      header.typ === 'JWT' &&
+      claims.iss === 'lumen-studios' &&
+      claims.aud === 'lumen-builtbybit' &&
+      claims.sub === discordId &&
+      typeof claims.nonce === 'string' &&
+      claims.nonce.length >= 40 &&
+      Number.isInteger(claims.exp) &&
+      claims.exp > now &&
+      claims.iat <= now + 60,
+    )
+  } catch {
+    return false
+  }
+}
+
 function redirectToSite(env, hash) {
   return new Response(null, {
     status: 302,
@@ -234,7 +283,7 @@ async function completeDiscordLogin(request, env) {
   let profileResponse
   try {
     profileResponse = await fetch('https://discord.com/api/users/@me', {
-      headers: { Authorization: `Bearer ${tokenPayload.access_token}` },
+      headers: { Authorization: 'Bearer ' + tokenPayload.access_token },
       signal: AbortSignal.timeout(10000),
     })
   } catch {
@@ -509,7 +558,272 @@ async function accountLicenseApi(request, env, origin, path) {
   if (path === '/account/license-ips' && request.method !== 'GET' && request.method !== 'PUT') {
     return respond({ error: 'Method not allowed' }, 405, origin)
   }
+  if (path === '/account/builtbybit/authorize' && request.method !== 'POST') {
+    return respond({ error: 'Method not allowed' }, 405, origin)
+  }
+  if (path === '/account/builtbybit/claim' && request.method !== 'POST') {
+    return respond({ error: 'Method not allowed' }, 405, origin)
+  }
+  if (path === '/account/license-key' && request.method !== 'GET') {
+    return respond({ error: 'Method not allowed' }, 405, origin)
+  }
 
+  if (path === '/account/builtbybit/authorize') {
+    if (
+      !env.BUILDBYBIT_CLIENT_ID ||
+      !env.BUILDBYBIT_CLIENT_SECRET ||
+      !env.AUTH_SIGNING_SECRET ||
+      !env.BUILDBYBIT_RESOURCE_IDS
+    ) {
+      return respond({ error: 'BuiltByBit purchase linking is not configured' }, 503, origin)
+    }
+    const state = await createBuiltByBitState(user.id, env)
+    const redirectUri = env.BUILDBYBIT_REDIRECT_URI || `${env.ALLOWED_ORIGIN}/account/licenses/`
+    const authorizeUrl = new URL('https://builtbybit.com/account/external/authorize')
+    authorizeUrl.searchParams.set('client_id', env.BUILDBYBIT_CLIENT_ID)
+    authorizeUrl.searchParams.set('redirect_uri', redirectUri)
+    authorizeUrl.searchParams.set('response_type', 'code')
+    authorizeUrl.searchParams.set('state', state)
+    if (env.BUILDBYBIT_OAUTH_SCOPE) {
+      authorizeUrl.searchParams.set('scope', env.BUILDBYBIT_OAUTH_SCOPE)
+    }
+    return respond({ authorizeUrl: authorizeUrl.toString(), state }, 200, origin)
+  }
+
+  if (path === '/account/builtbybit/claim') {
+    if (
+      !env.BUILDBYBIT_CLIENT_ID ||
+      !env.BUILDBYBIT_CLIENT_SECRET ||
+      !env.AUTH_SIGNING_SECRET ||
+      !env.BUILDBYBIT_RESOURCE_IDS
+    ) {
+      return respond({ error: 'BuiltByBit purchase linking is not configured' }, 503, origin)
+    }
+    if (!env.LICENSE_API_URL || !env.LICENSE_ADMIN_API_TOKEN) {
+      return respond({ error: 'Automatic licensing is not connected yet' }, 503, origin)
+    }
+
+    const body = await request.text()
+    if (body.length > 5000) return respond({ error: 'Request is too large' }, 413, origin)
+    let payload
+    try {
+      payload = JSON.parse(body)
+    } catch {
+      return respond({ error: 'Expected a JSON request' }, 400, origin)
+    }
+    if (
+      typeof payload?.code !== 'string' ||
+      payload.code.length < 1 ||
+      payload.code.length > 2048 ||
+      !await verifyBuiltByBitState(payload.state, user.id, env)
+    ) {
+      return respond({ error: 'BuiltByBit authorization could not be verified. Start the claim again.' }, 400, origin)
+    }
+
+    const clientCredentials = btoa(`${env.BUILDBYBIT_CLIENT_ID}:${env.BUILDBYBIT_CLIENT_SECRET}`)
+    let tokenResponse
+    try {
+      tokenResponse = await fetch('https://api.builtbybit.com/oauth2/token', {
+        method: 'POST',
+        headers: {
+          Authorization: `Basic ${clientCredentials}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({ grant_type: 'authorization_code', code: payload.code }),
+        signal: AbortSignal.timeout(10000),
+      })
+    } catch {
+      return respond({ error: 'BuiltByBit is temporarily unavailable. Please try again.' }, 502, origin)
+    }
+    if (!tokenResponse.ok) {
+      return respond({ error: 'BuiltByBit authorization expired or was rejected. Start the claim again.' }, 400, origin)
+    }
+
+    let tokenPayload
+    try {
+      tokenPayload = await tokenResponse.json()
+    } catch {
+      return respond({ error: 'BuiltByBit returned an invalid authorization response' }, 502, origin)
+    }
+    if (typeof tokenPayload?.access_token !== 'string' || tokenPayload.access_token.length > 4096) {
+      return respond({ error: 'BuiltByBit returned an invalid authorization token' }, 502, origin)
+    }
+
+    const buyerHeaders = { Authorization: 'Bearer ' + tokenPayload.access_token }
+    let buyerResponse
+    try {
+      buyerResponse = await fetch('https://api.builtbybit.com/v2/members/self', {
+        headers: buyerHeaders,
+        signal: AbortSignal.timeout(10000),
+      })
+    } catch {
+      return respond({ error: 'Could not verify the BuiltByBit account. Please try again.' }, 502, origin)
+    }
+    if (!buyerResponse.ok) {
+      return respond({ error: 'Could not verify the BuiltByBit account. Please reconnect it.' }, 502, origin)
+    }
+
+    let buyerPayload
+    try {
+      buyerPayload = await buyerResponse.json()
+    } catch {
+      return respond({ error: 'BuiltByBit returned an invalid account response' }, 502, origin)
+    }
+    const buyerId = buyerPayload?.data?.self?.user_id
+    if (typeof buyerId !== 'string' || !/^\d{1,32}$/.test(buyerId)) {
+      return respond({ error: 'BuiltByBit did not return a valid account ID' }, 502, origin)
+    }
+
+    const mappedResourceIds = new Set(
+      env.BUILDBYBIT_RESOURCE_IDS.split(',').map(id => id.trim()).filter(id => /^\d+$/.test(id)),
+    )
+    if (!mappedResourceIds.size) {
+      return respond({ error: 'No BuiltByBit resource IDs are configured for automatic licensing' }, 503, origin)
+    }
+
+    const licenses = []
+    let allPagesRead = false
+    for (let page = 1; page <= 25; page += 1) {
+      const licensesUrl = new URL('https://api.builtbybit.com/v2/resources/discover/licenses')
+      licensesUrl.searchParams.set('page', String(page))
+      licensesUrl.searchParams.set('per_page', '100')
+      let licensesResponse
+      try {
+        licensesResponse = await fetch(licensesUrl, {
+          headers: buyerHeaders,
+          signal: AbortSignal.timeout(10000),
+        })
+      } catch {
+        return respond({ error: 'Could not check BuiltByBit purchases. Please try again.' }, 502, origin)
+      }
+      if (!licensesResponse.ok) {
+        return respond({ error: 'BuiltByBit could not confirm your licenses. Check the requested access and try again.' }, 502, origin)
+      }
+      let licensesPayload
+      try {
+        licensesPayload = await licensesResponse.json()
+      } catch {
+        return respond({ error: 'BuiltByBit returned an invalid license response' }, 502, origin)
+      }
+      const pageLicenses = licensesPayload?.data?.licenses
+      if (!Array.isArray(pageLicenses) || pageLicenses.length > 100) {
+        return respond({ error: 'BuiltByBit returned an invalid license list' }, 502, origin)
+      }
+      for (const license of pageLicenses) {
+        if (
+          license?.content_type !== 'resource' ||
+          String(license.buyer_id) !== buyerId ||
+          !mappedResourceIds.has(String(license.content_id))
+        ) continue
+        const resourceId = Number(license.content_id)
+        if (!Number.isSafeInteger(resourceId) || resourceId < 1) continue
+        const permanent = license.permanent === true
+        const endDate = Number(license.end_date)
+        const startDate = Number(license.start_date)
+        licenses.push({
+          resourceId,
+          active: permanent
+            ? license.active !== false
+            : Number.isFinite(endDate) && endDate > Date.now() / 1000 &&
+              (!Number.isFinite(startDate) || startDate <= Date.now() / 1000),
+          permanent,
+          expiresAt: !permanent && Number.isFinite(endDate) && endDate > 0
+            ? new Date(endDate * 1000).toISOString()
+            : null,
+        })
+      }
+      if (pageLicenses.length < 100) {
+        allPagesRead = true
+        break
+      }
+    }
+    if (!allPagesRead) {
+      return respond({ error: 'Too many BuiltByBit licenses to safely verify in one claim. Contact support.' }, 413, origin)
+    }
+
+    let licenseApiBase
+    try {
+      licenseApiBase = new URL(env.LICENSE_API_URL)
+    } catch {
+      return respond({ error: 'The licensing service URL is invalid' }, 503, origin)
+    }
+    if (licenseApiBase.protocol !== 'https:' || licenseApiBase.username || licenseApiBase.password) {
+      return respond({ error: 'The licensing service URL must use HTTPS' }, 503, origin)
+    }
+
+    try {
+      const upstream = await fetch(
+        new URL(`/v1/admin/users/${encodeURIComponent(user.id)}/builtbybit/claim`, licenseApiBase),
+        {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer ' + env.LICENSE_ADMIN_API_TOKEN,
+            'X-Admin-Actor': `customer:${user.id}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ buyerId, licenses }),
+          signal: AbortSignal.timeout(10000),
+        },
+      )
+      const responseText = await upstream.text()
+      if (responseText.length > 50000) {
+        return respond({ error: 'The licensing service returned an oversized response' }, 502, origin)
+      }
+      let responsePayload
+      try {
+        responsePayload = JSON.parse(responseText)
+      } catch {
+        return respond({ error: 'The licensing service returned an invalid response' }, 502, origin)
+      }
+      return respond(responsePayload, upstream.status, origin)
+    } catch (error) {
+      console.error('BuiltByBit license claim failed:', error)
+      return respond({ error: 'Automatic licensing is temporarily unavailable' }, 503, origin)
+    }
+  }
+
+  if (path === '/account/license-key') {
+    if (!env.LICENSE_API_URL || !env.LICENSE_ADMIN_API_TOKEN) {
+      return respond({ error: 'Automatic licensing is not connected yet' }, 503, origin)
+    }
+    let apiBase
+    try {
+      apiBase = new URL(env.LICENSE_API_URL)
+    } catch {
+      return respond({ error: 'The licensing service URL is invalid' }, 503, origin)
+    }
+    if (apiBase.protocol !== 'https:' || apiBase.username || apiBase.password) {
+      return respond({ error: 'The licensing service URL must use HTTPS' }, 503, origin)
+    }
+    try {
+      const upstream = await fetch(
+        new URL(`/v1/admin/users/${encodeURIComponent(user.id)}/license-key`, apiBase),
+        {
+          headers: {
+            Authorization: 'Bearer ' + env.LICENSE_ADMIN_API_TOKEN,
+            'X-Admin-Actor': `customer:${user.id}`,
+          },
+          signal: AbortSignal.timeout(10000),
+        },
+      )
+      const responseText = await upstream.text()
+      if (responseText.length > 50000) {
+        return respond({ error: 'The licensing service returned an oversized response' }, 502, origin)
+      }
+      let responsePayload
+      try {
+        responsePayload = JSON.parse(responseText)
+      } catch {
+        return respond({ error: 'The licensing service returned an invalid response' }, 502, origin)
+      }
+      return respond(responsePayload, upstream.status, origin)
+    } catch (error) {
+      console.error('Customer license key request failed:', error)
+      return respond({ error: 'The licensing service is temporarily unavailable' }, 503, origin)
+    }
+  }
+
+  let requestedAddresses
   if (path === '/account/license-ips' && request.method === 'PUT') {
     const body = await request.text()
     if (body.length > 2000) return respond({ error: 'Request is too large' }, 413, origin)
@@ -527,6 +841,56 @@ async function accountLicenseApi(request, env, origin, path) {
       new Set(payload.addresses).size !== payload.addresses.length
     ) {
       return respond({ error: 'Provide up to 3 unique, valid IPv4 or IPv6 addresses' }, 400, origin)
+    }
+    requestedAddresses = payload.addresses
+  }
+
+  if (path === '/account/license-ips') {
+    if (!env.LICENSE_API_URL || !env.LICENSE_ADMIN_API_TOKEN) {
+      return respond({
+        error: 'The licensing service is not connected yet',
+        code: 'LICENSE_SERVICE_UNAVAILABLE',
+      }, 503, origin)
+    }
+
+    let apiBase
+    try {
+      apiBase = new URL(env.LICENSE_API_URL)
+    } catch {
+      return respond({ error: 'The licensing service URL is invalid' }, 503, origin)
+    }
+    if (apiBase.protocol !== 'https:' || apiBase.username || apiBase.password) {
+      return respond({ error: 'The licensing service URL must use HTTPS' }, 503, origin)
+    }
+
+    try {
+      const upstream = await fetch(
+        new URL(`/v1/admin/users/${encodeURIComponent(user.id)}/license-ips`, apiBase),
+        {
+          method: request.method,
+          headers: {
+            Authorization: 'Bearer ' + env.LICENSE_ADMIN_API_TOKEN,
+            'X-Admin-Actor': `customer:${user.id}`,
+            ...(request.method === 'PUT' ? { 'Content-Type': 'application/json' } : {}),
+          },
+          ...(request.method === 'PUT' ? { body: JSON.stringify({ addresses: requestedAddresses }) } : {}),
+          signal: AbortSignal.timeout(10000),
+        },
+      )
+      const responseText = await upstream.text()
+      if (responseText.length > 10000) {
+        return respond({ error: 'The licensing service returned an oversized response' }, 502, origin)
+      }
+      let responsePayload
+      try {
+        responsePayload = JSON.parse(responseText)
+      } catch {
+        return respond({ error: 'The licensing service returned an invalid response' }, 502, origin)
+      }
+      return respond(responsePayload, upstream.status, origin)
+    } catch (error) {
+      console.error('Customer license IP request failed:', error)
+      return respond({ error: 'The licensing service is temporarily unavailable' }, 503, origin)
     }
   }
 
@@ -556,7 +920,7 @@ async function accountLicenseApi(request, env, origin, path) {
         {
           method: isDelete ? 'DELETE' : 'PUT',
           headers: {
-            Authorization: `Bearer ${env.LICENSE_ADMIN_API_TOKEN}`,
+            Authorization: 'Bearer ' + env.LICENSE_ADMIN_API_TOKEN,
             'X-Admin-Actor': `customer:${user.id}`,
             ...(!isDelete ? { 'Content-Type': 'application/json' } : {}),
           },
@@ -650,7 +1014,7 @@ async function adminApi(request, env, origin, path) {
   const upstreamUrl = new URL(`/v1${path}`, baseUrl)
   upstreamUrl.search = incomingUrl.search
   const headers = {
-    Authorization: `Bearer ${env.LICENSE_ADMIN_API_TOKEN}`,
+    Authorization: 'Bearer ' + env.LICENSE_ADMIN_API_TOKEN,
     'X-Admin-Actor': `${user.id}:${role}`,
   }
   const options = { method: request.method, headers, signal: AbortSignal.timeout(10000) }
@@ -712,6 +1076,9 @@ export default {
       path !== '/auth/me' &&
       path !== '/account/servers' &&
       path !== '/account/license-ips' &&
+      path !== '/account/license-key' &&
+      path !== '/account/builtbybit/authorize' &&
+      path !== '/account/builtbybit/claim' &&
       path !== '/account/profile' &&
       path !== '/account/delete' &&
       !path.startsWith('/admin/')
@@ -730,6 +1097,10 @@ export default {
               ? 'GET, OPTIONS'
               : path === '/account/license-ips'
                 ? 'GET, PUT, OPTIONS'
+                : path === '/account/builtbybit/authorize' || path === '/account/builtbybit/claim'
+                  ? 'POST, OPTIONS'
+                  : path === '/account/license-key'
+                    ? 'GET, OPTIONS'
                 : path === '/account/profile'
                   ? 'PUT, OPTIONS'
                 : path === '/account/delete'
@@ -768,6 +1139,9 @@ export default {
     if (
       path === '/account/servers' ||
       path === '/account/license-ips' ||
+      path === '/account/license-key' ||
+      path === '/account/builtbybit/authorize' ||
+      path === '/account/builtbybit/claim' ||
       path === '/account/profile' ||
       path === '/account/delete'
     ) {
