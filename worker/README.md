@@ -36,6 +36,29 @@ Discord sign-in is optional and does not restrict access to the documentation. I
 
 The Worker uses Discord's `identify` scope, validates OAuth state with a short-lived HttpOnly cookie, and signs a one-hour identity token. Users can sign out from the navigation; signing out clears the current tab's session token. The Pages workflow does not deploy Worker changes.
 
+## Staff admin dashboard and license service
+
+The customer menu shows **Admin dashboard** only when the Worker confirms the signed-in Discord account is authorized. The owner ID `1400375985211441242` and studio lead ID `1012053634911064114` are granted the owner and studio-lead roles in the Worker. Optional additional staff IDs can be provided as a comma-separated `ADMIN_DISCORD_IDS` Worker variable. Access is checked again on every admin API request; a hidden menu link is not an authorization control.
+
+The Worker proxies a narrow allowlist of customer, license, product, and audit routes to the licensing API. The licensing administrator token is held only as a Worker secret and is never sent to or embedded in the Pages site. Admin mutations are audited by Discord ID and role. Account bans and holds block future license validation; they do not revoke license records or end an already-issued one-hour website session. Verification requests are recorded in the licensing service; a customer notification is not sent by this integration.
+
+To connect the dashboard after the licensing API is available over HTTPS:
+
+1. Deploy the updated licensing service and apply its database migration (`alembic upgrade head`, or restart the provided Docker Compose stack, which applies migrations during API startup). Keep the API private behind HTTPS and ensure its `ADMIN_API_TOKEN` is configured.
+2. Authenticate Wrangler for the account that owns the Worker. From the repository root, configure the upstream URL and administrator credential as Worker secrets:
+
+   ```sh
+   npx wrangler secret put LICENSE_API_URL
+   npx wrangler secret put LICENSE_ADMIN_API_TOKEN
+   ```
+
+   Enter the HTTPS API base URL (for example `https://licenses.example.com`) and the same strong administrator token configured on the licensing API. Do not put either value in Pages variables, source files, or this repository.
+3. If adding other staff, set `ADMIN_DISCORD_IDS` in `wrangler.toml` to comma-separated Discord account IDs. The two built-in owner accounts are always authorized.
+4. Deploy the Worker with `npx wrangler deploy`, then push the site changes so GitHub Pages builds the `/admin/` dashboard. Confirm `DOCS_ASSISTANT_ENDPOINT` points to the deployed Worker `/chat` endpoint.
+5. Apply the licensing backend changes and run its tests before using account controls. To remove an entitlement, revoke its license; records are retained for audit history. Each license supports at most three numeric IPv4/IPv6 addresses.
+
+Until the Worker secrets and licensing service are configured, admin actions return an explicit `LICENSE_SERVICE_UNAVAILABLE` response. GitHub Pages deployment alone does not deploy the Worker or licensing backend.
+
 ## Customer portal license API scaffold
 
 The authenticated customer API surface is reserved for the future licensing integration:

@@ -7,6 +7,7 @@ import AccountConnectedServers from './AccountConnectedServers.vue'
 import AccountDashboard from './AccountDashboard.vue'
 import AccountLicenseOverview from './AccountLicenseOverview.vue'
 import AccountSettings from './AccountSettings.vue'
+import AdminDashboard from './AdminDashboard.vue'
 import DocsAssistant from './DocsAssistant.vue'
 import HomeExperience from './HomeExperience.vue'
 import './custom.css'
@@ -20,6 +21,7 @@ export default {
     app.component('AccountDashboard', AccountDashboard)
     app.component('AccountLicenseOverview', AccountLicenseOverview)
     app.component('AccountSettings', AccountSettings)
+    app.component('AdminDashboard', AdminDashboard)
     app.component('HomeExperience', HomeExperience)
   },
   Layout: defineComponent({

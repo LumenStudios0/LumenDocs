@@ -29,14 +29,14 @@ function env(overrides = {}) {
   }
 }
 
-async function createSessionToken(t) {
+async function createSessionToken(t, discordId = '123456789') {
   const originalFetch = globalThis.fetch
   globalThis.fetch = async url => {
     if (String(url).endsWith('/oauth2/token')) {
       return Response.json({ access_token: 'discord-access-token' })
     }
     if (String(url).endsWith('/api/users/@me')) {
-      return Response.json({ id: '123456789', username: 'lumen-user' })
+      return Response.json({ id: discordId, username: 'lumen-user' })
     }
     throw new Error(`Unexpected request: ${url}`)
   }
@@ -199,4 +199,74 @@ test('account IP endpoint enforces three unique valid IPs before license integra
   assert.equal(invalid.status, 400)
   assert.equal(valid.status, 503)
   assert.equal((await valid.json()).code, 'LICENSE_SERVICE_UNAVAILABLE')
+})
+
+test('admin roles are included only for the configured Discord accounts', async t => {
+  const ownerToken = await createSessionToken(t, '1400375985211441242')
+  const ownerResponse = await worker.fetch(
+    request('/auth/me', { origin, authorization: `Bearer ${ownerToken}` }),
+    env(),
+  )
+  const owner = await ownerResponse.json()
+  assert.equal(owner.user.role, 'owner')
+})
+
+test('admin routes deny non-admin Discord sessions before contacting the license service', async t => {
+  const token = await createSessionToken(t)
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => {
+    throw new Error('The licensing service must not be contacted')
+  }
+  t.after(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  const response = await worker.fetch(
+    request('/admin/users', { origin, authorization: `Bearer ${token}` }),
+    env({ LICENSE_API_URL: 'https://licenses.example', LICENSE_ADMIN_API_TOKEN: 'server-secret' }),
+  )
+  assert.equal(response.status, 403)
+})
+
+test('additional staff IDs can be authorized through the Worker configuration', async t => {
+  const token = await createSessionToken(t)
+  const response = await worker.fetch(
+    request('/admin/users', { origin, authorization: `Bearer ${token}` }),
+    env({ ADMIN_DISCORD_IDS: '123456789' }),
+  )
+
+  assert.equal(response.status, 503)
+  assert.equal((await response.json()).code, 'LICENSE_SERVICE_UNAVAILABLE')
+})
+
+test('owner admin requests proxy with server-only credentials and actor attribution', async t => {
+  const actualFetch = globalThis.fetch
+  const token = await createSessionToken(t, '1400375985211441242')
+  let upstreamRequest
+  globalThis.fetch = async (url, options) => {
+    upstreamRequest = { url: String(url), options }
+    return Response.json({ items: [], total: 0 })
+  }
+
+  let response
+  try {
+    response = await worker.fetch(
+      request('/admin/users?query=1400375985211441242', {
+        origin,
+        authorization: `Bearer ${token}`,
+      }),
+      env({
+        LICENSE_API_URL: 'https://licenses.example/',
+        LICENSE_ADMIN_API_TOKEN: 'server-only-secret',
+      }),
+    )
+  } finally {
+    globalThis.fetch = actualFetch
+  }
+
+  assert.equal(response.status, 200)
+  assert.equal(upstreamRequest.url, 'https://licenses.example/v1/admin/users?query=1400375985211441242')
+  assert.equal(upstreamRequest.options.headers.Authorization, 'Bearer server-only-secret')
+  assert.equal(upstreamRequest.options.headers['X-Admin-Actor'], '1400375985211441242:owner')
+  assert.equal((await response.json()).total, 0)
 })

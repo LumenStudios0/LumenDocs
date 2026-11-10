@@ -3,11 +3,21 @@ const jsonHeaders = {
   'Cache-Control': 'no-store',
 }
 
+const OWNER_DISCORD_ID = '1400375985211441242'
+const STUDIO_LEAD_DISCORD_ID = '1012053634911064114'
+
 function respond(data, status, origin) {
   const headers = new Headers(jsonHeaders)
   headers.set('Access-Control-Allow-Origin', origin)
   headers.set('Vary', 'Origin')
   return new Response(JSON.stringify(data), { status, headers })
+}
+
+function getAdminRole(discordId, env) {
+  if (discordId === OWNER_DISCORD_ID) return 'owner'
+  if (discordId === STUDIO_LEAD_DISCORD_ID) return 'studio_lead'
+  const configuredAdmins = (env.ADMIN_DISCORD_IDS ?? '').split(',').map(id => id.trim())
+  return configuredAdmins.includes(discordId) ? 'admin' : null
 }
 
 function base64UrlEncode(value) {
@@ -519,6 +529,101 @@ async function accountLicenseApi(request, env, origin, path) {
   }, 503, origin)
 }
 
+function isAllowedAdminRoute(path, method) {
+  if (path === '/admin/users') return method === 'GET'
+  if (/^\/admin\/users\/\d{5,22}$/.test(path)) return method === 'GET'
+  if (/^\/admin\/users\/\d{5,22}\/(ban|unban|hold|release|verification-request|verify)$/.test(path)) {
+    return method === 'POST'
+  }
+  if (path === '/admin/licenses' || path === '/admin/products' || path === '/admin/plugins') {
+    return method === 'GET' || (path === '/admin/licenses' && method === 'POST')
+  }
+  if (/^\/admin\/licenses\/[0-9a-f-]{36}$/.test(path)) return method === 'GET'
+  if (/^\/admin\/licenses\/[0-9a-f-]{36}\/(revoke|suspend|activate)$/.test(path)) {
+    return method === 'POST'
+  }
+  if (/^\/admin\/licenses\/[0-9a-f-]{36}\/ips$/.test(path)) {
+    return method === 'POST' || method === 'DELETE'
+  }
+  return path === '/admin/audit' && method === 'GET'
+}
+
+async function adminApi(request, env, origin, path) {
+  const authorization = request.headers.get('Authorization') ?? ''
+  const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : ''
+  const user = await verifyLoginToken(token, env)
+  if (!user) return respond({ error: 'Sign in to access the admin dashboard' }, 401, origin)
+
+  const role = getAdminRole(user.id, env)
+  if (!role) return respond({ error: 'Admin dashboard access is not available for this account' }, 403, origin)
+  if (!isAllowedAdminRoute(path, request.method)) {
+    return respond({ error: 'Admin route or method is not allowed' }, 404, origin)
+  }
+  if (!env.ASSISTANT_LIMITER) {
+    return respond({ error: 'Admin service is not configured' }, 503, origin)
+  }
+  const rateLimit = await env.ASSISTANT_LIMITER.limit({ key: `admin:${user.id}` })
+  if (!rateLimit.success) {
+    return respond({ error: 'Please wait before using the admin dashboard again' }, 429, origin)
+  }
+  if (!env.LICENSE_API_URL || !env.LICENSE_ADMIN_API_TOKEN) {
+    return respond({
+      error: 'The licensing service is not connected yet',
+      code: 'LICENSE_SERVICE_UNAVAILABLE',
+    }, 503, origin)
+  }
+
+  let baseUrl
+  try {
+    baseUrl = new URL(env.LICENSE_API_URL)
+  } catch {
+    return respond({ error: 'The licensing service URL is invalid' }, 503, origin)
+  }
+  if (baseUrl.protocol !== 'https:' || baseUrl.username || baseUrl.password) {
+    return respond({ error: 'The licensing service URL must use HTTPS' }, 503, origin)
+  }
+
+  const incomingUrl = new URL(request.url)
+  const upstreamUrl = new URL(`/v1${path}`, baseUrl)
+  upstreamUrl.search = incomingUrl.search
+  const headers = {
+    Authorization: `Bearer ${env.LICENSE_ADMIN_API_TOKEN}`,
+    'X-Admin-Actor': `${user.id}:${role}`,
+  }
+  const options = { method: request.method, headers, signal: AbortSignal.timeout(10000) }
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    const body = await request.text()
+    if (body.length > 8000) return respond({ error: 'Request is too large' }, 413, origin)
+    if (body) {
+      try {
+        JSON.parse(body)
+      } catch {
+        return respond({ error: 'Expected a JSON request' }, 400, origin)
+      }
+      headers['Content-Type'] = 'application/json'
+      options.body = body
+    }
+  }
+
+  try {
+    const upstream = await fetch(upstreamUrl, options)
+    const responseBody = await upstream.text()
+    if (responseBody.length > 50000) {
+      return respond({ error: 'The licensing service returned an oversized response' }, 502, origin)
+    }
+    let payload
+    try {
+      payload = JSON.parse(responseBody)
+    } catch {
+      return respond({ error: 'The licensing service returned an invalid response' }, 502, origin)
+    }
+    return respond(payload, upstream.status, origin)
+  } catch (error) {
+    console.error('Admin licensing service request failed:', error)
+    return respond({ error: 'The licensing service is temporarily unavailable' }, 503, origin)
+  }
+}
+
 export default {
   async fetch(request, env) {
     const path = new URL(request.url).pathname
@@ -543,7 +648,8 @@ export default {
       path !== '/dinosaur-discoveries' &&
       path !== '/auth/me' &&
       path !== '/account/servers' &&
-      path !== '/account/license-ips'
+      path !== '/account/license-ips' &&
+      !path.startsWith('/admin/')
     ) {
       return respond({ error: 'Not found' }, 404, origin)
     }
@@ -559,6 +665,8 @@ export default {
               ? 'GET, OPTIONS'
               : path === '/account/license-ips'
                 ? 'GET, PUT, OPTIONS'
+                : path.startsWith('/admin/')
+                  ? 'GET, POST, DELETE, OPTIONS'
               : 'POST, OPTIONS',
           'Access-Control-Allow-Headers': 'Authorization, Content-Type',
           'Access-Control-Max-Age': '86400',
@@ -573,7 +681,11 @@ export default {
       const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : ''
       const user = await verifyLoginToken(token, env)
       if (!user) return respond({ error: 'Sign-in has expired. Please sign in again.' }, 401, origin)
-      return respond({ user }, 200, origin)
+      return respond({ user: { ...user, role: getAdminRole(user.id, env) } }, 200, origin)
+    }
+
+    if (path.startsWith('/admin/')) {
+      return adminApi(request, env, origin, path)
     }
 
     if (path === '/account/servers' || path === '/account/license-ips') {

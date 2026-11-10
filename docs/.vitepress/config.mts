@@ -54,6 +54,14 @@ export default defineConfig({
       { text: 'Shortcuts', link: '/keyboard-shortcuts' },
     ],
     sidebar: {
+      '/admin/': [
+        {
+          text: 'Administration',
+          items: [
+            { text: 'Admin dashboard', link: '/admin/' },
+          ],
+        },
+      ],
       '/account/': [
         {
           text: 'Customer portal',
