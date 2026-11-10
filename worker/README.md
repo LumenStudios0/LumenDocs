@@ -94,6 +94,15 @@ Customer routes require a valid `Authorization: Bearer <session>` header and are
 
 **Important migration behavior:** the first claim revokes that customer's existing active per-product licenses. Customers must replace old keys in every plugin config and add the public server IPs again under **My licenses**. A key with no allowed IP does not validate. Reconnecting BuiltByBit refreshes entitlements; ended purchases are removed on the next customer refresh, because the integration does not receive marketplace webhooks. Back up the database and communicate this behavior before enabling claims for existing customers.
 
+## Deploying Worker updates
+
+The GitHub Pages workflow does not deploy `worker/chat.js`. The separate **Deploy Cloudflare Worker** workflow deploys Worker changes when `worker/**` or `wrangler.toml` changes. To authorize it, add these values under the LumenDocs repository's **Settings → Secrets and variables → Actions**:
+
+- Repository secret `CLOUDFLARE_API_TOKEN`: create a Cloudflare API token with the **Edit Cloudflare Workers** permission for the account that owns this Worker. Do not paste the token into chat or commit it.
+- Repository variable `CLOUDFLARE_ACCOUNT_ID`: copy the account ID from the Cloudflare dashboard's account overview.
+
+After saving both, open **Actions → Deploy Cloudflare Worker → Run workflow** and run it on `main`. Confirm the run succeeds before testing admin requests again. Subsequent Worker code changes deploy automatically on pushes to `main`.
+
 ## Optional anonymous dinosaur discoverer total
 
 The secret `/extinction` page can show a site-wide total of unique browsers that completed the dinosaur egg hunt. Without this optional D1 database, the dinosaur event still works and the page reports that its global counter is not connected.
