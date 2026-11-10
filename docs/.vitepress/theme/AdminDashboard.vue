@@ -105,13 +105,7 @@ async function adminRequest<T>(path: string, init: RequestInit = {}): Promise<T>
     })
   } catch (requestError) {
     console.error('Admin dashboard could not reach its Worker API:', requestError)
-    if (
-      requestError instanceof Error &&
-      /content security policy|connect-src|refused to connect|failed to fetch|networkerror/i.test(requestError.message)
-    ) {
-      throw new Error('Your browser blocked the admin API request before it reached Cloudflare. Open https://lumenstudio.fyi/admin/ in a regular Chrome, Safari, or Firefox tab (not a GitHub/Copilot preview). If you already are, try a private window or temporarily disable extensions that block network requests.')
-    }
-    throw new Error('The admin API could not be reached. Check your connection, then try opening https://lumenstudio.fyi/admin/ in a regular browser tab or private window.')
+    throw new Error('The admin service could not be reached. The service is online, but the connection from this page is failing. This site needs its API route enabled through Cloudflare DNS before the dashboard can connect reliably.')
   }
   let result: T & { detail?: string; error?: string }
   try {
