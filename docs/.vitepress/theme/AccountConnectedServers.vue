@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { getDiscordSession } from './discord-session'
 
 interface ConnectedServer {
   id: string
@@ -26,7 +27,7 @@ function getAccountEndpoint() {
 onMounted(async () => {
   let token = ''
   try {
-    token = sessionStorage.getItem('lumen-discord-session') ?? ''
+    token = getDiscordSession()
   } catch (error) {
     console.error('Unable to access the Discord sign-in session:', error)
     message.value = 'This browser could not access your sign-in session.'

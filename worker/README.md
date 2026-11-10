@@ -18,7 +18,7 @@ Compatibility reports require a plugin, server software, Minecraft version, one 
 
 ## Discord sign-in
 
-Discord sign-in is optional and does not restrict access to the documentation. It uses the Worker configured by `DOCS_ASSISTANT_ENDPOINT`; the Discord access token stays on the Worker, and the browser session token expires after one hour and is kept in the current tab's `sessionStorage`.
+Discord sign-in is optional and does not restrict access to the documentation. It uses the Worker configured by `DOCS_ASSISTANT_ENDPOINT`; the Discord access token stays on the Worker. Customer sessions persist in browser local storage and expire after 30 days of inactivity; staff sessions expire after 8 hours. Active sessions are renewed before expiry, and signing out clears the stored token.
 
 1. Create an application in the [Discord Developer Portal](https://discord.com/developers/applications) and open **OAuth2**.
 2. Add the exact redirect URI `https://YOUR-WORKER-HOST/auth/callback`, replacing `YOUR-WORKER-HOST` with the deployed Worker host. Save the OAuth2 page.
@@ -34,7 +34,7 @@ Discord sign-in is optional and does not restrict access to the documentation. I
 4. Deploy the Worker with `npx wrangler deploy`.
 5. Confirm the GitHub Actions variable `DOCS_ASSISTANT_ENDPOINT` is set to the deployed Worker URL followed by `/chat`, then rebuild and deploy the GitHub Pages site.
 
-The Worker uses Discord's `identify` scope, validates OAuth state with a short-lived HttpOnly cookie, and signs a one-hour identity token. Users can sign out from the navigation; signing out clears the current tab's session token. The Pages workflow does not deploy Worker changes.
+The Worker uses Discord's `identify` scope, validates OAuth state with a short-lived HttpOnly cookie, and signs a persistent browser session. Customer sessions are stored in browser local storage and expire after 30 days of inactivity; `/auth/me` renews them while they're active. Staff sessions expire after 8 hours and refresh during use. Signing out clears the saved browser session. Tokens stay in the browser and are never embedded in the Pages build. The Pages workflow does not deploy Worker changes.
 
 ## Staff admin dashboard and license service
 

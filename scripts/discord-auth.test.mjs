@@ -54,6 +54,38 @@ async function createSessionToken(t, discordId = '123456789') {
   return new URLSearchParams(redirect.hash.slice(1)).get('discord_token')
 }
 
+function encodeBase64Url(value) {
+  return btoa(typeof value === 'string' ? value : JSON.stringify(value))
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+}
+
+async function createExpiringSessionToken(expiresInSeconds) {
+  const now = Math.floor(Date.now() / 1000)
+  const unsigned = `${encodeBase64Url({ alg: 'HS256', typ: 'JWT' })}.${encodeBase64Url({
+    iss: 'lumen-studios',
+    aud: 'lumen-docs',
+    sub: '123456789',
+    username: 'lumen-user',
+    globalName: 'Lumen User',
+    avatarUrl: '',
+    iat: now,
+    exp: now + expiresInSeconds,
+  })}`
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(signingSecret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(unsigned))
+  const bytes = [...new Uint8Array(signature)]
+  const binary = bytes.map(byte => String.fromCharCode(byte)).join('')
+  return `${unsigned}.${btoa(binary).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')}`
+}
+
 test('Discord login sends the user to OAuth with state protected by a secure cookie', async () => {
   const response = await worker.fetch(request('/auth/login'), env())
   const redirect = new URL(response.headers.get('Location'))
@@ -93,7 +125,7 @@ test('Discord callback rejects mismatched OAuth state without contacting Discord
   }
 })
 
-test('Discord callback exchanges the code and returns a verifiable one-hour identity token', async t => {
+test('Discord callback exchanges the code and returns a verifiable persistent identity token', async t => {
   const originalFetch = globalThis.fetch
   const requests = []
   globalThis.fetch = async (url, options) => {
@@ -143,6 +175,7 @@ test('Discord callback exchanges the code and returns a verifiable one-hour iden
   assert.equal(user.globalName, 'Lumen User')
   assert.equal(user.avatarUrl, 'https://cdn.discordapp.com/avatars/123456789/avatar-hash.png?size=64')
   assert.ok(user.expiresAt > Math.floor(Date.now() / 1000))
+  assert.ok(user.expiresAt - Math.floor(Date.now() / 1000) > 29 * 24 * 60 * 60)
 })
 
 test('Discord profile endpoint rejects invalid bearer tokens', async () => {
@@ -151,6 +184,21 @@ test('Discord profile endpoint rejects invalid bearer tokens', async () => {
     env(),
   )
   assert.equal(response.status, 401)
+})
+
+test('active customer sessions renew before expiring', async () => {
+  const token = await createExpiringSessionToken(5 * 24 * 60 * 60)
+  const response = await worker.fetch(
+    request('/auth/me', { origin, authorization: `Bearer ${token}` }),
+    env(),
+  )
+  const result = await response.json()
+  assert.equal(response.status, 200)
+  assert.equal(typeof result.sessionToken, 'string')
+  const refreshedClaims = JSON.parse(
+    Buffer.from(result.sessionToken.split('.')[1], 'base64url').toString('utf8'),
+  )
+  assert.ok(refreshedClaims.exp - Math.floor(Date.now() / 1000) > 29 * 24 * 60 * 60)
 })
 
 test('account license endpoints require a valid Discord session', async () => {

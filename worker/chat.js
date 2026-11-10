@@ -45,17 +45,18 @@ async function importSigningKey(secret) {
 
 async function createLoginToken(user, env) {
   const now = Math.floor(Date.now() / 1000)
+  const role = getAdminRole(user.id, env)
   const claims = {
     iss: 'lumen-studios',
     aud: 'lumen-docs',
     sub: user.id,
     username: user.username,
-    globalName: user.global_name || user.username,
-    avatarUrl: user.avatar
+    globalName: user.globalName || user.global_name || user.username,
+    avatarUrl: user.avatarUrl || (user.avatar
       ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=64`
-      : '',
+      : ''),
     iat: now,
-    exp: now + 3600,
+    exp: now + (role ? 8 * 60 * 60 : 30 * 24 * 60 * 60),
   }
   const unsigned = `${base64UrlEncode(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))}.${base64UrlEncode(JSON.stringify(claims))}`
   const key = await importSigningKey(env.AUTH_SIGNING_SECRET)
@@ -749,7 +750,15 @@ export default {
       const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : ''
       const user = await verifyLoginToken(token, env)
       if (!user) return respond({ error: 'Sign-in has expired. Please sign in again.' }, 401, origin)
-      return respond({ user: { ...user, role: getAdminRole(user.id, env) } }, 200, origin)
+      const role = getAdminRole(user.id, env)
+      const refreshThreshold = role ? 60 * 60 : 7 * 24 * 60 * 60
+      const sessionToken = user.expiresAt - Math.floor(Date.now() / 1000) < refreshThreshold
+        ? await createLoginToken(user, env)
+        : undefined
+      return respond({
+        user: { ...user, role },
+        ...(sessionToken ? { sessionToken } : {}),
+      }, 200, origin)
     }
 
     if (path.startsWith('/admin/')) {

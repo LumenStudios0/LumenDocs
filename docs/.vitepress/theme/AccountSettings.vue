@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { clearDiscordSession, getDiscordSession, storeDiscordSession } from './discord-session'
 
 interface DiscordUser {
   id: string
@@ -76,7 +77,7 @@ function loadPreferences() {
 async function loadDiscordProfile() {
   let token = ''
   try {
-    token = sessionStorage.getItem('lumen-discord-session') ?? ''
+    token = getDiscordSession()
   } catch (error) {
     console.error('Unable to access the Discord sign-in session:', error)
     identityMessage.value = 'This browser could not access your sign-in session.'
@@ -99,10 +100,17 @@ async function loadDiscordProfile() {
 
   try {
     const response = await fetch(endpoint, { headers: { Authorization: `Bearer ${token}` } })
-    const result = await response.json() as { user?: DiscordUser; error?: string }
+    const result = await response.json() as { user?: DiscordUser; sessionToken?: string; error?: string }
     if (!response.ok || !result.user) {
       identityMessage.value = result.error ?? 'Your Discord session could not be verified.'
       return
+    }
+    if (result.sessionToken) {
+      try {
+        storeDiscordSession(result.sessionToken)
+      } catch (storageError) {
+        console.error('Unable to persist the refreshed Discord session:', storageError)
+      }
     }
     user.value = result.user
     const profileEndpoint = getWorkerEndpoint('/account/profile')
@@ -118,7 +126,7 @@ async function loadDiscordProfile() {
             user.value = null
             identityMessage.value = 'This customer account has already been deleted.'
             try {
-              sessionStorage.removeItem('lumen-discord-session')
+              clearDiscordSession()
             } catch (storageError) {
               console.error('Unable to clear the deleted customer session:', storageError)
             }
@@ -172,7 +180,7 @@ function clearPreviewData() {
 
 function signOut() {
   try {
-    sessionStorage.removeItem('lumen-discord-session')
+    clearDiscordSession()
     window.location.assign('/account/')
   } catch (error) {
     console.error('Unable to clear the Discord sign-in session:', error)
@@ -194,7 +202,7 @@ async function deleteAccount() {
   deletingAccount.value = true
   notice.value = ''
   try {
-    const token = sessionStorage.getItem('lumen-discord-session')
+    const token = getDiscordSession()
     if (!token) throw new Error('Your Discord sign-in session has expired. Sign in again before deleting your account.')
     const response = await fetch(endpoint, {
       method: 'DELETE',
@@ -204,7 +212,7 @@ async function deleteAccount() {
     if (!response.ok) throw new Error(result.error ?? result.detail ?? 'Your account could not be deleted.')
 
     try {
-      sessionStorage.removeItem('lumen-discord-session')
+      clearDiscordSession()
     } catch (storageError) {
       console.error('Unable to clear the deleted account session from this browser:', storageError)
     }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { withBase } from 'vitepress'
+import { clearDiscordSession, getDiscordSession, storeDiscordSession } from './discord-session'
 
 declare global {
   interface Window {
@@ -1177,7 +1178,7 @@ async function initializeDiscordLogin() {
 
   if (callbackToken) {
     try {
-      sessionStorage.setItem('lumen-discord-session', callbackToken)
+      storeDiscordSession(callbackToken)
     } catch (error) {
       console.error('Unable to store the temporary Discord sign-in session:', error)
     }
@@ -1193,7 +1194,7 @@ async function initializeDiscordLogin() {
   let token = callbackToken ?? ''
   if (!token) {
     try {
-      token = sessionStorage.getItem('lumen-discord-session') ?? ''
+      token = getDiscordSession()
     } catch (error) {
       console.error('Unable to read the temporary Discord sign-in session:', error)
     }
@@ -1204,10 +1205,10 @@ async function initializeDiscordLogin() {
     const response = await fetch(getWorkerEndpoint('/auth/me'), {
       headers: { Authorization: `Bearer ${token}` },
     })
-    const result = await response.json() as { user?: DiscordUser; error?: string }
+    const result = await response.json() as { user?: DiscordUser; sessionToken?: string; error?: string }
     if (!response.ok || !result.user) {
       try {
-        sessionStorage.removeItem('lumen-discord-session')
+        clearDiscordSession()
       } catch (error) {
         console.error('Unable to clear the expired Discord sign-in session:', error)
       }
@@ -1215,6 +1216,7 @@ async function initializeDiscordLogin() {
       return
     }
 
+    if (result.sessionToken) storeDiscordSession(result.sessionToken)
     discordUser.value = result.user
     publishDiscordUser(result.user)
   } catch (error) {
@@ -1236,7 +1238,7 @@ function signOutDiscord() {
   accountMenuOpen.value = false
   discordUser.value = null
   try {
-    sessionStorage.removeItem('lumen-discord-session')
+    clearDiscordSession()
   } catch (error) {
     console.error('Unable to clear the Discord sign-in session:', error)
   }

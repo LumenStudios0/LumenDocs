@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { getDiscordSession } from './discord-session'
 
 interface AdminLicense {
   licenseId: string
@@ -90,7 +91,7 @@ const workerBase = computed(() => {
 })
 
 async function adminRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const token = sessionStorage.getItem('lumen-discord-session')
+  const token = getDiscordSession()
   if (!token || !workerBase.value) throw new Error('Sign in with an authorized Discord account to use the admin dashboard.')
   const response = await fetch(`${workerBase.value}/admin${path}`, {
     ...init,
