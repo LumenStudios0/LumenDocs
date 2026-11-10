@@ -93,15 +93,27 @@ const workerBase = computed(() => {
 async function adminRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getDiscordSession()
   if (!token || !workerBase.value) throw new Error('Sign in with an authorized Discord account to use the admin dashboard.')
-  const response = await fetch(`${workerBase.value}/admin${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
-      ...init.headers,
-    },
-  })
-  const result = await response.json() as T & { detail?: string; error?: string }
+  let response: Response
+  try {
+    response = await fetch(`${workerBase.value}/admin${path}`, {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+        ...init.headers,
+      },
+    })
+  } catch (requestError) {
+    console.error('Admin dashboard could not reach its Worker API:', requestError)
+    throw new Error('Could not reach the admin service. Check your connection and try again; if it continues, the Worker may need to be deployed or its allowed site origin corrected.')
+  }
+  let result: T & { detail?: string; error?: string }
+  try {
+    result = await response.json() as T & { detail?: string; error?: string }
+  } catch (parseError) {
+    console.error('Admin dashboard received a non-JSON API response:', parseError)
+    throw new Error(`The admin service returned an invalid response (${response.status}). Check the Worker deployment and logs.`)
+  }
   if (!response.ok) throw new Error(result.detail ?? result.error ?? `Admin request failed (${response.status}).`)
   return result
 }

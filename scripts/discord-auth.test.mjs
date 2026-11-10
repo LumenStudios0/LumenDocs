@@ -578,3 +578,19 @@ test('owner admin requests proxy with server-only credentials and actor attribut
   assert.equal(deletion.status, 200)
   assert.equal(upstreamRequest.options.method, 'DELETE')
 })
+
+test('admin worker failures return a CORS-enabled JSON error instead of a browser fetch failure', async t => {
+  const token = await createSessionToken(t, '1400375985211441242')
+  const response = await worker.fetch(
+    request('/admin/users', { origin, authorization: `Bearer ${token}` }),
+    env({
+      ASSISTANT_LIMITER: {
+        limit: async () => { throw new Error('rate limiter unavailable') },
+      },
+    }),
+  )
+
+  assert.equal(response.status, 500)
+  assert.equal(response.headers.get('Access-Control-Allow-Origin'), origin)
+  assert.match((await response.json()).error, /Worker logs/)
+})

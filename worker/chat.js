@@ -1133,7 +1133,12 @@ export default {
     }
 
     if (path.startsWith('/admin/')) {
-      return adminApi(request, env, origin, path)
+      try {
+        return await adminApi(request, env, origin, path)
+      } catch (error) {
+        console.error('Admin dashboard request failed unexpectedly:', error)
+        return respond({ error: 'The admin service encountered an internal error. Check the Worker logs.' }, 500, origin)
+      }
     }
 
     if (
