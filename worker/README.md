@@ -5,10 +5,10 @@ The documentation site is hosted on GitHub Pages, which cannot keep an AI API ke
 1. Install Wrangler and authenticate to the Cloudflare account that will host the Worker.
 2. Revoke the key shared in chat and create a fresh one. From the repository root, store the new DeepSeek key as a Worker secret with `npx wrangler secret put DEEPSEEK_API_KEY`. Paste the key only into Wrangler's secure prompt; do not put it in a file, build variable, or commit.
 3. Deploy the Worker with `npx wrangler deploy`.
-4. The GitHub Pages workflows use the deployed Worker URL followed by `/chat`; the endpoint is configured in `.github/workflows/deploy.yml` and `.github/workflows/refresh-changelogs.yml`.
+4. The GitHub Pages workflows build the site with the same-origin `https://lumenstudio.fyi/api/chat` endpoint configured in `.github/workflows/deploy.yml` and `.github/workflows/refresh-changelogs.yml`.
 5. Push a commit to `main` to rebuild the GitHub Pages site with the endpoint configured.
 
-Browser requests use the Worker endpoint embedded by the Pages workflows. The Worker only accepts requests from the explicitly configured Lumen origins (`https://lumenstudio.fyi`, `https://www.lumenstudio.fyi`, and `https://lumenstudios0.github.io`), limits each IP to 10 questions per minute, bounds question and documentation-context sizes, and does not log prompts or provider responses. The assistant sends the question and matching documentation excerpts to DeepSeek when enabled; the page's local guide search remains the fallback if no endpoint is configured.
+Browser requests use the same-origin `https://lumenstudio.fyi/api/` route so the docs site and Worker API work under restrictive browser policies. The Worker accepts requests only from the explicitly configured Lumen origins (`https://lumenstudio.fyi`, `https://www.lumenstudio.fyi`, and `https://lumenstudios0.github.io`), limits each IP to 10 questions per minute, bounds question and documentation-context sizes, and does not log prompts or provider responses. The assistant sends the question and matching documentation excerpts to DeepSeek when enabled; the page's local guide search remains the fallback if no endpoint is configured.
 
 ## Bug, compatibility, and feature reports
 
