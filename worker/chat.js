@@ -13,6 +13,14 @@ function respond(data, status, origin) {
   return new Response(JSON.stringify(data), { status, headers })
 }
 
+function isAllowedOrigin(origin, env) {
+  const allowedOrigins = new Set([
+    env.ALLOWED_ORIGIN,
+    ...(env.ALLOWED_ORIGINS ?? '').split(',').map(value => value.trim()).filter(Boolean),
+  ])
+  return allowedOrigins.has(origin)
+}
+
 function getAdminRole(discordId, env) {
   if (discordId === OWNER_DISCORD_ID) return 'owner'
   if (discordId === STUDIO_LEAD_DISCORD_ID) return 'studio_lead'
@@ -1064,7 +1072,7 @@ export default {
     }
 
     const origin = request.headers.get('Origin')
-    if (!origin || origin !== env.ALLOWED_ORIGIN) {
+    if (!origin || !isAllowedOrigin(origin, env)) {
       return new Response('Forbidden', { status: 403 })
     }
 

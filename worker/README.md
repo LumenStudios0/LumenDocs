@@ -8,7 +8,7 @@ The documentation site is hosted on GitHub Pages, which cannot keep an AI API ke
 4. The GitHub Pages workflows use the deployed Worker URL followed by `/chat`; the endpoint is configured in `.github/workflows/deploy.yml` and `.github/workflows/refresh-changelogs.yml`.
 5. Push a commit to `main` to rebuild the GitHub Pages site with the endpoint configured.
 
-The Worker only accepts requests from the configured site origin, limits each IP to 10 questions per minute, bounds question and documentation-context sizes, and does not log prompts or provider responses. `ALLOWED_ORIGIN` is set to `https://lumenstudio.fyi`. The assistant sends the question and matching documentation excerpts to DeepSeek when enabled; the page's local guide search remains the fallback if no endpoint is configured.
+The Worker only accepts requests from the explicitly configured Lumen site origins (`https://lumenstudio.fyi`, `https://www.lumenstudio.fyi`, and `https://lumenstudios0.github.io`), limits each IP to 10 questions per minute, bounds question and documentation-context sizes, and does not log prompts or provider responses. The assistant sends the question and matching documentation excerpts to DeepSeek when enabled; the page's local guide search remains the fallback if no endpoint is configured.
 
 ## Bug, compatibility, and feature reports
 

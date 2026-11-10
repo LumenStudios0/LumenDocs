@@ -594,3 +594,26 @@ test('admin worker failures return a CORS-enabled JSON error instead of a browse
   assert.equal(response.headers.get('Access-Control-Allow-Origin'), origin)
   assert.match((await response.json()).error, /Worker logs/)
 })
+
+test('Worker accepts only explicitly configured Lumen site origins', async () => {
+  const allowedOrigin = 'https://www.lumenstudio.fyi'
+  const allowedResponse = await worker.fetch(
+    request('/admin/users', {
+      origin: allowedOrigin,
+      authorization: 'Bearer invalid',
+    }),
+    env({ ALLOWED_ORIGINS: 'https://www.lumenstudio.fyi,https://lumenstudios0.github.io' }),
+  )
+  const deniedResponse = await worker.fetch(
+    request('/admin/users', {
+      origin: 'https://unrelated.example',
+      authorization: 'Bearer invalid',
+    }),
+    env({ ALLOWED_ORIGINS: 'https://www.lumenstudio.fyi,https://lumenstudios0.github.io' }),
+  )
+
+  assert.equal(allowedResponse.status, 401)
+  assert.equal(allowedResponse.headers.get('Access-Control-Allow-Origin'), allowedOrigin)
+  assert.equal(deniedResponse.status, 403)
+  assert.equal(deniedResponse.headers.get('Access-Control-Allow-Origin'), null)
+})

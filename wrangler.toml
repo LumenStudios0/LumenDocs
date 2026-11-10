@@ -4,6 +4,7 @@ compatibility_date = "2026-11-08"
 
 [vars]
 ALLOWED_ORIGIN = "https://lumenstudio.fyi"
+ALLOWED_ORIGINS = "https://www.lumenstudio.fyi,https://lumenstudios0.github.io"
 ADMIN_DISCORD_IDS = ""
 
 [[ratelimits]]
