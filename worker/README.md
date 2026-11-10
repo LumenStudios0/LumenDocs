@@ -42,6 +42,8 @@ The customer menu shows **Admin dashboard** only when the Worker confirms the si
 
 The Worker proxies a narrow allowlist of customer, license, product, and audit routes to the licensing API. The licensing administrator token is held only as a Worker secret and is never sent to or embedded in the Pages site. Admin mutations are audited by Discord ID and role. Account bans and holds block future license validation; they do not revoke license records or end an already-issued one-hour website session. Verification requests are recorded in the licensing service; a customer notification is not sent by this integration.
 
+The staff directory lists non-deleted customers with licenses or a customer profile. Discord usernames are synced from the verified Discord session when a customer visits **Account Settings**; accounts that have not done so yet appear by Discord ID until they sync. Customers can delete their own account from **Account Settings**, and staff can delete it from the admin profile. Deletion revokes active licenses, removes their allowed IPs and server/Minecraft bindings, erases the stored Discord username, and retains minimal license/audit history.
+
 To connect the dashboard after the licensing API is available over HTTPS:
 
 1. Deploy the updated licensing service and apply its database migration (`alembic upgrade head`, or restart the provided Docker Compose stack, which applies migrations during API startup). Keep the API private behind HTTPS and ensure its `ADMIN_API_TOKEN` is configured.

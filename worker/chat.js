@@ -499,11 +499,17 @@ async function accountLicenseApi(request, env, origin, path) {
   if (path === '/account/servers' && request.method !== 'GET') {
     return respond({ error: 'Method not allowed' }, 405, origin)
   }
+  if (path === '/account/profile' && request.method !== 'PUT') {
+    return respond({ error: 'Method not allowed' }, 405, origin)
+  }
+  if (path === '/account/delete' && request.method !== 'DELETE') {
+    return respond({ error: 'Method not allowed' }, 405, origin)
+  }
   if (path === '/account/license-ips' && request.method !== 'GET' && request.method !== 'PUT') {
     return respond({ error: 'Method not allowed' }, 405, origin)
   }
 
-  if (request.method === 'PUT') {
+  if (path === '/account/license-ips' && request.method === 'PUT') {
     const body = await request.text()
     if (body.length > 2000) return respond({ error: 'Request is too large' }, 413, origin)
 
@@ -523,6 +529,62 @@ async function accountLicenseApi(request, env, origin, path) {
     }
   }
 
+  if (path === '/account/profile' || path === '/account/delete') {
+    if (!env.LICENSE_API_URL || !env.LICENSE_ADMIN_API_TOKEN) {
+      return respond({
+        error: 'The licensing service is not connected yet',
+        code: 'LICENSE_SERVICE_UNAVAILABLE',
+      }, 503, origin)
+    }
+
+    let apiBase
+    try {
+      apiBase = new URL(env.LICENSE_API_URL)
+    } catch {
+      return respond({ error: 'The licensing service URL is invalid' }, 503, origin)
+    }
+    if (apiBase.protocol !== 'https:' || apiBase.username || apiBase.password) {
+      return respond({ error: 'The licensing service URL must use HTTPS' }, 503, origin)
+    }
+
+    const identityPath = `/v1/admin/users/${encodeURIComponent(user.id)}`
+    const isDelete = path === '/account/delete'
+    try {
+      const upstream = await fetch(
+        new URL(isDelete ? identityPath : `${identityPath}/identity`, apiBase),
+        {
+          method: isDelete ? 'DELETE' : 'PUT',
+          headers: {
+            Authorization: `Bearer ${env.LICENSE_ADMIN_API_TOKEN}`,
+            'X-Admin-Actor': `customer:${user.id}`,
+            ...(!isDelete ? { 'Content-Type': 'application/json' } : {}),
+          },
+          ...(!isDelete ? {
+            body: JSON.stringify({
+              username: user.username,
+              globalName: user.globalName || user.username,
+            }),
+          } : {}),
+          signal: AbortSignal.timeout(10000),
+        },
+      )
+      const text = await upstream.text()
+      if (text.length > 50000) {
+        return respond({ error: 'The licensing service returned an oversized response' }, 502, origin)
+      }
+      let payload
+      try {
+        payload = JSON.parse(text)
+      } catch {
+        return respond({ error: 'The licensing service returned an invalid response' }, 502, origin)
+      }
+      return respond(payload, upstream.status, origin)
+    } catch (error) {
+      console.error('Customer account service request failed:', error)
+      return respond({ error: 'The licensing service is temporarily unavailable' }, 503, origin)
+    }
+  }
+
   return respond({
     error: 'The license service is not connected yet',
     code: 'LICENSE_SERVICE_UNAVAILABLE',
@@ -531,7 +593,7 @@ async function accountLicenseApi(request, env, origin, path) {
 
 function isAllowedAdminRoute(path, method) {
   if (path === '/admin/users') return method === 'GET'
-  if (/^\/admin\/users\/\d{5,22}$/.test(path)) return method === 'GET'
+  if (/^\/admin\/users\/\d{5,22}$/.test(path)) return method === 'GET' || method === 'DELETE'
   if (/^\/admin\/users\/\d{5,22}\/(ban|unban|hold|release|verification-request|verify)$/.test(path)) {
     return method === 'POST'
   }
@@ -649,6 +711,8 @@ export default {
       path !== '/auth/me' &&
       path !== '/account/servers' &&
       path !== '/account/license-ips' &&
+      path !== '/account/profile' &&
+      path !== '/account/delete' &&
       !path.startsWith('/admin/')
     ) {
       return respond({ error: 'Not found' }, 404, origin)
@@ -665,6 +729,10 @@ export default {
               ? 'GET, OPTIONS'
               : path === '/account/license-ips'
                 ? 'GET, PUT, OPTIONS'
+                : path === '/account/profile'
+                  ? 'PUT, OPTIONS'
+                : path === '/account/delete'
+                  ? 'DELETE, OPTIONS'
                 : path.startsWith('/admin/')
                   ? 'GET, POST, DELETE, OPTIONS'
               : 'POST, OPTIONS',
@@ -688,7 +756,12 @@ export default {
       return adminApi(request, env, origin, path)
     }
 
-    if (path === '/account/servers' || path === '/account/license-ips') {
+    if (
+      path === '/account/servers' ||
+      path === '/account/license-ips' ||
+      path === '/account/profile' ||
+      path === '/account/delete'
+    ) {
       return accountLicenseApi(request, env, origin, path)
     }
 

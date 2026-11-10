@@ -21,6 +21,8 @@ const identityMessage = ref('')
 const preferences = ref<StoredPreferences>({ reduceMotion: false, compactCards: false })
 const notice = ref('')
 const noticeIsError = ref(false)
+const deleteConfirmation = ref('')
+const deletingAccount = ref(false)
 
 function getWorkerEndpoint(path: string) {
   const assistantEndpoint = import.meta.env.VITE_DOCS_ASSISTANT_ENDPOINT
@@ -103,6 +105,37 @@ async function loadDiscordProfile() {
       return
     }
     user.value = result.user
+    const profileEndpoint = getWorkerEndpoint('/account/profile')
+    if (profileEndpoint) {
+      try {
+        const syncResponse = await fetch(profileEndpoint, {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (!syncResponse.ok) {
+          const syncResult = await syncResponse.json() as { error?: string; detail?: string }
+          if (syncResponse.status === 410) {
+            user.value = null
+            identityMessage.value = 'This customer account has already been deleted.'
+            try {
+              sessionStorage.removeItem('lumen-discord-session')
+            } catch (storageError) {
+              console.error('Unable to clear the deleted customer session:', storageError)
+            }
+            return
+          }
+          const syncErrorMessage = syncResult.error ?? syncResult.detail
+          notice.value = syncErrorMessage
+            ? `Discord is connected, but your username could not be synced: ${syncErrorMessage}`
+            : 'Discord is connected, but your username could not be synced to the customer directory.'
+          noticeIsError.value = true
+        }
+      } catch (syncError) {
+        console.error('Unable to sync customer Discord username:', syncError)
+        notice.value = 'Discord is connected, but your username could not be synced to the customer directory.'
+        noticeIsError.value = true
+      }
+    }
   } catch (error) {
     console.error('Unable to verify the customer Discord profile:', error)
     identityMessage.value = 'Could not reach the account service. Please try again later.'
@@ -145,6 +178,54 @@ function signOut() {
     console.error('Unable to clear the Discord sign-in session:', error)
     notice.value = 'Could not sign out in this browser.'
     noticeIsError.value = true
+  }
+}
+
+async function deleteAccount() {
+  if (!user.value || deleteConfirmation.value !== 'DELETE') return
+  if (!window.confirm('Delete your Lumen Studios customer account and revoke its active licenses? This cannot be undone.')) return
+  const endpoint = getWorkerEndpoint('/account/delete')
+  if (!endpoint) {
+    notice.value = 'Account deletion is not configured in this environment.'
+    noticeIsError.value = true
+    return
+  }
+
+  deletingAccount.value = true
+  notice.value = ''
+  try {
+    const token = sessionStorage.getItem('lumen-discord-session')
+    if (!token) throw new Error('Your Discord sign-in session has expired. Sign in again before deleting your account.')
+    const response = await fetch(endpoint, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const result = await response.json() as { error?: string; detail?: string }
+    if (!response.ok) throw new Error(result.error ?? result.detail ?? 'Your account could not be deleted.')
+
+    try {
+      sessionStorage.removeItem('lumen-discord-session')
+    } catch (storageError) {
+      console.error('Unable to clear the deleted account session from this browser:', storageError)
+    }
+    for (const key of [preferenceKey, 'lumen-account-license-ips']) {
+      try {
+        localStorage.removeItem(key)
+      } catch (storageError) {
+        console.error(`Unable to clear local account data (${key}):`, storageError)
+      }
+    }
+    user.value = null
+    deleteConfirmation.value = ''
+    notice.value = 'Your account was deleted. Active licenses were revoked and their bound IP/server details erased.'
+    noticeIsError.value = false
+    window.setTimeout(() => window.location.assign('/'), 2000)
+  } catch (error) {
+    console.error('Unable to delete the customer account:', error)
+    notice.value = error instanceof Error ? error.message : 'Your account could not be deleted. Please try again later.'
+    noticeIsError.value = true
+  } finally {
+    deletingAccount.value = false
   }
 }
 
@@ -234,6 +315,23 @@ onMounted(() => {
       </div>
     </section>
 
+    <section v-if="user" class="settings-delete">
+      <div class="settings-section-head">
+        <div>
+          <span class="settings-kicker">IRREVERSIBLE</span>
+          <h2>Delete your customer account</h2>
+        </div>
+      </div>
+      <p>Deleting your account revokes active licenses, removes saved license IPs and server bindings, and erases your Discord name from the customer profile. Minimal license and audit records are retained for service integrity. You will be signed out.</p>
+      <label class="settings-delete-confirm">
+        Type <strong>DELETE</strong> to confirm
+        <input v-model="deleteConfirmation" autocomplete="off" placeholder="DELETE">
+      </label>
+      <button class="settings-danger-button" type="button" :disabled="deletingAccount || deleteConfirmation !== 'DELETE'" @click="deleteAccount">
+        {{ deletingAccount ? 'Deleting account…' : 'Delete my account' }}
+      </button>
+    </section>
+
     <div v-if="user" class="settings-signout-row">
       <div><strong>Finished for now?</strong><span>Sign out of this browser session.</span></div>
       <button class="settings-secondary-button" type="button" @click="signOut">Sign out</button>
@@ -253,6 +351,7 @@ onMounted(() => {
 .settings-profile,
 .settings-preferences,
 .settings-privacy,
+.settings-delete,
 .settings-signout-row {
   padding: 21px;
   border: 1px solid var(--lumen-card-border, var(--vp-c-divider));
@@ -260,6 +359,33 @@ onMounted(() => {
   background:
     radial-gradient(ellipse at 92% 0, rgb(123 63 242 / 8%), transparent 48%),
     var(--lumen-card-bg, var(--vp-c-bg-soft));
+}
+
+.settings-delete {
+  border-color: rgb(239 68 68 / 45%);
+}
+
+.settings-delete > p {
+  color: var(--vp-c-text-2);
+  font-size: 0.84rem;
+  line-height: 1.65;
+}
+
+.settings-delete-confirm {
+  display: grid;
+  gap: 7px;
+  max-width: 360px;
+  margin: 14px 0;
+  font-size: 0.78rem;
+}
+
+.settings-delete-confirm input {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--lumen-card-border, var(--vp-c-divider));
+  border-radius: 9px;
+  background: var(--vp-c-bg);
+  color: var(--vp-c-text-1);
 }
 
 .settings-section-head {

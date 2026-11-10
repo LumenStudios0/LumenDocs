@@ -15,6 +15,9 @@ interface AdminLicense {
 
 interface AdminUser {
   discordId: string
+  username: string | null
+  globalName: string | null
+  deleted: boolean
   banned: boolean
   banReason: string | null
   onHold: boolean
@@ -45,10 +48,24 @@ interface AuditEntry {
 interface Page<T> {
   items: T[]
   total: number
+  page: number
+  pageSize: number
 }
 
 const endpoint = import.meta.env.VITE_DOCS_ASSISTANT_ENDPOINT as string | undefined
 const query = ref('')
+const customers = ref<Array<{
+  discordId: string
+  username: string | null
+  globalName: string | null
+  banned: boolean
+  onHold: boolean
+  verificationStatus: string
+  licenseCount: number
+}>>([])
+const customerPage = ref(1)
+const customerPageSize = 100
+const customerTotal = ref(0)
 const user = ref<AdminUser | null>(null)
 const products = ref<AdminProduct[]>([])
 const auditEntries = ref<AuditEntry[]>([])
@@ -62,6 +79,7 @@ const ipAddress = ref('')
 const grantProductId = ref('')
 const grantExpiresAt = ref('')
 const licenseKey = ref('')
+const maxCustomerPage = computed(() => Math.max(1, Math.ceil(customerTotal.value / customerPageSize)))
 
 const workerBase = computed(() => {
   if (!endpoint) return ''
@@ -97,12 +115,30 @@ async function loadAudit(discordId: string) {
   auditEntries.value = page.items
 }
 
-async function lookupUser(discordId = query.value.trim()) {
+async function loadCustomers(pageNumber = 1) {
   clearMessages()
-  if (!/^\d{5,22}$/.test(discordId)) {
-    error.value = 'Enter a Discord user ID containing 5–22 digits.'
+  if (query.value.trim() && query.value.trim().length < 2) {
+    error.value = 'Enter at least two characters to search Discord usernames.'
     return
   }
+  loading.value = true
+  try {
+    const search = query.value.trim()
+    const params = new URLSearchParams({ page: String(pageNumber), pageSize: String(customerPageSize) })
+    if (search) params.set('query', search)
+    const result = await adminRequest<Page<typeof customers.value[number]>>(`/users?${params}`)
+    customers.value = result.items
+    customerPage.value = result.page
+    customerTotal.value = result.total
+  } catch (requestError) {
+    error.value = requestError instanceof Error ? requestError.message : 'Unable to load customer accounts.'
+  } finally {
+    loading.value = false
+  }
+}
+
+async function lookupUser(discordId: string) {
+  clearMessages()
   loading.value = true
   selectedLicense.value = null
   try {
@@ -115,7 +151,6 @@ async function lookupUser(discordId = query.value.trim()) {
     if (!grantProductId.value) grantProductId.value = productsPage.items.find(product => product.active)?.productId ?? ''
     await loadAudit(discordId)
   } catch (requestError) {
-    user.value = null
     error.value = requestError instanceof Error ? requestError.message : 'Unable to load this account.'
   } finally {
     loading.value = false
@@ -124,6 +159,7 @@ async function lookupUser(discordId = query.value.trim()) {
 
 async function perform(path: string, payload?: Record<string, unknown>, success = 'Change saved.') {
   if (!user.value) return
+  const discordId = user.value.discordId
   clearMessages()
   submitting.value = true
   try {
@@ -131,7 +167,7 @@ async function perform(path: string, payload?: Record<string, unknown>, success 
       method: 'POST',
       ...(payload ? { body: JSON.stringify(payload) } : {}),
     })
-    await lookupUser(user.value.discordId)
+    await lookupUser(discordId)
     notice.value = success
   } catch (requestError) {
     error.value = requestError instanceof Error ? requestError.message : 'The action could not be completed.'
@@ -151,6 +187,7 @@ function confirmAction(
 
 async function grantLicense() {
   if (!user.value || !grantProductId.value) return
+  const discordId = user.value.discordId
   clearMessages()
   submitting.value = true
   try {
@@ -158,13 +195,13 @@ async function grantLicense() {
       method: 'POST',
       body: JSON.stringify({
         productId: grantProductId.value,
-        customerDiscordId: user.value.discordId,
+        customerDiscordId: discordId,
         ...(grantExpiresAt.value ? { expiresAt: new Date(grantExpiresAt.value).toISOString() } : {}),
       }),
     })
     licenseKey.value = result.licenseKey
     grantExpiresAt.value = ''
-    await lookupUser(user.value.discordId)
+    await lookupUser(discordId)
     notice.value = 'License created. Copy its key now; it will not be shown again.'
   } catch (requestError) {
     error.value = requestError instanceof Error ? requestError.message : 'License could not be created.'
@@ -179,12 +216,13 @@ async function addIp() {
   submitting.value = true
   try {
     const licenseId = selectedLicense.value.licenseId
+    const discordId = user.value?.discordId
     await adminRequest(`/licenses/${licenseId}/ips`, {
       method: 'POST',
       body: JSON.stringify({ ipAddress: ipAddress.value.trim() }),
     })
     ipAddress.value = ''
-    await lookupUser(user.value?.discordId)
+    if (discordId) await lookupUser(discordId)
     if (user.value) selectedLicense.value = user.value.licenses.find(item => item.licenseId === licenseId) ?? null
     notice.value = 'IP address added.'
   } catch (requestError) {
@@ -203,11 +241,33 @@ async function removeIp(address: string) {
       method: 'DELETE',
     })
     const licenseId = selectedLicense.value.licenseId
-    await lookupUser(user.value?.discordId)
+    const discordId = user.value?.discordId
+    if (discordId) await lookupUser(discordId)
     if (user.value) selectedLicense.value = user.value.licenses.find(item => item.licenseId === licenseId) ?? null
     notice.value = 'IP address removed.'
   } catch (requestError) {
     error.value = requestError instanceof Error ? requestError.message : 'IP address could not be removed.'
+  } finally {
+    submitting.value = false
+  }
+}
+
+async function deleteCustomerAccount() {
+  if (!user.value) return
+  const discordId = user.value.discordId
+  const customerName = user.value.globalName || user.value.username || discordId
+  if (!window.confirm(`Permanently delete ${customerName}'s account? Active licenses will be revoked and bound IP/server details erased.`)) return
+  clearMessages()
+  submitting.value = true
+  try {
+    await adminRequest(`/users/${encodeURIComponent(discordId)}`, { method: 'DELETE' })
+    user.value = null
+    selectedLicense.value = null
+    licenseKey.value = ''
+    await loadCustomers(customerPage.value)
+    notice.value = 'Customer account deleted; active licenses revoked and profile details erased.'
+  } catch (requestError) {
+    error.value = requestError instanceof Error ? requestError.message : 'The customer account could not be deleted.'
   } finally {
     submitting.value = false
   }
@@ -227,14 +287,7 @@ function formatDate(value: string | null) {
   return new Date(value).toLocaleString()
 }
 
-onMounted(() => {
-  const params = new URLSearchParams(window.location.search)
-  const discordId = params.get('user')
-  if (discordId) {
-    query.value = discordId
-    void lookupUser(discordId)
-  }
-})
+onMounted(() => void loadCustomers())
 </script>
 
 <template>
@@ -246,13 +299,13 @@ onMounted(() => {
       <p>Manage customer accounts, licenses, and access from one place.</p>
     </header>
 
-    <form class="admin-search" @submit.prevent="lookupUser()">
-      <label for="admin-discord-id">Find a customer</label>
+    <form class="admin-search" @submit.prevent="loadCustomers(1)">
+      <label for="admin-customer-search">Find a customer</label>
       <div class="admin-search-row">
-        <input id="admin-discord-id" v-model="query" inputmode="numeric" autocomplete="off" placeholder="Discord user ID">
-        <button type="submit" :disabled="loading">{{ loading ? 'Searching…' : 'View account' }}</button>
+        <input id="admin-customer-search" v-model="query" maxlength="32" autocomplete="off" placeholder="Search Discord username">
+        <button type="submit" :disabled="loading">{{ loading ? 'Searching…' : 'Search users' }}</button>
       </div>
-      <small>Search by Discord ID. Usernames are not used as account identifiers.</small>
+      <small>{{ customerTotal }} active customer accounts. Usernames sync when customers visit Account Settings.</small>
     </form>
 
     <p v-if="error" class="admin-message is-error" role="alert">{{ error }}</p>
@@ -262,6 +315,39 @@ onMounted(() => {
       <code>{{ licenseKey }}</code>
       <button type="button" @click="copyLicenseKey">Copy key</button>
     </div>
+
+    <section v-if="!user" class="admin-card admin-customer-directory">
+      <div class="admin-card-heading">
+        <div><p class="admin-eyebrow">CUSTOMER DIRECTORY</p><h2>Active accounts</h2></div>
+        <span>{{ customerTotal }} total</span>
+      </div>
+      <p v-if="!loading && !customers.length" class="admin-empty">No active customer accounts matched this search.</p>
+      <div v-else class="admin-customer-list">
+        <button
+          v-for="customer in customers"
+          :key="customer.discordId"
+          type="button"
+          class="admin-customer-row"
+          :disabled="loading"
+          @click="lookupUser(customer.discordId)"
+        >
+          <span class="admin-customer-name">
+            <strong>{{ customer.globalName || (customer.username ? `@${customer.username}` : 'Discord name not synced') }}</strong>
+            <small>{{ customer.username ? `@${customer.username} · ` : '' }}{{ customer.discordId }}</small>
+          </span>
+          <span class="admin-customer-state">
+            <small>{{ customer.licenseCount }} license{{ customer.licenseCount === 1 ? '' : 's' }}</small>
+            <b v-if="customer.banned" class="status-revoked">Banned</b>
+            <b v-else-if="customer.onHold" class="status-suspended">On hold</b>
+          </span>
+        </button>
+      </div>
+      <div v-if="maxCustomerPage > 1" class="admin-pagination">
+        <button type="button" :disabled="loading || customerPage <= 1" @click="loadCustomers(customerPage - 1)">Previous</button>
+        <span>Page {{ customerPage }} of {{ maxCustomerPage }}</span>
+        <button type="button" :disabled="loading || customerPage >= maxCustomerPage" @click="loadCustomers(customerPage + 1)">Next</button>
+      </div>
+    </section>
 
     <section v-if="user" class="admin-content" aria-live="polite">
       <div class="admin-profile-card">
@@ -287,6 +373,7 @@ onMounted(() => {
             <button type="button" :disabled="submitting || user.verificationStatus === 'verified'" @click="perform(`/users/${user.discordId}/verify`, undefined, 'Account marked as verified.')">Mark verified</button>
           </div>
           <p class="admin-note">Bans and holds prevent license validation. These actions do not delete customer or license records.</p>
+          <button type="button" class="is-danger-button" :disabled="submitting" @click="deleteCustomerAccount">Delete customer account</button>
         </section>
 
         <section class="admin-card">
@@ -383,6 +470,13 @@ onMounted(() => {
 .admin-grid .admin-card{margin-top:18px}
 .admin-card-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px}
 .admin-card-heading>span{color:var(--vp-c-text-2);font-size:.8rem}
+.admin-customer-list{display:grid;gap:8px}
+.admin-customer-row{display:flex;width:100%;align-items:center;justify-content:space-between;gap:14px;padding:13px 15px!important;border-color:var(--vp-c-divider)!important;background:var(--vp-c-bg)!important;text-align:left}
+.admin-customer-name,.admin-customer-state{display:grid;gap:5px}
+.admin-customer-name small,.admin-customer-state small{color:var(--vp-c-text-2);font-size:.74rem;overflow-wrap:anywhere}
+.admin-customer-state{text-align:right}
+.admin-pagination{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:16px}
+.admin-pagination span{color:var(--vp-c-text-2);font-size:.8rem}
 .admin-field{margin:14px 0}
 .admin-actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:14px}
 .admin-dashboard .is-danger-button{border-color:#ef444477;background:#ef44441a;color:#fca5a5}
@@ -406,6 +500,6 @@ onMounted(() => {
 .admin-audit-list{display:grid;gap:8px}
 .admin-audit-list article>span{display:grid;gap:4px}
 .admin-audit-list time{color:var(--vp-c-text-2);font-size:.75rem;text-align:right}
-@media(max-width:700px){.admin-dashboard{padding:20px 16px 56px}.admin-hero{padding:30px 24px;border-radius:20px}.admin-search,.admin-card,.admin-profile-card{padding:18px}.admin-grid{grid-template-columns:1fr}.admin-profile-card{align-items:flex-start;flex-direction:column}.admin-search-row,.admin-ip-form{flex-direction:column}.admin-search-row button,.admin-ip-form button{width:100%}.admin-audit-list article{align-items:flex-start;flex-direction:column}.admin-audit-list time{text-align:left}}
+@media(max-width:700px){.admin-dashboard{padding:20px 16px 56px}.admin-hero{padding:30px 24px;border-radius:20px}.admin-search,.admin-card,.admin-profile-card{padding:18px}.admin-grid{grid-template-columns:1fr}.admin-profile-card{align-items:flex-start;flex-direction:column}.admin-search-row,.admin-ip-form{flex-direction:column}.admin-search-row button,.admin-ip-form button{width:100%}.admin-audit-list article{align-items:flex-start;flex-direction:column}.admin-audit-list time{text-align:left}.admin-customer-row{align-items:flex-start;flex-direction:column}.admin-customer-state{text-align:left}}
 @media(prefers-reduced-motion:reduce){.admin-dashboard button{transition:none}}
 </style>

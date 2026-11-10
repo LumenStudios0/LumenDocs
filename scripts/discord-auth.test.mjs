@@ -201,6 +201,72 @@ test('account IP endpoint enforces three unique valid IPs before license integra
   assert.equal((await valid.json()).code, 'LICENSE_SERVICE_UNAVAILABLE')
 })
 
+test('customer profile sync uses the verified Discord identity, not a browser-supplied ID', async t => {
+  const actualFetch = globalThis.fetch
+  const token = await createSessionToken(t)
+  let upstreamRequest
+  globalThis.fetch = async (url, options) => {
+    upstreamRequest = { url: String(url), options }
+    return Response.json({ discordId: '123456789', username: 'lumen-user' })
+  }
+
+  try {
+    const response = await worker.fetch(
+      request('/account/profile', {
+        method: 'PUT',
+        origin,
+        authorization: `Bearer ${token}`,
+        body: { discordId: '999999999', username: 'forged' },
+      }),
+      env({
+        LICENSE_API_URL: 'https://licenses.example',
+        LICENSE_ADMIN_API_TOKEN: 'server-only-secret',
+      }),
+    )
+    assert.equal(response.status, 200)
+    assert.equal(upstreamRequest.url, 'https://licenses.example/v1/admin/users/123456789/identity')
+    assert.equal(upstreamRequest.options.method, 'PUT')
+    assert.deepEqual(JSON.parse(upstreamRequest.options.body), {
+      username: 'lumen-user',
+      globalName: 'lumen-user',
+    })
+    assert.equal(upstreamRequest.options.headers['X-Admin-Actor'], 'customer:123456789')
+  } finally {
+    globalThis.fetch = actualFetch
+  }
+})
+
+test('customer account deletion only targets the authenticated Discord account', async t => {
+  const actualFetch = globalThis.fetch
+  const token = await createSessionToken(t)
+  let upstreamRequest
+  globalThis.fetch = async (url, options) => {
+    upstreamRequest = { url: String(url), options }
+    return Response.json({ deleted: true })
+  }
+
+  try {
+    const response = await worker.fetch(
+      request('/account/delete', {
+        method: 'DELETE',
+        origin,
+        authorization: `Bearer ${token}`,
+        body: { discordId: '999999999' },
+      }),
+      env({
+        LICENSE_API_URL: 'https://licenses.example',
+        LICENSE_ADMIN_API_TOKEN: 'server-only-secret',
+      }),
+    )
+    assert.equal(response.status, 200)
+    assert.equal(upstreamRequest.url, 'https://licenses.example/v1/admin/users/123456789')
+    assert.equal(upstreamRequest.options.method, 'DELETE')
+    assert.equal(upstreamRequest.options.headers['X-Admin-Actor'], 'customer:123456789')
+  } finally {
+    globalThis.fetch = actualFetch
+  }
+})
+
 test('admin roles are included only for the configured Discord accounts', async t => {
   const ownerToken = await createSessionToken(t, '1400375985211441242')
   const ownerResponse = await worker.fetch(
@@ -249,9 +315,21 @@ test('owner admin requests proxy with server-only credentials and actor attribut
   }
 
   let response
+  let deletion
   try {
     response = await worker.fetch(
       request('/admin/users?query=1400375985211441242', {
+        origin,
+        authorization: `Bearer ${token}`,
+      }),
+      env({
+        LICENSE_API_URL: 'https://licenses.example/',
+        LICENSE_ADMIN_API_TOKEN: 'server-only-secret',
+      }),
+    )
+    deletion = await worker.fetch(
+      request('/admin/users/123456789012345678', {
+        method: 'DELETE',
         origin,
         authorization: `Bearer ${token}`,
       }),
@@ -265,8 +343,10 @@ test('owner admin requests proxy with server-only credentials and actor attribut
   }
 
   assert.equal(response.status, 200)
-  assert.equal(upstreamRequest.url, 'https://licenses.example/v1/admin/users?query=1400375985211441242')
+  assert.equal(upstreamRequest.url, 'https://licenses.example/v1/admin/users/123456789012345678')
   assert.equal(upstreamRequest.options.headers.Authorization, 'Bearer server-only-secret')
   assert.equal(upstreamRequest.options.headers['X-Admin-Actor'], '1400375985211441242:owner')
   assert.equal((await response.json()).total, 0)
+  assert.equal(deletion.status, 200)
+  assert.equal(upstreamRequest.options.method, 'DELETE')
 })
