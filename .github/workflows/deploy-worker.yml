@@ -36,6 +36,29 @@ jobs:
             exit 1
           fi
           npx --yes wrangler@4.160.0 deploy
+      - name: Verify Discord sign-in redirect
+        run: |
+          node --input-type=module <<'NODE'
+          const loginUrl = new URL('https://lumen-docs-assistant.lumennetwork0.workers.dev/auth/login')
+          const response = await fetch(loginUrl, { redirect: 'manual' })
+          const location = response.headers.get('location')
+          if (response.status !== 302 || !location) {
+            throw new Error(`Discord login is not reachable: status=${response.status}`)
+          }
+          const authorizeUrl = new URL(location)
+          if (authorizeUrl.origin !== 'https://discord.com' || authorizeUrl.pathname !== '/oauth2/authorize') {
+            throw new Error(`Discord login did not redirect to OAuth: ${authorizeUrl.origin}${authorizeUrl.pathname}`)
+          }
+          const callbackUrl = new URL(authorizeUrl.searchParams.get('redirect_uri'))
+          const state = authorizeUrl.searchParams.get('state')
+          const cookie = response.headers.get('set-cookie') || ''
+          if (callbackUrl.origin !== loginUrl.origin || callbackUrl.pathname !== '/auth/callback' ||
+              !state || !cookie.includes(`lumen_discord_oauth_state=${state};`) ||
+              !cookie.includes('Path=/auth/callback;')) {
+            throw new Error('Discord login and its state cookie must use the same callback host and path.')
+          }
+          console.log('Discord OAuth is reachable and the callback matches the login cookie host.')
+          NODE
       - name: Verify admin API CORS
         run: |
           node --input-type=module <<'NODE'

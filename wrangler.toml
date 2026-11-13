@@ -1,6 +1,7 @@
 name = "lumen-docs-assistant"
 main = "worker/chat.js"
 compatibility_date = "2026-11-08"
+workers_dev = true
 routes = [
   { pattern = "lumenstudio.fyi/api/*", zone_name = "lumenstudio.fyi" },
   { pattern = "lumenstudio.fyi/auth/*", zone_name = "lumenstudio.fyi" }
