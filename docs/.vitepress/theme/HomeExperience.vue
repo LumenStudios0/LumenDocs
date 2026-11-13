@@ -52,8 +52,8 @@ onUnmounted(() => {
     <section class="launch" aria-labelledby="launch-title">
       <div class="launch-copy">
         <a class="launch-label" href="/plugins/"><span /> LUMEN STUDIOS <i>/</i> MINECRAFT PLUGINS <span aria-hidden="true">↗</span></a>
-        <h1 id="launch-title" class="launch-title">Less setup.<br><span>More play.</span></h1>
-        <p class="launch-description">Your server. In good hands. Thoughtful plugins, clear documentation, and one home for everything Lumen.</p>
+        <h1 id="launch-title" class="launch-title">Lumen Studios<br><span>Your server.<br>In good hands.</span></h1>
+        <p class="launch-description">One license key for your Lumen plugins, thoughtful Minecraft tools, and clear guides to get everything running.</p>
         <div class="launch-actions">
           <a class="home-button home-button-primary" href="/docs/">Explore documentation <span aria-hidden="true">→</span></a>
           <a class="home-button launch-secondary" href="/account/">Open customer portal <span aria-hidden="true">↗</span></a>
@@ -358,7 +358,7 @@ onUnmounted(() => {
 .launch .launch-title {
   margin: 26px 0 24px;
   color: var(--vp-c-text-1);
-  font-size: clamp(56px, 6.2vw, 88px);
+  font-size: clamp(44px, 4.7vw, 68px);
   font-weight: 750;
   line-height: 1.03;
   letter-spacing: -0.065em;
@@ -437,7 +437,7 @@ onUnmounted(() => {
 
 @media (max-width: 960px) {
   .launch { gap: 32px; }
-  .launch .launch-title { font-size: 64px; }
+  .launch .launch-title { font-size: 46px; }
   .workspace-main { padding: 18px; }
   .workspace-body { grid-template-columns: 36px minmax(0, 1fr); }
 }
@@ -445,7 +445,7 @@ onUnmounted(() => {
 @media (max-width: 720px) {
   .launch { grid-template-columns: 1fr; padding-top: 36px; gap: 36px; }
   .launch-copy { text-align: center; }
-  .launch .launch-title { font-size: clamp(56px, 12vw, 76px); }
+  .launch .launch-title { font-size: clamp(40px, 10vw, 64px); }
   .launch-description { margin-inline: auto; font-size: 16px; }
   .launch-actions, .launch-notes { justify-content: center; }
   .workspace { width: 100%; max-width: 520px; margin-inline: auto; transform: none; animation: none; }
