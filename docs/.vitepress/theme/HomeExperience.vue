@@ -49,6 +49,37 @@ onUnmounted(() => {
 
 <template>
   <div ref="experienceRoot" class="home-experience">
+    <section class="launch" aria-labelledby="launch-title">
+      <div class="launch-copy">
+        <a class="launch-label" href="/plugins/"><span /> LUMEN STUDIOS <i>/</i> MINECRAFT PLUGINS <span aria-hidden="true">↗</span></a>
+        <h1 id="launch-title" class="launch-title">Less setup.<br><span>More play.</span></h1>
+        <p class="launch-description">Your server. In good hands. Thoughtful plugins, clear documentation, and one home for everything Lumen.</p>
+        <div class="launch-actions">
+          <a class="home-button home-button-primary" href="/docs/">Explore documentation <span aria-hidden="true">→</span></a>
+          <a class="home-button launch-secondary" href="/account/">Open customer portal <span aria-hidden="true">↗</span></a>
+        </div>
+        <div class="launch-notes"><span>One license key</span><span>Plugin-by-plugin guides</span><span>Built for your community</span></div>
+      </div>
+
+      <div class="workspace" aria-label="Explore the Lumen workspace">
+        <div class="workspace-bar"><span class="workspace-mark">L</span><strong>Your Lumen workspace</strong><span class="workspace-preview">PREVIEW</span></div>
+        <div class="workspace-body">
+          <div class="workspace-rail" aria-hidden="true"><span class="workspace-rail-active">◈</span><span>⌘</span><span>✦</span><span>⚙</span><i /></div>
+          <div class="workspace-main">
+            <div class="workspace-heading"><div><span class="workspace-kicker">A LITTLE LESS ADMIN</span><h2>A lot more possibility.</h2></div><span class="workspace-emblem" aria-hidden="true">✦</span></div>
+            <a href="/getting-started/" class="workspace-setup"><span class="workspace-setup-icon" aria-hidden="true">↗</span><span><strong>Your next great server starts here</strong><small>Requirements. Installation. First launch.</small></span><span aria-hidden="true">→</span></a>
+            <div class="workspace-section-label"><span>THE TOOLKIT</span><span>Made to work together</span></div>
+            <div class="workspace-tools">
+              <a href="/plugins/"><span class="workspace-tool-icon" aria-hidden="true">✦</span><strong>Plugins</strong><small>Find your next upgrade</small><span class="workspace-tool-link">Explore library ↗</span></a>
+              <a href="/getting-started/licensing"><span class="workspace-tool-icon" aria-hidden="true">⌘</span><strong>One key.</strong><small>Every Lumen plugin</small><span class="workspace-tool-link">License guide ↗</span></a>
+            </div>
+            <a class="workspace-guide" href="/docs/"><span aria-hidden="true">≡</span><span><strong>Answers, without the digging.</strong><small>Commands, configuration &amp; permissions</small></span><span aria-hidden="true">→</span></a>
+            <div class="workspace-footer"><span><i /> BUILT FOR MINECRAFT</span><span>Less friction. More creating.</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <nav class="home-entry" aria-label="Explore Lumen Studios">
       <a class="home-entry-card" href="/docs/">
         <span class="home-entry-icon home-entry-icon-docs" aria-hidden="true">⌘</span>
@@ -289,9 +320,141 @@ onUnmounted(() => {
   --home-purple: #7b3ff2;
   --home-ink: var(--vp-c-text-1);
   --home-muted: var(--vp-c-text-2);
-  width: min(1120px, 100%);
-  margin: 14px auto 80px;
+  width: min(1200px, 100%);
+  margin: 0 auto 80px;
   color: var(--home-ink);
+}
+
+.launch {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: clamp(32px, 5vw, 76px);
+  align-items: center;
+  padding: clamp(48px, 7vw, 100px) 0 64px;
+}
+
+.launch-label {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  color: var(--vp-c-text-2);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+}
+
+.launch-label > span:first-child,
+.workspace-footer i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #a986ff;
+  box-shadow: 0 0 14px #956cff;
+}
+
+.launch-label i { color: var(--vp-c-divider); font-style: normal; }
+
+.launch .launch-title {
+  margin: 26px 0 24px;
+  color: var(--vp-c-text-1);
+  font-size: clamp(56px, 6.2vw, 88px);
+  font-weight: 750;
+  line-height: 1.03;
+  letter-spacing: -0.065em;
+}
+
+.launch-title > span {
+  background: linear-gradient(110deg, #bc9cff, #956cff 55%, #7b3ff2);
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.launch-description {
+  max-width: 430px;
+  margin: 0;
+  color: var(--home-muted);
+  font-size: 17px;
+  line-height: 1.8;
+}
+
+.launch-actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 28px 0 22px; }
+.launch .home-button { min-height: 46px; padding: 11px 17px; border-radius: 9px; font-size: 13px; }
+.launch-secondary { border: 1px solid var(--vp-c-divider); background: var(--vp-c-bg-soft); color: var(--home-ink); }
+.launch-notes { display: flex; flex-wrap: wrap; gap: 8px 18px; color: var(--home-muted); font-size: 10px; }
+.launch-notes span::before { content: "✓"; margin-right: 5px; color: var(--vp-c-brand-1); }
+
+.workspace {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgb(149 108 255 / 28%);
+  border-radius: 16px;
+  background: var(--vp-c-bg);
+  box-shadow: 0 24px 80px rgb(52 20 110 / 18%), 0 0 90px rgb(123 63 242 / 9%);
+  transform: perspective(1400px) rotateY(-5deg) rotateX(2deg);
+  animation: workspace-enter 800ms ease both;
+}
+
+.workspace-bar { display: flex; align-items: center; gap: 10px; padding: 15px 18px; border-bottom: 1px solid var(--vp-c-divider); background: var(--vp-c-bg-soft); }
+.workspace-mark { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 6px; background: linear-gradient(135deg, #bc9cff, #6026cf); color: white; font-weight: 800; font-style: italic; }
+.workspace-bar strong { font-size: 11px; font-weight: 550; }
+.workspace-preview { margin-left: auto; font-size: 8px; letter-spacing: 0.08em; color: var(--home-muted); }
+.workspace-body { display: grid; grid-template-columns: 48px minmax(0, 1fr); }
+.workspace-rail { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 21px 0; border-right: 1px solid var(--vp-c-divider); color: var(--home-muted); }
+.workspace-rail span { display: grid; width: 28px; height: 28px; place-items: center; font-size: 16px; }
+.workspace-rail .workspace-rail-active { border-radius: 7px; background: var(--vp-c-brand-soft); color: var(--vp-c-brand-1); }
+.workspace-rail i { width: 20px; height: 20px; margin-top: auto; border: 1px solid var(--vp-c-divider); border-radius: 50%; background: var(--vp-c-brand-soft); }
+.workspace-main { min-width: 0; padding: 24px; background: radial-gradient(ellipse at 100% 0, rgb(123 63 242 / 8%), transparent 65%); }
+.workspace-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.workspace-kicker { color: var(--home-muted); font-size: 8px; letter-spacing: 0.14em; }
+.workspace-heading h2 { margin: 5px 0 22px; padding: 0; border: 0; font-size: 20px; letter-spacing: -0.04em; line-height: 1.4; }
+.workspace-emblem { color: #a986ff; font-size: 36px; filter: drop-shadow(0 0 16px rgb(149 108 255 / 50%)); }
+.workspace-setup { display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid rgb(149 108 255 / 30%); border-radius: 9px; background: linear-gradient(110deg, rgb(123 63 242 / 14%), rgb(123 63 242 / 4%)); color: var(--home-ink); }
+.workspace-setup > span:last-child { margin-left: auto; color: var(--vp-c-brand-1); }
+.workspace-setup-icon { color: #a986ff; font-size: 24px; }
+.workspace strong, .workspace small { display: block; }
+.workspace-setup strong, .workspace-guide strong { font-size: 11px; line-height: 1.5; font-weight: 600; }
+.workspace small { margin-top: 4px; color: var(--home-muted); font-size: 9px; line-height: 1.5; }
+.workspace-section-label { display: flex; justify-content: space-between; gap: 12px; margin: 24px 0 10px; color: var(--home-muted); font-size: 8px; }
+.workspace-section-label > span:first-child { letter-spacing: 0.12em; }
+.workspace-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.workspace-tools a { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; padding: 16px; border: 1px solid var(--vp-c-divider); border-radius: 9px; background: var(--vp-c-bg-soft); color: var(--home-ink); }
+.workspace-tool-icon { display: grid; width: 30px; height: 30px; margin-bottom: 12px; place-items: center; border: 1px solid rgb(149 108 255 / 25%); border-radius: 8px; color: #956cff; background: var(--vp-c-brand-soft); }
+.workspace-tools strong { font-size: 16px; letter-spacing: -0.03em; }
+.workspace-tool-link { margin-top: 16px; color: var(--vp-c-brand-1); font-size: 9px; }
+.workspace-guide { display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 14px 0; color: var(--home-ink); }
+.workspace-guide > span:first-child { color: var(--vp-c-brand-1); font-size: 24px; }
+.workspace-guide > span:last-child { margin-left: auto; }
+.workspace-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding-top: 14px; border-top: 1px solid var(--vp-c-divider); color: var(--home-muted); font-size: 8px; }
+.workspace-footer > span:first-child { display: flex; align-items: center; gap: 6px; font-size: 7px; letter-spacing: 0.08em; }
+.workspace a { transition: border-color 180ms ease, background-color 180ms ease; }
+.workspace a:hover { border-color: var(--vp-c-brand-1); background-color: var(--vp-c-brand-soft); }
+
+@keyframes workspace-enter {
+  from { opacity: 0; transform: perspective(1400px) rotateY(-9deg) translateY(24px); }
+  to { opacity: 1; transform: perspective(1400px) rotateY(-5deg) rotateX(2deg); }
+}
+
+@media (max-width: 960px) {
+  .launch { gap: 32px; }
+  .launch .launch-title { font-size: 64px; }
+  .workspace-main { padding: 18px; }
+  .workspace-body { grid-template-columns: 36px minmax(0, 1fr); }
+}
+
+@media (max-width: 720px) {
+  .launch { grid-template-columns: 1fr; padding-top: 36px; gap: 36px; }
+  .launch-copy { text-align: center; }
+  .launch .launch-title { font-size: clamp(56px, 12vw, 76px); }
+  .launch-description { margin-inline: auto; font-size: 16px; }
+  .launch-actions, .launch-notes { justify-content: center; }
+  .workspace { width: 100%; max-width: 520px; margin-inline: auto; transform: none; animation: none; }
+}
+
+.launch a:focus-visible { outline: 2px solid var(--vp-c-brand-1); outline-offset: 4px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace { animation: none; transform: none; }
 }
 
 .home-experience a {

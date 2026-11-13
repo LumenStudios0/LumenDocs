@@ -1899,48 +1899,50 @@ onUnmounted(() => {
 
 <template>
   <div class="lumen-assistant">
-    <Teleport to="#lumen-nav-auth">
-      <button
-        v-if="!discordUser"
-        class="lumen-auth-button"
-        type="button"
-        :title="discordAuthNotice || 'Sign in with Discord'"
-        @click="startDiscordLogin"
-      >
-        Log in
-      </button>
-      <div v-else class="lumen-account-dropdown">
+    <ClientOnly>
+      <Teleport to="#lumen-nav-auth">
         <button
-          class="lumen-auth-button lumen-auth-user"
+          v-if="!discordUser"
+          class="lumen-auth-button"
           type="button"
-          :aria-expanded="accountMenuOpen"
-          aria-haspopup="menu"
-          aria-controls="lumen-account-menu"
-          title="Open account menu"
-          @click="accountMenuOpen = !accountMenuOpen"
+          :title="discordAuthNotice || 'Sign in with Discord'"
+          @click="startDiscordLogin"
         >
-          <img v-if="discordUser.avatarUrl" :src="discordUser.avatarUrl" alt="">
-          <span>{{ discordUser.globalName || discordUser.username }}</span>
-          <svg class="lumen-account-chevron" viewBox="0 0 12 12" aria-hidden="true">
-            <path d="m2 4 4 4 4-4" />
-          </svg>
+          Log in
         </button>
-        <nav
-          v-if="accountMenuOpen"
-          id="lumen-account-menu"
-          class="lumen-account-menu"
-          aria-label="Account menu"
-          role="menu"
-        >
-          <a href="/account/" role="menuitem" @click="accountMenuOpen = false">Dashboard</a>
-          <a href="/account/licenses" role="menuitem" @click="accountMenuOpen = false">My licenses</a>
-          <a href="/account/products" role="menuitem" @click="accountMenuOpen = false">Products purchased</a>
-          <a href="/account/settings" role="menuitem" @click="accountMenuOpen = false">Account settings</a>
-          <a v-if="discordUser.role" href="/admin/" role="menuitem" @click="accountMenuOpen = false">Admin dashboard</a>
-          <button type="button" role="menuitem" @click="signOutDiscord">Sign out</button>
-        </nav>
-      </div>
-    </Teleport>
+        <div v-else class="lumen-account-dropdown">
+          <button
+            class="lumen-auth-button lumen-auth-user"
+            type="button"
+            :aria-expanded="accountMenuOpen"
+            aria-haspopup="menu"
+            aria-controls="lumen-account-menu"
+            title="Open account menu"
+            @click="accountMenuOpen = !accountMenuOpen"
+          >
+            <img v-if="discordUser.avatarUrl" :src="discordUser.avatarUrl" alt="">
+            <span>{{ discordUser.globalName || discordUser.username }}</span>
+            <svg class="lumen-account-chevron" viewBox="0 0 12 12" aria-hidden="true">
+              <path d="m2 4 4 4 4-4" />
+            </svg>
+          </button>
+          <nav
+            v-if="accountMenuOpen"
+            id="lumen-account-menu"
+            class="lumen-account-menu"
+            aria-label="Account menu"
+            role="menu"
+          >
+            <a href="/account/" role="menuitem" @click="accountMenuOpen = false">Dashboard</a>
+            <a href="/account/licenses" role="menuitem" @click="accountMenuOpen = false">My licenses</a>
+            <a href="/account/products" role="menuitem" @click="accountMenuOpen = false">Products purchased</a>
+            <a href="/account/settings" role="menuitem" @click="accountMenuOpen = false">Account settings</a>
+            <a v-if="discordUser.role" href="/admin/" role="menuitem" @click="accountMenuOpen = false">Admin dashboard</a>
+            <button type="button" role="menuitem" @click="signOutDiscord">Sign out</button>
+          </nav>
+        </div>
+      </Teleport>
+    </ClientOnly>
     <Transition name="discord-login-overlay">
       <div v-if="loginModalOpen" class="discord-login-overlay" @click="loginModalOpen = false">
         <div class="discord-login-modal" @click.stop>

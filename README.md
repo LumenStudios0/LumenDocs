@@ -1,6 +1,6 @@
 # Lumen Studios Docs
 
-The Lumen Studios plugin guides, built with VitePress. Read them at [lumenstudios0.github.io/LumenDocs](https://lumenstudios0.github.io/LumenDocs/).
+The Lumen Studios plugin guides, built with VitePress. Read them at [lumenstudio.fyi](https://lumenstudio.fyi/).
 
 Features include beautiful UI animations, Discord authentication, and an AI-powered assistant.
 
@@ -24,7 +24,9 @@ npm run docs:preview
 
 Push changes to `main` or run **Deploy documentation** from the repository’s Actions tab. GitHub Actions builds the site and publishes it to GitHub Pages.
 
-The VitePress `base` is `/LumenDocs/`, matching this repository's GitHub Pages project-site URL. Update `docs/.vitepress/config.mts` if the repository name or hosting path changes.
+The VitePress `base` is `/`, matching the custom domain in `docs/public/CNAME`. Keep existing routes and navigation destinations unchanged when updating the design.
+
+The homepage layout and animations live in `docs/.vitepress/theme/HomeExperience.vue`; `docs/index.md` mounts that component. Shared docs styling lives in `docs/.vitepress/theme/custom.css`, and the documentation hub is styled in `docs/docs/index.md`. Check both desktop and mobile layouts with the production preview before publishing.
 
 ## Assistant and bug reports
 

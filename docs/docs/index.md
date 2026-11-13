@@ -3,6 +3,8 @@ title: Documentation
 description: Lumen Studios product documentation, setup guides, and support resources
 ---
 
+<div class="docs-hub-label">LUMEN STUDIOS / THE GUIDEBOOK</div>
+
 # Documentation
 
 Find installation instructions, compatibility details, configuration references, and troubleshooting for Lumen Studios products.
@@ -53,10 +55,22 @@ Find installation instructions, compatibility details, configuration references,
 .docs-hub-intro {
   max-width: 690px;
   margin: 20px 0 26px;
-  padding: 16px 19px;
-  border-left: 3px solid var(--vp-c-brand-1);
-  border-radius: 0 12px 12px 0;
-  background: linear-gradient(90deg, var(--vp-c-brand-soft), transparent);
+  padding: 24px;
+  border: 1px solid var(--lumen-card-border);
+  border-radius: 14px;
+  background: radial-gradient(ellipse at top right, var(--vp-c-brand-soft), transparent 80%), var(--lumen-card-bg);
+}
+
+.docs-hub-label {
+  margin-bottom: 18px;
+  color: var(--vp-c-brand-1);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+}
+
+.docs-hub-label + h1 {
+  margin-top: 0;
 }
 
 .docs-hub-intro > span {
@@ -74,26 +88,45 @@ Find installation instructions, compatibility details, configuration references,
 
 .docs-hub-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
   margin: 28px 0;
+  counter-reset: guide;
 }
 
-.docs-hub-card {
+.vp-doc a.docs-hub-card {
   display: grid;
-  min-height: 185px;
+  position: relative;
+  min-width: 0;
+  min-height: 215px;
   align-content: start;
   gap: 11px;
-  padding: 20px;
+  padding: 25px;
   border: 1px solid var(--lumen-card-border);
   border-radius: 15px;
   background: var(--lumen-card-bg);
   color: var(--vp-c-text-1);
   text-decoration: none;
   transition: border-color 180ms ease, transform 180ms ease, box-shadow 180ms ease;
+  counter-increment: guide;
 }
 
-.docs-hub-card:hover {
+.docs-hub-card::before {
+  content: "0" counter(guide);
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  color: var(--vp-c-text-3);
+  font-family: var(--vp-font-family-mono);
+  font-size: 11px;
+}
+
+@media (max-width: 540px) {
+  .docs-hub-grid { grid-template-columns: 1fr; }
+  .vp-doc a.docs-hub-card { min-height: 185px; }
+}
+
+.vp-doc a.docs-hub-card:hover {
   transform: translateY(-3px);
   border-color: var(--vp-c-brand-1);
   box-shadow: 0 12px 30px rgb(123 63 242 / 12%);
@@ -145,7 +178,7 @@ Find installation instructions, compatibility details, configuration references,
   font-size: 0.9rem;
 }
 
-.docs-hub-popular > a {
+.vp-doc .docs-hub-popular > a {
   display: flex;
   min-height: 38px;
   align-items: center;
@@ -161,7 +194,7 @@ Find installation instructions, compatibility details, configuration references,
   transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
 }
 
-.docs-hub-popular > a:hover {
+.vp-doc .docs-hub-popular > a:hover {
   border-color: var(--lumen-card-border);
   background: var(--vp-c-brand-soft);
   color: var(--vp-c-brand-1);
@@ -172,8 +205,8 @@ Find installation instructions, compatibility details, configuration references,
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .docs-hub-card { transition: none; }
-  .docs-hub-card:hover { transform: none; }
+  .vp-doc a.docs-hub-card { transition: none; }
+  .vp-doc a.docs-hub-card:hover { transform: none; }
 }
 
 @media (max-width: 720px) {
