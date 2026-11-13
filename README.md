@@ -2,6 +2,8 @@
 
 The Lumen Studios plugin guides, built with VitePress. Read them at [lumenstudios0.github.io/LumenDocs](https://lumenstudios0.github.io/LumenDocs/).
 
+Features include beautiful UI animations, Discord authentication, and an AI-powered assistant.
+
 ## Local development
 
 Requirements: Node.js 20.19+ or 22.12+.
