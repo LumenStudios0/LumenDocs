@@ -77,13 +77,17 @@
 /* Navigation animations */
 .vp-nav {
   animation: slideDown 0.5s var(--lumen-easing-ease);
-  transition: background 0.3s var(--lumen-easing-ease);
+  transition: all 0.3s var(--lumen-easing-ease);
+  border-bottom: 1px solid rgba(123, 63, 242, 0.15);
+  backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.98);
 }
 
 .vp-nav-link:hover,
 .VPNavBarMenu:hover {
   color: var(--vp-c-brand-1);
-  transition: color var(--lumen-duration-base) var(--lumen-easing-ease);
+  transition: all var(--lumen-duration-base) var(--lumen-easing-ease);
+  text-shadow: 0 0 16px rgba(123, 63, 242, 0.3);
 }
 
 /* Button animations */
@@ -91,19 +95,25 @@
   transition: all var(--lumen-duration-base) var(--lumen-easing-ease);
   position: relative;
   overflow: hidden;
+  border-radius: 8px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  border: 1px solid rgba(123, 63, 242, 0.2);
 }
 
 .VPButton:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 16px rgba(123, 63, 242, 0.3);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(123, 63, 242, 0.3);
+  border-color: rgba(123, 63, 242, 0.4);
 }
 
 .VPButton.brand {
   background: linear-gradient(135deg, var(--vp-c-brand-1), var(--vp-c-brand-2));
+  box-shadow: 0 4px 16px rgba(123, 63, 242, 0.2);
 }
 
 .VPButton.brand:hover {
-  box-shadow: 0 12px 24px rgba(123, 63, 242, 0.4);
+  box-shadow: 0 16px 40px rgba(123, 63, 242, 0.35);
 }
 
 /* Card animations */
@@ -111,12 +121,17 @@
 .VPCard {
   transition: all var(--lumen-duration-base) var(--lumen-easing-ease);
   animation: scaleIn 0.6s var(--lumen-easing-ease);
+  border: 1px solid rgba(123, 63, 242, 0.1);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.98), rgba(250,248,255,0.95));
+  backdrop-filter: blur(8px);
 }
 
 .lumen-card:hover,
 .VPCard:hover {
-  transform: translateY(-8px);
-  box-shadow: 0 16px 32px rgba(123, 63, 242, 0.2);
+  transform: translateY(-10px);
+  box-shadow: 0 24px 48px rgba(123, 63, 242, 0.2);
+  border-color: rgba(123, 63, 242, 0.3);
 }
 
 /* Hero animations */
@@ -5848,89 +5863,54 @@ html.lumen-dino-extinction:has(.dino-extinction-card) .VPContent {
   }
 }
 
-/* Modern SaaS Design Enhancements - Conservative Updates */
-
-/* Enhanced card hover effects */
-.VPCard {
-  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
-
-.VPCard:hover {
-  transform: translateY(-8px);
-  box-shadow: 0 20px 40px rgba(123, 63, 242, 0.15);
-}
-
-/* Modern button styling */
-.VPButton {
-  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  border-radius: 8px;
-}
-
-.VPButton:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 12px 28px rgba(123, 63, 242, 0.2);
-}
-
-.VPButton.brand {
-  background: linear-gradient(135deg, #7b3ff2 0%, #6b32df 100%);
-}
-
-/* Enhanced typography */
-.VPHomeHero h1 {
-  font-weight: 800;
-  letter-spacing: -0.02em;
-}
-
-h2 {
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-
-/* Smooth transitions for all interactive elements */
-a {
-  transition: color 0.3s ease;
-}
-
-/* Modern code block styling */
-div[class*="language-"] {
+/* Modern Code Block & Table Styling */
+div[class*="language-"],
+pre {
   border: 1px solid rgba(123, 63, 242, 0.15);
-  border-radius: 8px;
-  transition: all 0.3s ease;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(8px);
+  transition: all 0.3s var(--lumen-easing-ease);
 }
 
-div[class*="language-"]:hover {
+div[class*="language-"]:hover,
+pre:hover {
   border-color: rgba(123, 63, 242, 0.3);
-  box-shadow: 0 8px 20px rgba(123, 63, 242, 0.1);
+  box-shadow: 0 8px 24px rgba(123, 63, 242, 0.12);
 }
 
-/* Table improvements */
+/* Tables */
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
 table th {
-  background: rgba(123, 63, 242, 0.08);
+  background: rgba(123, 63, 242, 0.1);
   font-weight: 600;
+  transition: background 0.2s ease;
 }
 
 table td {
+  border-bottom: 1px solid rgba(123, 63, 242, 0.1);
   transition: background 0.2s ease;
 }
 
 table tr:hover td {
-  background: rgba(123, 63, 242, 0.05);
+  background: rgba(123, 63, 242, 0.08);
 }
 
-/* Dark mode enhancements */
-.dark .VPCard:hover {
-  background: rgba(123, 63, 242, 0.1);
-  box-shadow: 0 20px 40px rgba(123, 63, 242, 0.2);
-}
-
-.dark div[class*="language-"] {
+/* Dark mode */
+.dark div[class*="language-"],
+.dark pre {
+  background: rgba(35, 27, 48, 0.98);
   border-color: rgba(123, 63, 242, 0.2);
-  background: rgba(35, 27, 48, 0.95);
 }
 
-.dark div[class*="language-"]:hover {
+.dark div[class*="language-"]:hover,
+.dark pre:hover {
   border-color: rgba(167, 124, 255, 0.4);
-  box-shadow: 0 8px 20px rgba(123, 63, 242, 0.15);
+  box-shadow: 0 8px 24px rgba(123, 63, 242, 0.15);
 }
 
 .dark table th {
@@ -5938,5 +5918,5 @@ table tr:hover td {
 }
 
 .dark table tr:hover td {
-  background: rgba(123, 63, 242, 0.1);
+  background: rgba(123, 63, 242, 0.12);
 }
