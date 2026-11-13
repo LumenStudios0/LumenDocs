@@ -3,8 +3,7 @@ main = "worker/chat.js"
 compatibility_date = "2026-11-08"
 routes = [
   { pattern = "lumenstudio.fyi/api/*", zone_name = "lumenstudio.fyi" },
-  { pattern = "lumenstudio.fyi/auth/*", zone_name = "lumenstudio.fyi" },
-  { pattern = "lumen-docs-assistant.lumennetwork0.workers.dev/auth/*" }
+  { pattern = "lumenstudio.fyi/auth/*", zone_name = "lumenstudio.fyi" }
 ]
 
 [vars]
