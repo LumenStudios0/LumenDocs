@@ -1,5 +1,5 @@
 import DefaultTheme from 'vitepress/theme'
-import { h, defineComponent, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { h, computed, defineComponent, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useData, useRouter } from 'vitepress'
 import AccountLicenseIps from './AccountLicenseIps.vue'
 import AccountLicenseClaim from './AccountLicenseClaim.vue'
@@ -29,12 +29,20 @@ export default {
   Layout: defineComponent({
     setup() {
       const router = useRouter()
-      const { isDark } = useData()
+      const { isDark, page } = useData()
       const previousRouteChanged = router.onAfterRouteChange
       const canGoBack = ref(false)
       const canGoForward = ref(false)
       const navMenuOpen = ref(false)
       const currentPath = ref(router.route.path)
+      const workspace = computed(() => {
+        if (/^\/admin(?:\/|$)/.test(currentPath.value)) return { name: 'Studio console', link: '/admin/', label: 'ADMINISTRATION' }
+        if (/^\/account(?:\/|$)/.test(currentPath.value)) return { name: 'Customer portal', link: '/account/', label: 'YOUR WORKSPACE' }
+        return { name: 'Documentation', link: '/docs/', label: 'THE LUMEN GUIDEBOOK' }
+      })
+      const isDocumentation = computed(() =>
+        currentPath.value !== '/' && !/^\/(?:account|admin)(?:\/|$)/.test(currentPath.value),
+      )
       const dinoEggPath = ref('')
       const dinoEggPosition = ref({ left: '12%', top: '74%' })
       const dinoEggsFound = ref(0)
@@ -42,12 +50,12 @@ export default {
       const dinoToast = ref('')
       let traversingHistory = false
       const topNavigationItems = [
-        { text: 'Documentation', link: '/docs/' },
-        { text: 'Plugin catalog', link: '/plugins/' },
-        { text: 'Customer portal', link: '/account/' },
-        { text: 'Getting started', link: '/getting-started/' },
-        { text: 'Support & requests', link: '/reports/' },
-        { text: 'Release notes', link: '/changelogs/' },
+        { text: 'Documentation', link: '/docs/', detail: 'Answers, without the digging.', icon: 'M4 3h12l4 4v14H4zM14 3v6h6M8 13h8M8 17h5' },
+        { text: 'Plugin catalog', link: '/plugins/', detail: 'Find your next server upgrade.', icon: 'm12 3 9 5-9 5-9-5zM3 8v9l9 5 9-5V8M12 13v9' },
+        { text: 'Customer portal', link: '/account/', detail: 'Your products. Your workspace.', icon: 'M3 4h18v16H3zM3 9h18M9 9v11' },
+        { text: 'Getting started', link: '/getting-started/', detail: 'From download to first launch.', icon: 'm12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z' },
+        { text: 'Support & requests', link: '/reports/', detail: 'Get a hand. Share an idea.', icon: 'M4 4h16v12H9l-5 5zM8 8h8M8 12h5' },
+        { text: 'Release notes', link: '/changelogs/', detail: 'See what is new at Lumen.', icon: 'M12 8v5l3 2M4 6a9 9 0 1 1-1 9M3 3v5h5' },
       ]
       let slideFromLeft = true
       let sunClicks = 0
@@ -538,7 +546,10 @@ export default {
       }
 
       const handleNavMenuKeydown = (event: KeyboardEvent) => {
-        if (event.key === 'Escape') navMenuOpen.value = false
+        if (event.key === 'Escape' && navMenuOpen.value) {
+          navMenuOpen.value = false
+          document.querySelector<HTMLButtonElement>('.lumen-nav-menu-button')?.focus()
+        }
       }
 
       const handleNavMenuPointerDown = (event: PointerEvent) => {
@@ -648,7 +659,52 @@ export default {
         updateFavicon(false)
       })
 
-      return () => h(DefaultTheme.Layout, null, {
+      return () => h(DefaultTheme.Layout, {
+        class: ['studio-shell', isDocumentation.value && 'studio-docs-shell'],
+      }, {
+        'sidebar-nav-before': () => [
+          h('button', {
+            class: 'studio-sidebar-close',
+            type: 'button',
+            'aria-label': 'Close sidebar',
+            // Use VitePress's close handler so scroll lock and focus are restored.
+            onClick: () => window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Escape' })),
+          }, '×'),
+          h('a', { class: 'studio-workspace', href: workspace.value.link }, [
+            h('span', { class: 'studio-workspace-logo', 'aria-hidden': 'true' }, 'L'),
+            h('span', [
+              h('small', workspace.value.label),
+              h('strong', workspace.value.name),
+            ]),
+            h('span', { class: 'studio-workspace-chevron', 'aria-hidden': 'true' }, '↗'),
+          ]),
+          h('button', {
+            class: 'studio-sidebar-search',
+            type: 'button',
+            onClick: () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true })),
+          }, [
+            h('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' }, [
+              h('circle', { cx: 10, cy: 10, r: 6 }),
+              h('path', { d: 'm15 15 5 5' }),
+            ]),
+            h('span', 'Find an answer'),
+            h('kbd', '/'),
+          ]),
+          h('div', { class: 'studio-sidebar-label' }, 'WORKSPACE'),
+        ],
+        'sidebar-nav-after': () => h('a', { class: 'studio-sidebar-help', href: '/reports/' }, [
+          h('span', { class: 'studio-sidebar-help-icon', 'aria-hidden': 'true' }, '?'),
+          h('strong', 'A little help goes a long way.'),
+          h('span', 'Questions, bugs, or a new idea?'),
+          h('small', 'Talk to the studio →'),
+        ]),
+        'doc-before': () => isDocumentation.value && h('nav', { class: 'studio-breadcrumbs', 'aria-label': 'Breadcrumb' }, [
+          h('a', { href: '/' }, 'Lumen'),
+          h('span', { 'aria-hidden': 'true' }, '/'),
+          h('a', { href: '/docs/' }, 'Guidebook'),
+          h('span', { 'aria-hidden': 'true' }, '/'),
+          h('span', { 'aria-current': 'page' }, page.value.title),
+        ]),
         'layout-top': () => [
           h('div', { class: 'lumen-day-night-fade', 'aria-hidden': 'true' }),
           h('div', { class: 'lumen-sky', 'aria-hidden': 'true' }, [
@@ -875,39 +931,66 @@ export default {
               'aria-expanded': String(navMenuOpen.value),
               'aria-controls': 'lumen-nav-menu-panel',
               onClick: () => { navMenuOpen.value = !navMenuOpen.value },
+              onKeydown: async (event: KeyboardEvent) => {
+                if (event.key !== 'ArrowDown') return
+                event.preventDefault()
+                navMenuOpen.value = true
+                await nextTick()
+                document.querySelector<HTMLAnchorElement>('#lumen-nav-menu-panel a')?.focus()
+              },
             }, [
-              h('span', { 'aria-hidden': 'true' }),
-              h('span', { 'aria-hidden': 'true' }),
-              h('span', { 'aria-hidden': 'true' }),
+              h('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' }, [
+                h('rect', { x: 3, y: 3, width: 7, height: 7, rx: 1.5 }),
+                h('rect', { x: 14, y: 3, width: 7, height: 7, rx: 1.5 }),
+                h('rect', { x: 3, y: 14, width: 7, height: 7, rx: 1.5 }),
+                h('rect', { x: 14, y: 14, width: 7, height: 7, rx: 1.5 }),
+              ]),
+              h('span', { class: 'lumen-nav-menu-label' }, 'Explore'),
+              h('span', { class: 'lumen-nav-menu-chevron', 'aria-hidden': 'true' }, '⌄'),
             ]),
             navMenuOpen.value && h('nav', {
               id: 'lumen-nav-menu-panel',
               class: 'lumen-nav-menu-panel',
               'aria-label': 'Main navigation',
-            }, topNavigationItems.map((item, index) =>
-              h('a', {
-                class: 'lumen-nav-menu-link',
-                href: item.link,
-                style: { '--menu-index': index },
-                onClick: () => { navMenuOpen.value = false },
-              }, item.text),
-            ).concat([
-              h('a', {
-                class: 'lumen-nav-menu-link',
-                href: 'https://discord.gg/lumenstudios',
-                target: '_blank',
-                rel: 'noreferrer',
-                style: { '--menu-index': topNavigationItems.length },
-                onClick: () => { navMenuOpen.value = false },
-              }, 'Visit'),
-              h('button', {
-                class: 'lumen-nav-menu-link lumen-nav-menu-theme',
-                type: 'button',
-                'aria-label': isDark.value ? 'Switch to day mode' : 'Switch to night mode',
-                style: { '--menu-index': topNavigationItems.length + 1 },
-                onClick: () => { isDark.value = !isDark.value },
-              }, isDark.value ? '☀ Switch to day mode' : '☾ Switch to night mode'),
-            ])),
+            }, [
+              h('div', { class: 'studio-menu-heading' }, [
+                h('small', 'THE LUMEN WORKSPACE'),
+                h('strong', 'Where would you like to go?'),
+              ]),
+              ...topNavigationItems.map((item, index) =>
+                h('a', {
+                  class: 'lumen-nav-menu-link',
+                  href: item.link,
+                  'aria-current': currentPath.value.startsWith(item.link) ? 'page' : undefined,
+                  style: { '--menu-index': index },
+                  onClick: () => { navMenuOpen.value = false },
+                }, [
+                  h('span', { class: 'studio-menu-icon', 'aria-hidden': 'true' }, [
+                    h('svg', { viewBox: '0 0 24 24' }, [h('path', { d: item.icon })]),
+                  ]),
+                  h('span', { class: 'studio-menu-copy' }, [
+                    h('strong', item.text),
+                    h('small', item.detail),
+                  ]),
+                  h('span', { class: 'studio-menu-arrow', 'aria-hidden': 'true' }, '↗'),
+                ]),
+              ),
+              h('div', { class: 'studio-menu-footer' }, [
+                h('a', {
+                  class: 'studio-menu-discord',
+                  href: 'https://discord.gg/lumenstudios',
+                  target: '_blank',
+                  rel: 'noreferrer',
+                  onClick: () => { navMenuOpen.value = false },
+                }, 'Join the community ↗'),
+                h('button', {
+                  class: 'lumen-nav-menu-theme',
+                  type: 'button',
+                  'aria-label': isDark.value ? 'Switch to day mode' : 'Switch to night mode',
+                  onClick: () => { isDark.value = !isDark.value },
+                }, isDark.value ? '☀ Light mode' : '☾ Dark mode'),
+              ]),
+            ]),
           ]),
           h('div', { class: 'lumen-nav-report-group' }, [
             h('a', {

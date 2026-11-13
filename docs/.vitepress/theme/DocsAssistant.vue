@@ -108,6 +108,8 @@ const discordUser = ref<DiscordUser | null>(null)
 const discordAuthNotice = ref('')
 const accountMenuOpen = ref(false)
 const loginModalOpen = ref(false)
+const loginDialog = ref<HTMLElement | null>(null)
+let loginReturnFocus: HTMLElement | null = null
 const trackPositionSeconds = ref(0)
 const assistantEndpoint = import.meta.env.VITE_DOCS_ASSISTANT_ENDPOINT
 let audioContext: AudioContext | undefined
@@ -1232,13 +1234,41 @@ async function initializeDiscordLogin() {
   }
 }
 
-function startDiscordLogin() {
+async function startDiscordLogin() {
   const endpoint = getWorkerEndpoint('/auth/login')
   if (!endpoint) {
     discordAuthNotice.value = 'Discord sign-in is not configured yet.'
     return
   }
+  loginReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
   loginModalOpen.value = true
+  await nextTick()
+  loginDialog.value?.querySelector<HTMLButtonElement>('.discord-login-button')?.focus()
+}
+
+function closeDiscordLogin() {
+  loginModalOpen.value = false
+  loginReturnFocus?.focus()
+}
+
+function handleLoginDialogKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    event.stopPropagation()
+    closeDiscordLogin()
+    return
+  }
+  if (event.key !== 'Tab') return
+  const buttons = loginDialog.value?.querySelectorAll<HTMLButtonElement>('button:not([disabled])')
+  if (!buttons?.length) return
+  const first = buttons[0]
+  const last = buttons[buttons.length - 1]
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first.focus()
+  }
 }
 
 function confirmDiscordLogin() {
@@ -1933,6 +1963,10 @@ onUnmounted(() => {
             aria-label="Account menu"
             role="menu"
           >
+            <div class="lumen-account-menu-heading" role="presentation">
+              <small>SIGNED IN WITH DISCORD</small>
+              <strong>{{ discordUser.globalName || discordUser.username }}</strong>
+            </div>
             <a href="/account/" role="menuitem" @click="accountMenuOpen = false">Dashboard</a>
             <a href="/account/licenses" role="menuitem" @click="accountMenuOpen = false">My licenses</a>
             <a href="/account/products" role="menuitem" @click="accountMenuOpen = false">Products purchased</a>
@@ -1944,24 +1978,33 @@ onUnmounted(() => {
       </Teleport>
     </ClientOnly>
     <Transition name="discord-login-overlay">
-      <div v-if="loginModalOpen" class="discord-login-overlay" @click="loginModalOpen = false">
-        <div class="discord-login-modal" @click.stop>
+      <div v-if="loginModalOpen" class="discord-login-overlay" @click="closeDiscordLogin" @keydown="handleLoginDialogKeydown">
+        <div
+          ref="loginDialog"
+          class="discord-login-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="discord-login-title"
+          aria-describedby="discord-login-description"
+          @click.stop
+        >
           <button
             class="discord-login-close"
             type="button"
             aria-label="Close login modal"
-            @click="loginModalOpen = false"
+            @click="closeDiscordLogin"
           >
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
             </svg>
           </button>
           <div class="discord-login-content">
+            <span class="discord-login-eyebrow">YOUR LUMEN WORKSPACE</span>
             <svg class="discord-logo" viewBox="0 0 127 127" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
               <path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0A105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36a77.7,77.7,0,0,0,6.89-11.11A68.42,68.42,0,0,1,28,85.22c.45-.24.9-.48,1.35-.72a77.21,77.21,0,0,0,66.36,0c.45.24.89.48,1.34.72a68.68,68.68,0,0,1-11.77,8.39,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60.55,31,53.88s5-11.81,11.43-11.81S53.89,47.16,53.07,53.88,48.11,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60.55,73.25,53.88s5-11.81,11.44-11.81S95.12,47.16,94.3,53.88,89.36,65.69,84.69,65.69Z"/>
             </svg>
-            <h2 class="discord-login-title">Sign in with Discord</h2>
-            <p class="discord-login-description">Join our community and unlock access to exclusive features</p>
+            <h2 id="discord-login-title" class="discord-login-title">Log in with Discord</h2>
+            <p id="discord-login-description" class="discord-login-description">Your plugins, licenses, and connected servers. All in one place, with your Discord account.</p>
             <button
               class="discord-login-button"
               type="button"
@@ -1972,6 +2015,7 @@ onUnmounted(() => {
               </svg>
               Continue with Discord
             </button>
+            <small class="discord-login-note">You will continue securely on Discord.</small>
           </div>
         </div>
       </div>
