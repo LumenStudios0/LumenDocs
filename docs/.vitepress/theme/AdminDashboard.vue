@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { getDiscordSession } from './discord-session'
 import { effectiveLicenseStatus, licenseNeedsAttention, normalizeIpAddress, redactAuditDetails, toSafeCsv } from './licensing-utils.mjs'
+import { clearAdminTestData, createAdminTestStore, TEST_OWNER_ID } from './admin-test-store.mjs'
 
 interface AdminLicense {
   licenseId: string
@@ -84,10 +85,17 @@ const licenseKeyOwner = ref('')
 const keyVisible = ref(false)
 const lastUpdated = ref('')
 const clock = ref(Date.now())
+const testMode = ref(false)
+const ownerVerified = ref(false)
+const verifyingOwner = ref(false)
+const testError = ref('')
+let verifiedToken = ''
+let identityGeneration = 0
+let testStore: ReturnType<typeof createAdminTestStore> | null = null
 let generation = 0
 let lastToken = ''
 let clockTimer: ReturnType<typeof setInterval> | undefined
-const busy = computed(() => loading.value || submitting.value)
+const busy = computed(() => loading.value || submitting.value || verifyingOwner.value)
 const maxPage = computed(() => Math.max(1, Math.ceil(totals[view.value] / pageSize)))
 const sourceLicenses = computed(() => user.value?.licenses ?? inventory.value)
 const filteredCustomers = computed(() => customers.value.filter(customer =>
@@ -131,16 +139,93 @@ function formatDate(value: string | null, empty = 'Never') {
   return Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString() : 'Invalid date reported'
 }
 
-async function adminRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const token = getDiscordSession()
+function workerBase() {
   const configured = import.meta.env.VITE_DOCS_ASSISTANT_ENDPOINT
-  if (!token || !configured) throw new Error('Sign in with an authorized Discord account. The admin API must be configured.')
+  if (!configured) throw new Error('The admin API must be configured.')
   const url = new URL(configured, window.location.origin)
   url.pathname = url.pathname.replace(/\/chat\/?$/, '').replace(/\/$/, '')
   url.search = ''
+  return url.toString()
+}
+
+async function verifyTestOwner() {
+  const requestId = ++identityGeneration
+  ownerVerified.value = false
+  verifiedToken = ''
+  verifyingOwner.value = true
+  testError.value = ''
+  try {
+    const token = getDiscordSession()
+    if (!token) throw new Error('Sign in with the owner Discord account to enable local test mode.')
+    const response = await fetch(`${workerBase()}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+    const result = await response.json() as { user?: { id: string; role: string | null; username?: string; globalName?: string }; error?: string }
+    if (requestId !== identityGeneration || token !== getDiscordSession()) return null
+    if (!response.ok || !result.user) throw new Error(result.error || 'Could not verify the owner session.')
+    if (result.user.id !== TEST_OWNER_ID || result.user.role !== 'owner') throw new Error('Local test mode is only available to the studio owner.')
+    verifiedToken = token
+    ownerVerified.value = true
+    return result.user
+  } catch (verificationError) {
+    if (requestId === identityGeneration) testError.value = messageOf(verificationError)
+    return null
+  } finally { if (requestId === identityGeneration) verifyingOwner.value = false }
+}
+
+function clearWorkspace() {
+  generation++
+  user.value = null
+  customers.value = []
+  inventory.value = []
+  products.value = []
+  auditEntries.value = []
+  selectedLicenseId.value = ''
+  clearKey()
+  loaded.value = false
+  loading.value = false
+  lastUpdated.value = ''
+}
+
+async function enterTestMode(reset = false) {
+  if (busy.value || verifyingOwner.value) return
+  const identity = await verifyTestOwner()
+  if (!identity) return
+  try {
+    if (reset) clearAdminTestData(localStorage)
+    testStore = createAdminTestStore(localStorage, identity)
+    clearWorkspace()
+    testMode.value = true
+    view.value = 'customers'
+    for (const tab of views) pages[tab.id] = 1
+    query.value = ''
+    appliedQuery.value = ''
+    await lookupUser(TEST_OWNER_ID)
+  } catch (storageError) { testError.value = `Local test data could not be opened or saved. ${messageOf(storageError)}` }
+}
+
+function exitTestMode() {
+  if (busy.value) return
+  testMode.value = false
+  testStore = null
+  clearWorkspace()
+  view.value = 'customers'
+  void loadView(1)
+}
+
+async function resetTestMode() {
+  if (!window.confirm('Reset all local test changes and restore the owner test account? Real customer data is not affected.')) return
+  await enterTestMode(true)
+}
+
+async function adminRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const token = getDiscordSession()
+  if (testMode.value) {
+    if (!ownerVerified.value || !token || token !== verifiedToken || !testStore) throw new Error('Reverify the owner account before using local test mode.')
+    return testStore.request(path, init) as T
+  }
+  if (!token) throw new Error('Sign in with an authorized Discord account. The admin API must be configured.')
   let response: Response
   try {
-    response = await fetch(`${url}/admin${path}`, {
+    response = await fetch(`${workerBase()}/admin${path}`, {
       ...init,
       headers: { Authorization: `Bearer ${token}`, ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...init.headers },
     })
@@ -394,7 +479,7 @@ function exportLicenses() {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = `lumen-licenses-${new Date().toISOString().slice(0, 10)}.csv`
+  link.download = `lumen-${testMode.value ? 'TEST-ONLY-' : ''}licenses-${new Date().toISOString().slice(0, 10)}.csv`
   link.click()
   URL.revokeObjectURL(url)
   notice.value = `${filteredLicenses.value.length} displayed licenses exported. Keys and IP addresses are excluded.`
@@ -402,6 +487,10 @@ function exportLicenses() {
 function handleSession() {
   try {
     if (lastToken === getDiscordSession()) return
+    testMode.value = false
+    testStore = null
+    ownerVerified.value = false
+    verifiedToken = ''
     generation++
     user.value = null
     customers.value = []
@@ -410,9 +499,15 @@ function handleSession() {
     auditEntries.value = []
     selectedLicenseId.value = ''
     clearKey()
+    void verifyTestOwner()
     void loadView()
   } catch (sessionError) {
     generation++
+    identityGeneration++
+    testMode.value = false
+    testStore = null
+    ownerVerified.value = false
+    verifiedToken = ''
     user.value = null
     loaded.value = false
     loading.value = false
@@ -421,11 +516,13 @@ function handleSession() {
   }
 }
 onMounted(() => {
+  void verifyTestOwner()
   void loadView()
   clockTimer = setInterval(() => { clock.value = Date.now() }, 60000)
   window.addEventListener('lumen-discord-user', handleSession)
 })
 onUnmounted(() => {
+  identityGeneration++
   generation++
   clearInterval(clockTimer)
   clearKey()
@@ -439,6 +536,16 @@ onUnmounted(() => {
       <div><p class="staff-eyebrow">LUMEN STUDIOS / STAFF OPERATIONS</p><h1>Studio control center<span>.</span></h1><p>Customer access, license health, and an accountable history of every change.</p></div>
       <span class="staff-access">Authorized staff only</span>
     </header>
+    <aside class="staff-test-mode" :class="{ 'is-testing': testMode }" aria-label="Owner local test mode">
+      <div><strong>{{ testMode ? 'LOCAL TEST MODE — NOT LIVE DATA' : 'Licensing API offline? Try the controls safely.' }}</strong><p>{{ testMode ? 'Editing your owner test account only. Changes stay in this browser; test keys never validate plugins. Nothing here changes real licenses.' : 'The owner account can practice grants, bans, holds, verification, IP edits, and deletion without the licensing backend. Discord sign-in must still work.' }}</p></div>
+      <div class="staff-actions">
+        <button v-if="!testMode && ownerVerified" type="button" :disabled="busy || verifyingOwner" @click="enterTestMode()">Open my editable test account</button>
+        <button v-if="!ownerVerified" type="button" :disabled="busy || verifyingOwner" @click="verifyTestOwner">{{ verifyingOwner ? 'Verifying owner…' : 'Verify owner access' }}</button>
+        <button v-if="testMode" type="button" :disabled="busy || verifyingOwner" @click="exitTestMode">Exit test mode · return to live</button>
+        <button v-if="ownerVerified" type="button" :disabled="busy || verifyingOwner" @click="resetTestMode">Reset test data</button>
+      </div>
+      <p v-if="testError" class="staff-error" role="alert">{{ testError }}</p>
+    </aside>
     <nav class="staff-navigation" aria-label="Administration workspaces">
       <button v-for="tab in views" :key="tab.id" type="button" :aria-current="view === tab.id && !user ? 'page' : undefined" :disabled="submitting" @click="switchView(tab.id)"><small>{{ tab.number }}</small>{{ tab.label }}</button>
     </nav>
@@ -446,7 +553,7 @@ onUnmounted(() => {
     <p v-if="error" class="staff-message staff-error" role="alert">{{ error }}</p>
     <p v-if="notice" class="staff-message" role="status">{{ notice }}</p>
     <section v-if="licenseKey" class="staff-key" aria-label="New one-time license key">
-      <div><strong>One-time key for {{ licenseKeyOwner }} — save it before leaving</strong><p>Issued keys are not included in exports or audit detail previews.</p></div>
+      <div><strong>{{ testMode ? 'TEST-ONLY key' : 'One-time key' }} for {{ licenseKeyOwner }} — save it before leaving</strong><p>{{ testMode ? 'This simulated key cannot validate plugins.' : 'Issued keys are not included in exports or audit detail previews.' }}</p></div>
       <label>Issued license key<input :type="keyVisible ? 'text' : 'password'" :value="licenseKey" readonly autocomplete="off"></label>
       <div class="staff-actions"><button type="button" @click="keyVisible = !keyVisible">{{ keyVisible ? 'Hide key' : 'Reveal key' }}</button><button type="button" @click="copyText(licenseKey, 'License key')">Copy key</button><button type="button" @click="clearKey">Dismiss key</button></div>
     </section>
@@ -559,7 +666,7 @@ onUnmounted(() => {
       <p class="staff-note">This is the live licensing registry, not the public shop. Product creation and editing are not exposed by the connected admin API.</p>
     </section>
     <div v-if="loaded && !user && view !== 'audit'" class="staff-pagination"><button type="button" :disabled="busy || pages[view] <= 1" @click="loadView(pages[view] - 1)">Previous page</button><span>Page {{ pages[view] }} / {{ maxPage }} · {{ totals[view] }} total</span><button type="button" :disabled="busy || pages[view] >= maxPage" @click="loadView(pages[view] + 1)">Next page</button></div>
-    <footer class="staff-footer">Access is checked by the Worker on every request. Administrator credentials never reach this page.</footer>
+    <footer class="staff-footer">{{ testMode ? 'Local simulation only. Reset to undo all test edits; exit to return to the real API.' : 'Access is checked by the Worker on every live request. Administrator credentials never reach this page.' }}</footer>
   </main>
 </template>
 
@@ -571,6 +678,10 @@ onUnmounted(() => {
 .staff-hero h1 span { color: var(--vp-c-brand-1); }
 .staff-hero p:last-child { max-width: 500px; margin: 0; color: var(--vp-c-text-2); font-size: .9rem; line-height: 1.7; }
 .staff-access { flex-shrink: 0; padding: 7px 10px; border: 1px solid #9a6bf344; border-radius: 7px; color: var(--vp-c-brand-1); font-size: .65rem; }
+.staff-test-mode { margin: 18px 0; padding: 18px; border: 1px solid var(--vp-c-divider); border-radius: 12px; background: var(--vp-c-bg-soft); }
+.staff-test-mode.is-testing { border: 2px solid var(--vp-c-warning-1); background: var(--vp-c-warning-soft); }
+.staff-test-mode strong { font-size: .82rem; }
+.staff-test-mode p { margin: 7px 0; color: var(--vp-c-text-2); font-size: .76rem; line-height: 1.7; }
 .staff-navigation { display: flex; gap: 5px; margin: 22px 0; padding: 5px; overflow-x: auto; border: 1px solid var(--vp-c-divider); border-radius: 12px; background: var(--vp-c-bg-soft); }
 .admin-workspace button { padding: 8px 12px; border: 1px solid var(--vp-c-divider); border-radius: 8px; background: var(--vp-c-bg); color: var(--vp-c-text-1); cursor: pointer; font: inherit; font-size: .76rem; font-weight: 600; transition: background .16s, border-color .16s; }
 .admin-workspace button:hover:not(:disabled) { border-color: var(--vp-c-brand-1); background: var(--vp-c-brand-soft); }
