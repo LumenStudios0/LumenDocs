@@ -107,6 +107,7 @@ const selectedMusicTrack = ref('')
 const discordUser = ref<DiscordUser | null>(null)
 const discordAuthNotice = ref('')
 const accountMenuOpen = ref(false)
+const loginModalOpen = ref(false)
 const trackPositionSeconds = ref(0)
 const assistantEndpoint = import.meta.env.VITE_DOCS_ASSISTANT_ENDPOINT
 let audioContext: AudioContext | undefined
@@ -1237,6 +1238,16 @@ function startDiscordLogin() {
     discordAuthNotice.value = 'Discord sign-in is not configured yet.'
     return
   }
+  loginModalOpen.value = true
+}
+
+function confirmDiscordLogin() {
+  const endpoint = getWorkerEndpoint('/auth/login')
+  if (!endpoint) {
+    discordAuthNotice.value = 'Discord sign-in is not configured yet.'
+    return
+  }
+  loginModalOpen.value = false
   window.location.assign(endpoint)
 }
 
@@ -1930,6 +1941,39 @@ onUnmounted(() => {
         </nav>
       </div>
     </Teleport>
+    <Transition name="discord-login-overlay">
+      <div v-if="loginModalOpen" class="discord-login-overlay" @click="loginModalOpen = false">
+        <div class="discord-login-modal" @click.stop>
+          <button
+            class="discord-login-close"
+            type="button"
+            aria-label="Close login modal"
+            @click="loginModalOpen = false"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            </svg>
+          </button>
+          <div class="discord-login-content">
+            <svg class="discord-logo" viewBox="0 0 127 127" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0A105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36a77.7,77.7,0,0,0,6.89-11.11A68.42,68.42,0,0,1,28,85.22c.45-.24.9-.48,1.35-.72a77.21,77.21,0,0,0,66.36,0c.45.24.89.48,1.34.72a68.68,68.68,0,0,1-11.77,8.39,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60.55,31,53.88s5-11.81,11.43-11.81S53.89,47.16,53.07,53.88,48.11,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60.55,73.25,53.88s5-11.81,11.44-11.81S95.12,47.16,94.3,53.88,89.36,65.69,84.69,65.69Z"/>
+            </svg>
+            <h2 class="discord-login-title">Sign in with Discord</h2>
+            <p class="discord-login-description">Join our community and unlock access to exclusive features</p>
+            <button
+              class="discord-login-button"
+              type="button"
+              @click="confirmDiscordLogin"
+            >
+              <svg class="discord-login-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.211.375-.444.864-.607 1.25a18.27 18.27 0 0 0-5.487 0c-.163-.386-.395-.875-.607-1.25a.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.042-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.294.075.075 0 0 1 .078-.01c3.928 1.793 8.18 1.793 12.062 0a.075.075 0 0 1 .079.009c.12.098.246.198.373.295a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.076.076 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.030.077.077 0 0 0 .032-.057c.5-4.761-.838-8.898-3.549-12.56a.061.061 0 0 0-.031-.028zM8.02 15.33c-1.183 0-2.157-.965-2.157-2.156 0-1.193.93-2.157 2.157-2.157 1.226 0 2.157.964 2.157 2.157 0 1.19-.93 2.155-2.157 2.155zm7.975 0c-1.183 0-2.157-.965-2.157-2.156 0-1.193.93-2.157 2.157-2.157 1.226 0 2.157.964 2.157 2.157 0 1.19-.931 2.155-2.157 2.155z"/>
+              </svg>
+              Continue with Discord
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
     <button
       v-if="!open"
       class="assistant-launcher"

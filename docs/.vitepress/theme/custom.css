@@ -5656,3 +5656,194 @@ html.lumen-dino-extinction:has(.dino-extinction-card) .VPContent {
     opacity: 0.8;
   }
 }
+
+/* Discord Login Modal Styles */
+.discord-login-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.3s var(--lumen-easing-ease);
+}
+
+.discord-login-modal {
+  position: relative;
+  width: 90%;
+  max-width: 420px;
+  padding: 40px 32px;
+  background: var(--lumen-card-bg);
+  border: 1px solid var(--lumen-card-border);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(123, 63, 242, 0.2);
+  animation: slideUp 0.4s var(--lumen-easing-smooth);
+}
+
+.discord-login-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--vp-c-text-2);
+  cursor: pointer;
+  transition: color var(--lumen-duration-base) var(--lumen-easing-ease);
+  border-radius: 8px;
+}
+
+.discord-login-close:hover {
+  color: var(--vp-c-brand-1);
+  background: rgba(123, 63, 242, 0.1);
+}
+
+.discord-login-close svg {
+  width: 20px;
+  height: 20px;
+}
+
+.discord-login-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  text-align: center;
+}
+
+.discord-logo {
+  width: 80px;
+  height: 80px;
+  fill: #5865F2;
+  animation: scaleIn 0.6s var(--lumen-easing-ease);
+  filter: drop-shadow(0 4px 12px rgba(88, 101, 242, 0.3));
+}
+
+.discord-login-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--vp-c-text-1);
+  animation: fadeInUp 0.6s var(--lumen-easing-ease) 0.1s both;
+}
+
+.discord-login-description {
+  margin: 0;
+  font-size: 14px;
+  color: var(--vp-c-text-2);
+  animation: fadeInUp 0.6s var(--lumen-easing-ease) 0.2s both;
+}
+
+.discord-login-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 20px;
+  background: #5865F2;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--lumen-duration-base) var(--lumen-easing-ease);
+  animation: fadeInUp 0.6s var(--lumen-easing-ease) 0.3s both;
+}
+
+.discord-login-button:hover {
+  background: #4752C4;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(88, 101, 242, 0.4);
+}
+
+.discord-login-button:active {
+  transform: translateY(0);
+}
+
+.discord-login-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Transition for Discord login modal */
+.discord-login-overlay-enter-active {
+  animation: fadeIn 0.3s var(--lumen-easing-ease);
+}
+
+.discord-login-overlay-leave-active {
+  animation: fadeIn 0.3s var(--lumen-easing-ease) reverse;
+}
+
+.discord-login-overlay-enter-active .discord-login-modal {
+  animation: slideUp 0.4s var(--lumen-easing-smooth);
+}
+
+.discord-login-overlay-leave-active .discord-login-modal {
+  animation: slideUp 0.4s var(--lumen-easing-smooth) reverse;
+}
+
+/* Dark mode support for Discord login modal */
+.dark .discord-login-modal {
+  background: rgba(35, 27, 48, 0.95);
+  border-color: rgba(123, 63, 242, 0.2);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4), 0 0 1px rgba(123, 63, 242, 0.3);
+}
+
+.dark .discord-login-button {
+  background: #5865F2;
+}
+
+.dark .discord-login-button:hover {
+  background: #4752C4;
+  box-shadow: 0 8px 24px rgba(88, 101, 242, 0.5);
+}
+
+/* Mobile responsive */
+@media (max-width: 480px) {
+  .discord-login-modal {
+    width: 95%;
+    padding: 32px 24px;
+  }
+
+  .discord-login-title {
+    font-size: 20px;
+  }
+
+  .discord-login-description {
+    font-size: 13px;
+  }
+
+  .discord-logo {
+    width: 64px;
+    height: 64px;
+  }
+}
