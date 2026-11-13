@@ -5847,3 +5847,96 @@ html.lumen-dino-extinction:has(.dino-extinction-card) .VPContent {
     height: 64px;
   }
 }
+
+/* Modern SaaS Design Enhancements - Conservative Updates */
+
+/* Enhanced card hover effects */
+.VPCard {
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.VPCard:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 20px 40px rgba(123, 63, 242, 0.15);
+}
+
+/* Modern button styling */
+.VPButton {
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  border-radius: 8px;
+}
+
+.VPButton:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 28px rgba(123, 63, 242, 0.2);
+}
+
+.VPButton.brand {
+  background: linear-gradient(135deg, #7b3ff2 0%, #6b32df 100%);
+}
+
+/* Enhanced typography */
+.VPHomeHero h1 {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* Smooth transitions for all interactive elements */
+a {
+  transition: color 0.3s ease;
+}
+
+/* Modern code block styling */
+div[class*="language-"] {
+  border: 1px solid rgba(123, 63, 242, 0.15);
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+div[class*="language-"]:hover {
+  border-color: rgba(123, 63, 242, 0.3);
+  box-shadow: 0 8px 20px rgba(123, 63, 242, 0.1);
+}
+
+/* Table improvements */
+table th {
+  background: rgba(123, 63, 242, 0.08);
+  font-weight: 600;
+}
+
+table td {
+  transition: background 0.2s ease;
+}
+
+table tr:hover td {
+  background: rgba(123, 63, 242, 0.05);
+}
+
+/* Dark mode enhancements */
+.dark .VPCard:hover {
+  background: rgba(123, 63, 242, 0.1);
+  box-shadow: 0 20px 40px rgba(123, 63, 242, 0.2);
+}
+
+.dark div[class*="language-"] {
+  border-color: rgba(123, 63, 242, 0.2);
+  background: rgba(35, 27, 48, 0.95);
+}
+
+.dark div[class*="language-"]:hover {
+  border-color: rgba(167, 124, 255, 0.4);
+  box-shadow: 0 8px 20px rgba(123, 63, 242, 0.15);
+}
+
+.dark table th {
+  background: rgba(123, 63, 242, 0.15);
+}
+
+.dark table tr:hover td {
+  background: rgba(123, 63, 242, 0.1);
+}
