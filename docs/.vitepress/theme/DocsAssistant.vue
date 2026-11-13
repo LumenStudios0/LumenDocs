@@ -1945,6 +1945,7 @@ onUnmounted(() => {
             class="lumen-auth-button lumen-auth-user"
             type="button"
             :aria-expanded="accountMenuOpen"
+            :aria-label="`${discordUser.globalName || discordUser.username} account menu`"
             aria-haspopup="menu"
             aria-controls="lumen-account-menu"
             title="Open account menu"

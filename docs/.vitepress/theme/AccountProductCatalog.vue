@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { accountRequest, LicenseApiError } from './licensing-api'
+import { getDiscordSession } from './discord-session'
 
 type Product = {
   name: string
@@ -25,9 +27,54 @@ const products: Product[] = [
 
 const selectedCategory = ref<'owned' | 'not-owned'>('owned')
 const searchQuery = ref('')
+const ownedIds = ref<string[] | null>(null)
+const loading = ref(false)
+const error = ref('')
+let generation = 0
+let lastToken = ''
+function findProduct(id: string) {
+  const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '').replace(/^lumen/, '')
+  return products.find(product => normalize(product.name) === normalize(id) || normalize(product.docs.split('/').pop() ?? '') === normalize(id))
+}
+const ownedProducts = computed(() => (ownedIds.value ?? []).map(id => ({
+  id, product: findProduct(id),
+})).filter(item => `${item.id} ${item.product?.name ?? ''}`.toLowerCase().includes(searchQuery.value.trim().toLowerCase())))
 const visibleProducts = computed(() => selectedCategory.value === 'owned'
   ? []
   : products.filter(product => `${product.name} ${product.category}`.toLowerCase().includes(searchQuery.value.trim().toLowerCase())))
+
+async function loadOwnership() {
+  const requestId = ++generation
+  ownedIds.value = null
+  loading.value = true
+  error.value = ''
+  try {
+    lastToken = getDiscordSession()
+    const result = await accountRequest<{ license?: { productIds?: string[] } }>('/account/license-key')
+    if (requestId !== generation) return
+    if (!Array.isArray(result.license?.productIds) || !result.license.productIds.every(id => typeof id === 'string')) throw new Error('Your license response did not include a valid product list.')
+    ownedIds.value = result.license.productIds
+  } catch (requestError) {
+    if (requestId !== generation) return
+    if (requestError instanceof LicenseApiError && requestError.status === 404) ownedIds.value = []
+    else {
+      console.error('Unable to load verified products:', requestError)
+      error.value = requestError instanceof Error ? requestError.message : 'Could not load your verified products.'
+    }
+  } finally { if (requestId === generation) loading.value = false }
+}
+function handleSession() {
+  try { if (lastToken !== getDiscordSession()) void loadOwnership() }
+  catch (sessionError) { console.error('Unable to access the product session:', sessionError); void loadOwnership() }
+}
+onMounted(() => {
+  void loadOwnership()
+  window.addEventListener('lumen-discord-user', handleSession)
+})
+onUnmounted(() => {
+  generation++
+  window.removeEventListener('lumen-discord-user', handleSession)
+})
 </script>
 
 <template>
@@ -41,7 +88,7 @@ const visibleProducts = computed(() => selectedCategory.value === 'owned'
         aria-controls="account-products-panel"
         @click="selectedCategory = 'owned'"
       >
-        Owned products <span class="account-tab-count">0</span>
+        Verified products <span class="account-tab-count">{{ ownedIds?.length ?? '—' }}</span>
       </button>
       <button
         id="not-owned-tab"
@@ -62,17 +109,27 @@ const visibleProducts = computed(() => selectedCategory.value === 'owned'
       :aria-labelledby="selectedCategory === 'owned' ? 'owned-products-tab' : 'not-owned-tab'"
     >
       <p class="account-product-note">
-        Purchase history is not connected yet. These products are shown as not owned until your purchases can be verified.
-        Prices may change; confirm the current amount on BuiltByBit.
+        Verified products come from the entitlements reported on your shared license. Reconnect BuiltByBit in the license center after a new purchase.
+        The public catalog is separate; prices may change.
       </p>
-      <div v-if="selectedCategory === 'not-owned'" class="account-product-toolbar">
+      <div class="account-product-toolbar">
         <label class="account-product-search">
           <span aria-hidden="true">⌕</span>
           <input v-model="searchQuery" type="search" placeholder="Find a product…" aria-label="Search products">
         </label>
-        <span>{{ visibleProducts.length }} {{ visibleProducts.length === 1 ? 'product' : 'products' }}</span>
+        <button v-if="selectedCategory === 'owned'" type="button" :disabled="loading" @click="loadOwnership">{{ loading ? 'Refreshing…' : 'Refresh products' }}</button>
+        <span v-else>{{ visibleProducts.length }} products</span>
       </div>
-      <div v-if="visibleProducts.length" class="account-product-grid">
+      <p v-if="selectedCategory === 'owned' && loading" role="status">Checking verified entitlements…</p>
+      <p v-else-if="selectedCategory === 'owned' && error" class="ownership-error" role="alert">{{ error }}</p>
+      <div v-else-if="selectedCategory === 'owned' && ownedProducts.length" class="account-product-grid">
+        <article v-for="item in ownedProducts" :key="item.id" class="account-product-card">
+          <div class="account-product-card-head"><span class="account-product-mark" aria-hidden="true">{{ (item.product?.name || item.id).slice(0, 1) }}</span><span class="account-product-category">Verified entitlement</span></div>
+          <div class="account-product-info"><h2>{{ item.product?.name || item.id }}</h2><p class="account-product-price">Product ID: {{ item.id }}</p></div>
+          <div class="account-product-links"><a :href="item.product?.docs || '/docs/'">{{ item.product ? 'Read docs' : 'Find a guide' }} →</a><a href="/account/licenses">Manage access →</a></div>
+        </article>
+      </div>
+      <div v-else-if="visibleProducts.length" class="account-product-grid">
         <article v-for="product in visibleProducts" :key="product.name" class="account-product-card">
           <div class="account-product-card-head">
             <span class="account-product-mark" aria-hidden="true">{{ product.name.slice(0, 1) }}</span>
@@ -95,8 +152,9 @@ const visibleProducts = computed(() => selectedCategory.value === 'owned'
       </div>
       <div v-else class="account-product-empty">
         <span class="account-empty-icon" aria-hidden="true">▦</span>
-        <strong>No owned products found</strong>
-        <span>Your verified purchases will show here after purchase history is connected.</span>
+        <strong>{{ ownedIds?.length ? 'No verified products match this search' : 'No verified products reported' }}</strong>
+        <span>Connect or reconnect BuiltByBit in the license center to verify your eligible purchases.</span>
+        <a href="/account/licenses">Open license center →</a>
         <button type="button" @click="selectedCategory = 'not-owned'">Explore the catalog <span aria-hidden="true">→</span></button>
       </div>
     </div>
@@ -104,6 +162,8 @@ const visibleProducts = computed(() => selectedCategory.value === 'owned'
 </template>
 
 <style scoped>
+.account-product-toolbar button { padding: 8px 12px; border: 1px solid var(--vp-c-divider); border-radius: 8px; background: var(--vp-c-bg); color: var(--vp-c-text-1); cursor: pointer; font-size: .75rem; }
+.ownership-error { color: var(--vp-c-danger-1); }
 .account-products {
   margin: 22px 0;
 }

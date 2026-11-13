@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { getDiscordSession } from './discord-session'
+import { accountRequest, LicenseApiError } from './licensing-api'
 
 interface LicenseInfo {
   licenseKey?: string
@@ -20,6 +21,7 @@ const connecting = ref(false)
 const copying = ref(false)
 const message = ref('')
 const errorMessage = ref('')
+let lastToken = ''
 
 function endpointFor(path: string) {
   const assistantEndpoint = import.meta.env.VITE_DOCS_ASSISTANT_ENDPOINT
@@ -49,15 +51,16 @@ async function loadExistingLicense(token: string) {
   }
 
   try {
-    const response = await fetch(endpoint, { headers: { Authorization: `Bearer ${token}` } })
-    const result = await response.json() as LicenseInfo
-    if (response.ok && typeof result.licenseKey === 'string') {
+    const result = await accountRequest<LicenseInfo>('/account/license-key')
+    if (token !== getDiscordSession()) return
+    if (typeof result.licenseKey === 'string') {
       licenseKey.value = result.licenseKey
       productIds.value = result.license?.productIds ?? []
-    } else if (response.status !== 404) {
+    } else {
       errorMessage.value = result.error ?? 'Could not load your shared license key.'
     }
   } catch (error) {
+    if (error instanceof LicenseApiError && error.status === 404) return
     console.error('Unable to load the customer license key:', error)
     errorMessage.value = 'Could not load your license key. Please try again later.'
   }
@@ -103,10 +106,12 @@ async function claimFromCallback(token: string) {
       errorMessage.value = result.error ?? 'Your purchase could not be verified. Please try again.'
       return true
     }
+    if (token !== getDiscordSession()) return true
     licenseKey.value = result.licenseKey
     productIds.value = result.claimedProductIds ?? result.license?.productIds ?? []
-    keyVisible.value = true
+    keyVisible.value = false
     message.value = 'Purchase verified. Your shared Lumen license is ready.'
+    window.dispatchEvent(new Event('lumen-license-claimed'))
   } catch (error) {
     console.error('Unable to claim the BuiltByBit license:', error)
     errorMessage.value = 'Could not verify the purchase right now. Please try again later.'
@@ -124,6 +129,7 @@ async function startClaim() {
     errorMessage.value = 'Sign in with Discord before connecting a BuiltByBit purchase.'
     return
   }
+  if (!licenseKey.value && !window.confirm('Claiming your first shared key replaces old per-product keys. You will need to update your plugins and add your server IPs again. Continue to BuiltByBit?')) return
 
   const endpoint = endpointFor('/account/builtbybit/authorize')
   if (!endpoint) {
@@ -163,8 +169,22 @@ async function copyLicenseKey() {
   }
 }
 
-onMounted(async () => {
+async function handleSession() {
   const token = readSession()
+  if (token === lastToken) return
+  lastToken = token
+  licenseKey.value = ''
+  productIds.value = []
+  keyVisible.value = false
+  message.value = ''
+  errorMessage.value = ''
+  if (token) await loadExistingLicense(token)
+}
+
+onMounted(async () => {
+  window.addEventListener('lumen-discord-user', handleSession)
+  const token = readSession()
+  lastToken = token
   if (!token) {
     loading.value = false
     return
@@ -173,6 +193,7 @@ onMounted(async () => {
   if (!callbackHandled || !licenseKey.value) await loadExistingLicense(token)
   loading.value = false
 })
+onUnmounted(() => window.removeEventListener('lumen-discord-user', handleSession))
 </script>
 
 <template>
@@ -187,10 +208,11 @@ onMounted(async () => {
         <li>We check your own resource licenses; we never ask for your password.</li>
         <li>Keep the same Lumen key for your eligible plugins.</li>
       </ul>
-      <button v-if="!licenseKey" class="claim-button" type="button" :disabled="loading || connecting" @click="startClaim">
-        {{ connecting ? 'Connecting…' : loading ? 'Checking your account…' : 'Connect BuiltByBit & claim key' }}
+      <button class="claim-button" type="button" :disabled="loading || connecting" @click="startClaim">
+        {{ connecting ? 'Connecting…' : loading ? 'Checking your account…' : licenseKey ? 'Reconnect BuiltByBit & refresh purchases' : 'Connect BuiltByBit & claim key' }}
         <span aria-hidden="true">↗</span>
       </button>
+      <p class="claim-refresh-note">New purchases require reconnecting. Your first shared-key claim replaces legacy per-product keys; update your plugin configs and re-add your IPs.</p>
       <p v-if="message" class="claim-message" role="status">{{ message }}</p>
       <p v-if="errorMessage" class="claim-error" role="alert">{{ errorMessage }}</p>
     </div>
@@ -262,8 +284,8 @@ onMounted(async () => {
 .claim-button:hover:not(:disabled),
 .claim-copy-button:hover { transform: translateY(-2px); background: #8d5af5; box-shadow: 0 12px 28px rgb(123 63 242 / 32%); }
 .claim-button:disabled { cursor: wait; opacity: 0.7; }
-.claim-message { margin-top: 12px !important; color: #54d89a !important; font-weight: 650; }
-.claim-error { margin-top: 12px !important; color: #ff8e9b !important; }
+.claim-message { margin-top: 12px !important; color: var(--vp-c-brand-1) !important; font-weight: 650; }
+.claim-error { margin-top: 12px !important; color: var(--vp-c-danger-1) !important; }
 .claim-key-card { min-width: 0; padding: 16px; border: 1px solid var(--lumen-card-border, var(--vp-c-divider)); border-radius: 15px; background: color-mix(in srgb, var(--vp-c-bg) 86%, transparent); box-shadow: 0 20px 46px rgb(0 0 0 / 12%); }
 .claim-card-header { display: flex; align-items: center; gap: 10px; }
 .claim-card-icon { display: grid; width: 35px; height: 35px; place-items: center; border: 1px solid rgb(123 63 242 / 24%); border-radius: 10px; background: rgb(123 63 242 / 13%); color: #b89aff; font-size: 1.2rem; }
@@ -279,7 +301,8 @@ onMounted(async () => {
 .claim-copy-button { width: 100%; margin-top: 9px; }
 .claim-products,
 .claim-secret-note { margin: 10px 0 0; color: var(--vp-c-text-3); font-size: 0.58rem; line-height: 1.55; }
-.claim-secret-note { color: #d3baff; }
+.claim-secret-note { color: var(--vp-c-brand-1); }
+.claim-copy .claim-refresh-note { margin-top: 12px; font-size: .7rem; color: var(--vp-c-text-2); }
 .claim-empty { position: relative; display: grid; min-height: 180px; align-content: center; justify-items: center; gap: 8px; overflow: hidden; color: var(--vp-c-text-2); text-align: center; }
 .claim-empty-orbit { position: absolute; width: 120px; height: 58px; border: 1px solid rgb(123 63 242 / 25%); border-radius: 50%; transform: rotate(-25deg); animation: claim-orbit 14s linear infinite; }
 .claim-empty-key { position: relative; display: grid; width: 45px; height: 45px; place-items: center; border: 1px solid rgb(169 134 255 / 55%); border-radius: 14px; background: linear-gradient(145deg, #a77cff, #6731c4); box-shadow: 0 0 28px rgb(123 63 242 / 38%); color: white; font-size: 1.5rem; animation: claim-float 3.8s ease-in-out infinite; }

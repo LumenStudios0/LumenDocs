@@ -11,12 +11,12 @@ description: View Lumen Studios licenses and manage server IP addresses
 
 ## Manage server IPs
 
-Prepare an allowlist with up to **3 IP addresses** per license. This is a local preview only; it does not change an active license.
+Allow up to **3 unique public IPv4 or IPv6 addresses** on your shared license. Changes are saved to the licensing service. **A key with no allowed IP cannot validate.**
 
 <AccountLicenseIps />
 
 ## Connected servers
 
-When the licensing service is connected, this section will list server installations using your licenses.
+Review installations reported by the licensing service. Reported status is not a live uptime monitor.
 
 <AccountConnectedServers />

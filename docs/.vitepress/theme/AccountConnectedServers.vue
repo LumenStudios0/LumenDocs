@@ -1,204 +1,126 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { accountRequest } from './licensing-api'
 import { getDiscordSession } from './discord-session'
 
-interface ConnectedServer {
-  id: string
-  name: string
-  address?: string
-  status?: string
-}
-
+interface ConnectedServer { id: string; name: string; address?: string; status?: string }
 const servers = ref<ConnectedServer[]>([])
-const loading = ref(true)
-const message = ref('')
-const messageType = ref<'info' | 'error'>('info')
+const loading = ref(false)
+const loaded = ref(false)
+const error = ref('')
+const notice = ref('')
+const search = ref('')
+const status = ref('')
+const updatedAt = ref('')
+let generation = 0
+let lastToken = ''
+const statuses = computed(() => [...new Set(servers.value.map(server => server.status || 'Not reported'))].sort())
+const visibleServers = computed(() => servers.value.filter(server =>
+  (!status.value || (server.status || 'Not reported') === status.value) &&
+  `${server.name} ${server.address ?? ''} ${server.id}`.toLowerCase().includes(search.value.trim().toLowerCase()),
+).sort((a, b) => a.name.localeCompare(b.name)))
 
-function getAccountEndpoint() {
-  const assistantEndpoint = import.meta.env.VITE_DOCS_ASSISTANT_ENDPOINT
-  if (!assistantEndpoint) return ''
-
-  const endpoint = new URL(assistantEndpoint, window.location.origin)
-  endpoint.pathname = endpoint.pathname.replace(/\/chat\/?$/, '').replace(/\/$/, '') + '/account/servers'
-  endpoint.search = ''
-  return endpoint.toString()
-}
-
-onMounted(async () => {
-  let token = ''
+async function refresh() {
+  const requestId = ++generation
+  loading.value = true
+  loaded.value = false
+  error.value = ''
+  servers.value = []
+  updatedAt.value = ''
   try {
-    token = getDiscordSession()
-  } catch (error) {
-    console.error('Unable to access the Discord sign-in session:', error)
-    message.value = 'This browser could not access your sign-in session.'
-    messageType.value = 'error'
-    loading.value = false
-    return
-  }
-
-  if (!token) {
-    message.value = 'Sign in with Discord to view servers connected to your licenses.'
-    loading.value = false
-    return
-  }
-
-  const endpoint = getAccountEndpoint()
-  if (!endpoint) {
-    message.value = 'The customer service endpoint is not configured yet.'
-    loading.value = false
-    return
-  }
-
-  try {
-    const response = await fetch(endpoint, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    const result = await response.json() as { servers?: ConnectedServer[]; error?: string }
-    if (!response.ok) {
-      message.value = result.error ?? 'Connected server data is not available yet.'
-      return
+    lastToken = getDiscordSession()
+    const result = await accountRequest<{ servers: ConnectedServer[] }>('/account/servers')
+    if (requestId !== generation) return
+    if (!Array.isArray(result.servers) || !result.servers.every(server => server && typeof server.id === 'string' && typeof server.name === 'string')) {
+      throw new Error('The licensing service returned an invalid server list.')
     }
-
-    servers.value = Array.isArray(result.servers) ? result.servers : []
-    if (!servers.value.length) message.value = 'No connected servers were returned for this account.'
-  } catch (error) {
-    console.error('Unable to load connected license servers:', error)
-    message.value = 'Could not load connected servers. Please try again later.'
-    messageType.value = 'error'
+    servers.value = result.servers
+    loaded.value = true
+    updatedAt.value = new Date().toLocaleTimeString()
+  } catch (requestError) {
+    console.error('Unable to load connected license servers:', requestError)
+    if (requestId === generation) error.value = requestError instanceof Error ? requestError.message : 'Could not load connected servers.'
   } finally {
-    loading.value = false
+    if (requestId === generation) loading.value = false
   }
+}
+function handleSession() {
+  try {
+    if (getDiscordSession() !== lastToken) {
+      search.value = ''
+      status.value = ''
+      notice.value = ''
+      void refresh()
+    }
+  } catch (requestError) {
+    console.error('Unable to access the server account session:', requestError)
+    void refresh()
+  }
+}
+async function copyServer(server: ConnectedServer) {
+  try {
+    await navigator.clipboard.writeText(`Server: ${server.name}\nID: ${server.id}\nAddress: ${server.address || 'Not reported'}\nReported status: ${server.status || 'Not reported'}`)
+    notice.value = 'Server details copied. No license key is included.'
+  } catch (copyError) {
+    console.error('Unable to copy server details:', copyError)
+    notice.value = 'Clipboard access was denied. Select and copy the server details manually.'
+  }
+}
+onMounted(() => {
+  void refresh()
+  window.addEventListener('lumen-discord-user', handleSession)
+})
+onUnmounted(() => {
+  generation++
+  window.removeEventListener('lumen-discord-user', handleSession)
 })
 </script>
 
 <template>
-  <section class="connected-servers" aria-labelledby="connected-servers-title">
-    <div class="connected-servers-heading">
-      <div>
-        <p class="connected-servers-eyebrow">License activity</p>
-        <h2 id="connected-servers-title">Connected servers</h2>
-      </div>
-      <span class="connected-servers-count">{{ servers.length }} servers</span>
+  <section class="server-workspace" aria-labelledby="connected-servers-title" :aria-busy="loading">
+    <header><div><p class="server-eyebrow">INSTALLATIONS / REPORTED ACTIVITY</p><h2 id="connected-servers-title">Your connected servers</h2></div><button type="button" :disabled="loading" @click="refresh">{{ loading ? 'Refreshing…' : 'Refresh servers' }}</button></header>
+    <p class="server-note">Installations returned by your license service, not a live uptime check. An allowed IP alone does not mean a server has connected.</p>
+    <div v-if="loaded && servers.length" class="server-toolbar">
+      <label>Find an installation<input v-model="search" type="search" placeholder="Name, ID, or address"></label>
+      <label>Reported status<select v-model="status"><option value="">All statuses</option><option v-for="value in statuses" :key="value">{{ value }}</option></select></label>
+      <span>{{ visibleServers.length }} / {{ servers.length }}</span>
     </div>
-    <p class="connected-servers-description">
-      See which server installations are using a license. The license service is not connected yet.
-    </p>
-    <div v-if="loading" class="connected-servers-state" role="status">Checking your account…</div>
-    <div v-else-if="servers.length" class="connected-servers-list">
-      <article v-for="server in servers" :key="server.id" class="connected-server">
-        <span class="connected-server-indicator" aria-hidden="true" />
-        <span class="connected-server-details">
-          <strong>{{ server.name }}</strong>
-          <small v-if="server.address">{{ server.address }}</small>
-        </span>
-        <span v-if="server.status" class="connected-server-status">{{ server.status }}</span>
+    <p v-if="loading" class="server-empty" role="status">Loading your installations…</p>
+    <p v-else-if="error" class="server-error" role="alert">{{ error }}</p>
+    <div v-else-if="visibleServers.length" class="server-list">
+      <article v-for="server in visibleServers" :key="server.id">
+        <span class="server-mark" aria-hidden="true">▤</span>
+        <div><strong>{{ server.name }}</strong><code>{{ server.address || 'Address not reported' }}</code><small>ID: {{ server.id }}</small></div>
+        <span class="server-status">{{ server.status || 'Status not reported' }}</span>
+        <button type="button" :aria-label="`Copy details for ${server.name}`" @click="copyServer(server)">Copy details</button>
       </article>
     </div>
-    <div v-else class="connected-servers-state" :class="{ 'is-error': messageType === 'error' }" role="status">
-      {{ message }}
-    </div>
+    <p v-else-if="loaded" class="server-empty">{{ servers.length ? 'No installations match these filters.' : 'No installations reported yet. Configure a plugin with your shared key and allow its public IP to get started.' }}</p>
+    <p v-if="updatedAt" class="server-note">Last checked {{ updatedAt }}</p>
+    <p v-if="notice" class="server-note" role="status">{{ notice }}</p>
   </section>
 </template>
 
 <style scoped>
-.connected-servers {
-  margin: 24px 0;
-  padding: 22px;
-  border: 1px solid var(--lumen-card-border, var(--vp-c-divider));
-  border-radius: 16px;
-  background: var(--lumen-card-bg, var(--vp-c-bg-soft));
-}
-
-.connected-servers-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-}
-
-.connected-servers-heading h2 {
-  margin: 2px 0 0;
-  border: 0;
-  font-size: 1.15rem;
-}
-
-.connected-servers-eyebrow {
-  margin: 0;
-  color: var(--vp-c-brand-1);
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.connected-servers-count {
-  padding: 5px 9px;
-  border: 1px solid var(--lumen-card-border, var(--vp-c-divider));
-  border-radius: 999px;
-  color: var(--vp-c-text-2);
-  font-size: 0.76rem;
-  white-space: nowrap;
-}
-
-.connected-servers-description,
-.connected-servers-state {
-  color: var(--vp-c-text-2);
-  font-size: 0.86rem;
-  line-height: 1.6;
-}
-
-.connected-servers-state {
-  padding: 16px;
-  border: 1px dashed var(--lumen-card-border, var(--vp-c-divider));
-  border-radius: 10px;
-}
-
-.connected-servers-state.is-error {
-  color: var(--vp-c-danger-1, #e5484d);
-}
-
-.connected-servers-list {
-  display: grid;
-  gap: 9px;
-  margin-top: 16px;
-}
-
-.connected-server {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 11px 12px;
-  border: 1px solid var(--lumen-card-border, var(--vp-c-divider));
-  border-radius: 10px;
-}
-
-.connected-server-indicator {
-  width: 8px;
-  height: 8px;
-  flex: 0 0 8px;
-  border-radius: 50%;
-  background: var(--vp-c-brand-1);
-}
-
-.connected-server-details {
-  display: grid;
-  min-width: 0;
-  gap: 3px;
-}
-
-.connected-server-details strong {
-  overflow: hidden;
-  font-size: 0.86rem;
-  text-overflow: ellipsis;
-}
-
-.connected-server-details small,
-.connected-server-status {
-  color: var(--vp-c-text-2);
-  font-size: 0.74rem;
-}
-
-.connected-server-status {
-  margin-left: auto;
-}
+.server-workspace { margin: 24px 0; padding: clamp(18px, 3vw, 28px); border: 1px solid var(--vp-c-divider); border-radius: 20px; background: var(--vp-c-bg-soft); }
+.server-workspace header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.server-eyebrow { margin: 0 0 7px; color: var(--vp-c-brand-1); font-size: .6rem; font-weight: 750; letter-spacing: .1em; }
+.server-workspace h2 { margin: 0; padding: 0; border: 0; font-size: 1.35rem; letter-spacing: -.03em; }
+.server-note, .server-empty { color: var(--vp-c-text-2); font-size: .8rem; line-height: 1.7; }
+.server-toolbar { display: flex; align-items: flex-end; gap: 12px; margin: 20px 0; }
+.server-toolbar label { display: grid; flex: 1; gap: 6px; color: var(--vp-c-text-2); font-size: .7rem; }
+.server-toolbar span { padding-bottom: 10px; white-space: nowrap; color: var(--vp-c-text-3); font-size: .7rem; }
+.server-workspace :is(input, select) { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid var(--vp-c-divider); border-radius: 8px; background: var(--vp-c-bg); color: var(--vp-c-text-1); font: inherit; }
+.server-workspace button { flex-shrink: 0; padding: 8px 11px; border: 1px solid var(--vp-c-divider); border-radius: 8px; background: var(--vp-c-bg); color: var(--vp-c-text-1); cursor: pointer; font-size: .73rem; }
+.server-workspace button:disabled { opacity: .5; cursor: wait; }
+.server-workspace :is(button, input, select):focus-visible { outline: 2px solid var(--vp-c-brand-1); outline-offset: 3px; }
+.server-list { display: grid; gap: 10px; }
+.server-list article { display: flex; align-items: center; gap: 14px; padding: 16px; border: 1px solid var(--vp-c-divider); border-radius: 12px; background: var(--vp-c-bg); }
+.server-mark { display: grid; width: 38px; height: 38px; flex-shrink: 0; place-items: center; border: 1px solid #9a6bf344; border-radius: 10px; color: var(--vp-c-brand-1); background: var(--vp-c-brand-soft); }
+.server-list article > div { display: grid; flex: 1; min-width: 0; gap: 3px; }
+.server-list strong { font-size: .85rem; overflow-wrap: anywhere; }
+.server-list code, .server-list small { font-size: .7rem; color: var(--vp-c-text-2); overflow-wrap: anywhere; }
+.server-status { max-width: 140px; padding: 4px 8px; border: 1px solid var(--vp-c-divider); border-radius: 6px; color: var(--vp-c-text-2); font-size: .67rem; overflow-wrap: anywhere; }
+.server-error { padding: 12px; border: 1px solid var(--vp-c-danger-2); border-radius: 10px; color: var(--vp-c-danger-1); font-size: .85rem; }
+@media (max-width: 640px) { .server-workspace header { align-items: flex-start; flex-direction: column; } .server-toolbar { flex-wrap: wrap; } .server-toolbar label { flex-basis: 100%; } .server-list article { flex-wrap: wrap; } .server-list article > div { flex-basis: calc(100% - 60px); } .server-status { margin-left: 52px; } }
 </style>

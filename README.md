@@ -41,6 +41,14 @@ npx wrangler deploy
 
 Never put the webhook URL in site code, GitHub Pages variables, or committed files. If a webhook URL has been shared publicly, delete it and create a replacement before configuring the secret. Run worker tests with `npm run test:worker`.
 
+## License workspaces
+
+The customer dashboard reads shared-license status, verified product IDs, IP usage, and connected installations from the Worker. Customers can reconnect BuiltByBit to refresh purchases, copy key-free diagnostics, search reported installations, and replace the complete three-address allowlist. Removing the last IP disables validation; the interface asks for confirmation. A first shared-key claim replaces legacy per-product keys and requires updating plugin configs and server IPs.
+
+The staff workspace at `/admin/` has customer, license inventory, audit, and product registry views. Lists are paginated; filters, sorting, attention counts (including active licenses expiring within 30 days), and CSV exports apply only to the loaded page or selected customer. Exports omit keys and IP addresses; audit details redact credential-named fields. New license keys are masked and cleared when switching customers or signing out. Existing Worker authorization and supported mutation routes remain the enforcement layer. These features require the configured licensing backend described in `worker/README.md`; an unavailable service is shown as an error, not an empty successful result.
+
+Run `npm run test:licensing` for expiry-boundary, allowlist, CSV, and audit-redaction checks. The Pages workflow runs these alongside the Worker tests.
+
 ## Keeping guides accurate
 
 Commands and supported versions can vary by release, so check the notes that came with your jar. Need a license? Follow the [Discord license guide](https://lumenstudios0.github.io/LumenDocs/getting-started/licensing). Never add license keys, plugin tokens, database passwords, Discord webhooks, or other private credentials here.

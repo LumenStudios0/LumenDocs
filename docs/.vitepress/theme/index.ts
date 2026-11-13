@@ -43,6 +43,7 @@ export default {
       const isDocumentation = computed(() =>
         currentPath.value !== '/' && !/^\/(?:account|admin)(?:\/|$)/.test(currentPath.value),
       )
+      const isOperations = computed(() => /^\/(?:account|admin)(?:\/|$)/.test(currentPath.value))
       const dinoEggPath = ref('')
       const dinoEggPosition = ref({ left: '12%', top: '74%' })
       const dinoEggsFound = ref(0)
@@ -660,7 +661,7 @@ export default {
       })
 
       return () => h(DefaultTheme.Layout, {
-        class: ['studio-shell', isDocumentation.value && 'studio-docs-shell'],
+        class: ['studio-shell', isDocumentation.value && 'studio-docs-shell', isOperations.value && 'studio-operations-shell'],
       }, {
         'sidebar-nav-before': () => [
           h('button', {

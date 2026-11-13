@@ -6039,10 +6039,18 @@ html.lumen-dino-extinction:has(.dino-extinction-card) .VPContent {
   background: var(--vp-c-bg);
 }
 
-.studio-docs-shell .lumen-weather-sky,
-.studio-docs-shell .lumen-sky,
-.studio-docs-shell .lumen-pixel-moon {
+:is(.studio-docs-shell, .studio-operations-shell) .lumen-weather-sky,
+:is(.studio-docs-shell, .studio-operations-shell) .lumen-sky,
+:is(.studio-docs-shell, .studio-operations-shell) .lumen-pixel-moon {
   display: none;
+}
+
+@media (max-width: 380px) {
+  .lumen-auth-user {
+    max-width: 60px;
+    gap: 4px;
+    padding: 0 6px;
+  }
 }
 
 .studio-breadcrumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 20px; color: var(--vp-c-text-3); font-size: 11px; }
