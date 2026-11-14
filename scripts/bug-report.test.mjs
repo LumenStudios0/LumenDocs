@@ -25,11 +25,25 @@ async function tokenFor(id = customerId) {
 
 function createD1() {
   const sqlite = new DatabaseSync(':memory:')
-  const ready = readFile(new URL('../worker/migrations/community/0001_community.sql', import.meta.url), 'utf8')
-    .then(sql => sqlite.exec(sql))
+  const ready = Promise.all(['0001_community.sql', '0002_ticket_routing.sql'].map(
+    name => readFile(new URL(`../worker/migrations/community/${name}`, import.meta.url), 'utf8'),
+  )).then(sqls => sqls.forEach(sql => sqlite.exec(sql)))
   return {
     sqlite,
     ready,
+    async batch(statements) {
+      await ready
+      sqlite.exec('BEGIN')
+      try {
+        const results = []
+        for (const statement of statements) results.push(await statement.run())
+        sqlite.exec('COMMIT')
+        return results
+      } catch (error) {
+        sqlite.exec('ROLLBACK')
+        throw error
+      }
+    },
     prepare(query) {
       let params = []
       const statement = {
@@ -56,7 +70,6 @@ const env = {
   ASSISTANT_LIMITER: {
     limit: async ({ key }) => { calls.push(key); return { success: true } },
   },
-  DISCORD_BUG_REPORT_WEBHOOK: 'https://example.invalid/webhook',
 }
 
 function request(path, payload, { authorization, requestOrigin = origin } = {}) {
@@ -72,7 +85,7 @@ function request(path, payload, { authorization, requestOrigin = origin } = {}) 
   })
 }
 
-test('legacy report aliases are signed-in community ticket routes, not webhook calls', async t => {
+test('legacy report aliases use verified accounts and never send report contents to Discord', async t => {
   await database.ready
   const originalFetch = globalThis.fetch
   globalThis.fetch = async () => { throw new Error('Legacy alias must not call a webhook') }
@@ -122,7 +135,7 @@ test('legacy reports translate compatibility and feature submissions into ticket
     assert.equal(response.status, 201)
     const { ticket } = await response.json()
     assert.equal(ticket.type, 'compatibility')
-    assert.deepEqual(Object.keys(ticket), ['id', 'type', 'title', 'body', 'productId', 'status', 'createdAt', 'updatedAt'])
+    assert.deepEqual(Object.keys(ticket), ['id', 'type', 'title', 'body', 'productId', 'status', 'customerName', 'assignedTo', 'labels', 'serverSoftware', 'minecraftVersion', 'createdAt', 'updatedAt'])
     assert.match(ticket.body, new RegExp(`Compatibility result: ${status}`))
     assert.match(ticket.body, /Server software: Paper/)
     assert.match(ticket.body, /Minecraft version: 1\.21\.4/)

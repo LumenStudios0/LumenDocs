@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { accountRequest } from './licensing-api'
+import { accountRequest, LicenseApiError } from './licensing-api'
+import { visibleServiceError, licenseServiceNotice } from './service-errors'
 import { getDiscordSession } from './discord-session'
 import { normalizeIpAddress, parseIpAllowlist } from './licensing-utils.mjs'
 
@@ -38,9 +39,10 @@ async function loadAddresses() {
     loaded.value = true
   } catch (error) {
     console.error('Unable to load license IP addresses:', error)
+    const message = await visibleServiceError(error instanceof Error ? error.message : 'Could not load your saved IP addresses.', error instanceof LicenseApiError ? error.status : 0, 'licensing')
     if (requestId === generation) {
-      notice.value = error instanceof Error ? error.message : 'Could not load your saved IP addresses.'
-      noticeIsError.value = true
+      notice.value = message
+      noticeIsError.value = message !== licenseServiceNotice
     }
   } finally {
     if (requestId === generation) loading.value = false
@@ -88,9 +90,10 @@ async function saveAddresses(next: string[]) {
     notice.value = 'Your server IP allowlist has been saved.'
   } catch (error) {
     console.error('Unable to save license IP addresses:', error)
+    const message = await visibleServiceError(error instanceof Error ? error.message : 'Could not save your IP addresses.', error instanceof LicenseApiError ? error.status : 0, 'licensing')
     if (requestId === generation) {
-      notice.value = error instanceof Error ? error.message : 'Could not save your IP addresses.'
-      noticeIsError.value = true
+      notice.value = message
+      noticeIsError.value = message !== licenseServiceNotice
     }
   } finally {
     saving.value = false

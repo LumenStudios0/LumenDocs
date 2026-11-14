@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { visibleServiceError, licenseServiceNotice } from './service-errors'
 import { onMounted, ref } from 'vue'
 import { clearDiscordSession, getDiscordSession, storeDiscordSession } from './discord-session'
 
@@ -138,11 +139,15 @@ async function loadDiscordProfile() {
             }
             return
           }
-          const syncErrorMessage = syncResult.error ?? syncResult.detail
+          const syncErrorMessage = await visibleServiceError(syncResult.error ?? syncResult.detail ?? 'Customer directory sync failed.', syncResponse.status, 'licensing')
           notice.value = syncErrorMessage
             ? `Discord is connected, but your username could not be synced: ${syncErrorMessage}`
             : 'Discord is connected, but your username could not be synced to the customer directory.'
           noticeIsError.value = true
+          if (syncErrorMessage === licenseServiceNotice) {
+            notice.value = `Your Discord account is connected. ${licenseServiceNotice}`
+            noticeIsError.value = false
+          }
         }
       } catch (syncError) {
         console.error('Unable to sync customer Discord username:', syncError)
@@ -215,7 +220,7 @@ async function deleteAccount() {
       headers: { Authorization: `Bearer ${token}` },
     })
     const result = await response.json() as { error?: string; detail?: string }
-    if (!response.ok) throw new Error(result.error ?? result.detail ?? 'Your account could not be deleted.')
+    if (!response.ok) throw new Error(await visibleServiceError(result.error ?? result.detail ?? 'Your account could not be deleted.', response.status, 'licensing'))
 
     try {
       clearDiscordSession()

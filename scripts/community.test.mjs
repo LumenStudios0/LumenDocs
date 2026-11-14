@@ -27,10 +27,12 @@ async function tokenFor(id, name) {
 
 function createD1() {
   const sqlite = new DatabaseSync(':memory:')
-  const migration = readFile(new URL('../worker/migrations/community/0001_community.sql', import.meta.url), 'utf8')
+  const migrations = Promise.all(['0001_community.sql', '0002_ticket_routing.sql'].map(
+    name => readFile(new URL(`../worker/migrations/community/${name}`, import.meta.url), 'utf8'),
+  ))
   const database = {
     sqlite,
-    ready: migration.then(sql => sqlite.exec(sql)),
+    ready: migrations.then(sqls => sqls.forEach(sql => sqlite.exec(sql))),
     failBatchAt: null,
     prepare(query) {
       let params = []
@@ -118,9 +120,7 @@ test('customers can only view their tickets and ticket lifecycle/replies persist
   assert.equal(created.status, 201)
   const createdPayload = await created.json()
   assert.deepEqual(Object.keys(createdPayload), ['ticket'])
-  assert.deepEqual(Object.keys(createdPayload.ticket), [
-    'id', 'type', 'title', 'body', 'productId', 'status', 'createdAt', 'updatedAt',
-  ])
+  assert.equal(createdPayload.ticket.customerName, 'Customer')
   const id = createdPayload.ticket.id
   const hidden = await call(`/community/tickets/${id}`, 'GET', undefined, other)
   assert.equal(hidden.status, 404)
@@ -190,6 +190,108 @@ test('tickets validate types, compatibility fields, payload lengths, and paginat
   }
 })
 
+test('ticket ownership, editing, assignment and labels are enforced server-side', async () => {
+  const customer = await tokenFor(customerId, 'Connected Customer')
+  const staff = await tokenFor(staffId, 'Verified Staff')
+  const stranger = await tokenFor('234567890123456789', 'Stranger')
+  const created = await call('/community/tickets', 'POST', {
+    type: 'support', title: 'Routing test ticket', body: 'Original request details.',
+    discordUsername: 'Forged customer', ownerId: staffId,
+  }, customer)
+  const { ticket } = await created.json()
+  assert.equal(ticket.customerName, 'Connected Customer')
+  assert.equal((await call(`/community/tickets/${ticket.id}`, 'PUT', {
+    title: 'Edited request', body: 'Edited details from the customer.',
+  }, stranger)).status, 404)
+  assert.equal((await call(`/community/tickets/${ticket.id}`, 'PUT', {
+    title: 'Edited request', body: 'Edited details from the customer.', assigneeId: staffId,
+  }, customer)).status, 403)
+  assert.equal((await call(`/community/tickets/${ticket.id}`, 'PUT', {
+    title: 'Edited request', body: 'Edited details from the customer.',
+  }, customer)).status, 200)
+  assert.equal((await call(`/community/staff/tickets/${ticket.id}`, 'PUT', {
+    status: 'open', assigneeId: customerId, labels: ['bug'],
+  }, staff)).status, 400)
+  assert.equal((await call(`/community/staff/tickets/${ticket.id}`, 'PUT', {
+    status: 'open', assigneeId: staffId, labels: ['Bug', ' needs-logs ', 'bug'],
+  }, staff)).status, 200)
+  const details = await (await call(`/community/tickets/${ticket.id}`, 'GET', undefined, customer)).json()
+  assert.equal(details.ticket.title, 'Edited request')
+  assert.equal(details.ticket.assignedTo.name, 'Verified Staff')
+  assert.deepEqual(details.ticket.labels, ['bug', 'needs-logs'])
+  const filtered = await (await call(`/community/staff/tickets?assigned=${staffId}&label=needs-logs`, 'GET', undefined, staff)).json()
+  assert.equal(filtered.items.some(item => item.id === ticket.id), true)
+  assert.equal((await call('/community/staff/members', 'GET', undefined, customer)).status, 403)
+  const directory = await (await call('/community/staff/members', 'GET', undefined, staff)).json()
+  assert.equal(directory.currentStaffId, staffId)
+  assert.equal(directory.members.find(member => member.id === staffId).name, 'Verified Staff')
+  await call(`/community/staff/tickets/${ticket.id}`, 'PUT', { status: 'closed', assigneeId: null, labels: [] }, staff)
+  assert.equal((await call(`/community/tickets/${ticket.id}`, 'PUT', {
+    title: 'Late edit', body: 'Cannot edit a closed ticket.',
+  }, customer)).status, 409)
+})
+
+test('new ticket alerts send only a staff link, with no customer identity or report contents', async t => {
+  const originalFetch = globalThis.fetch
+  const deliveries = []
+  globalThis.fetch = async (url, init) => {
+    deliveries.push({ url: String(url), body: JSON.parse(init.body) })
+    return new Response(null, { status: 204 })
+  }
+  t.after(() => { globalThis.fetch = originalFetch })
+  const customer = await tokenFor(customerId, 'Private Customer')
+  const configured = { ...env, DISCORD_BUG_REPORT_WEBHOOK: 'https://discord.com/api/webhooks/123456/synthetic-test-token' }
+  const response = await worker.fetch(request('/community/tickets', 'POST', {
+    type: 'bug', title: 'Private title', body: 'Private report contents.',
+  }, customer), configured)
+  assert.equal(response.status, 201)
+  const { ticket } = await response.json()
+  assert.equal(database.sqlite.prepare('SELECT state FROM community_ticket_alerts WHERE ticket_id = ?').get(ticket.id).state, 'sent')
+  assert.equal(deliveries.length, 1)
+  assert.match(deliveries[0].body.content, new RegExp(`/admin/\\?ticket=${ticket.id}`))
+  assert.doesNotMatch(JSON.stringify(deliveries), /Private Customer|Private title|Private report contents/)
+  assert.deepEqual(deliveries[0].body.allowed_mentions, { parse: [] })
+  const staff = await tokenFor(staffId, 'Staff')
+  const repeated = await worker.fetch(request(`/community/staff/tickets/${ticket.id}/alert`, 'POST', {}, staff), configured)
+  assert.equal(repeated.status, 409)
+  assert.equal(deliveries.length, 1)
+  const issue = await worker.fetch(request('/community/issues', 'POST', {
+    title: 'Private issue title', body: 'Private issue contents.',
+  }, customer), configured)
+  assert.equal(issue.status, 201)
+  const { submissionId } = await issue.json()
+  assert.equal(deliveries.length, 2)
+  assert.match(deliveries[1].body.content, new RegExp(submissionId))
+  assert.equal(database.sqlite.prepare('SELECT published FROM community_issues WHERE id = ?').get(submissionId).published, 0)
+})
+
+test('webhook failure preserves the ticket and staff can retry its durable alert', async t => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(null, { status: 503 })
+  t.after(() => { globalThis.fetch = originalFetch })
+  const customer = await tokenFor(customerId, 'Customer')
+  const configured = { ...env, DISCORD_BUG_REPORT_WEBHOOK: 'https://discord.com/api/webhooks/123456/synthetic-test-token' }
+  const response = await worker.fetch(request('/community/tickets', 'POST', {
+    type: 'support', title: 'Delivery failure test', body: 'Keep this ticket if Discord is down.',
+  }, customer), configured)
+  assert.equal(response.status, 201)
+  const { ticket } = await response.json()
+  assert.equal('alertDelivery' in ticket, false)
+  assert.equal(database.sqlite.prepare('SELECT state FROM community_ticket_alerts WHERE ticket_id = ?').get(ticket.id).state, 'pending')
+  assert.equal((await call(`/community/tickets/${ticket.id}`, 'GET', undefined, customer)).status, 200)
+  const staff = await tokenFor(staffId, 'Staff')
+  globalThis.fetch = async () => new Response(null, { status: 204 })
+  const retry = await worker.fetch(request(`/community/staff/tickets/${ticket.id}/alert`, 'POST', {}, staff), configured)
+  assert.equal((await retry.json()).alertDelivery, 'sent')
+  database.failBatchAt = 1
+  const rolledBack = await worker.fetch(request('/community/tickets', 'POST', {
+    type: 'bug', title: 'Atomic creation test', body: 'Ticket and alert must save together.',
+  }, customer), configured)
+  database.failBatchAt = null
+  assert.equal(rolledBack.status, 503)
+  assert.equal(database.sqlite.prepare("SELECT COUNT(*) AS total FROM community_tickets WHERE title = 'Atomic creation test'").get().total, 0)
+})
+
 test('customer issue submissions stay private until staff moderation publishes them', async () => {
   const customer = await tokenFor(customerId, 'Customer')
   const staff = await tokenFor(staffId, 'Staff')
@@ -223,6 +325,11 @@ test('customer issue submissions stay private until staff moderation publishes t
   const issue = (await staffList.json()).items[0]
   assert.equal(issue.id, submissionPayload.submissionId)
   assert.equal(issue.title, 'An issue report')
+  const edited = await call(`/community/tickets/${issue.id}`, 'PUT', {
+    title: 'Edited private issue', body: 'Updated private reproduction steps.',
+  }, customer)
+  assert.equal(edited.status, 200)
+  assert.equal(database.sqlite.prepare('SELECT title FROM community_issues WHERE id = ?').get(issue.id).title, 'Edited private issue')
   const published = await call(`/community/staff/issues/${issue.id}`, 'PUT', {
     ...issue, status: 'investigating', published: true,
   }, staff)
@@ -231,6 +338,10 @@ test('customer issue submissions stay private until staff moderation publishes t
   const publicPayload = await publicIssues.json()
   assert.equal(publicPayload.items[0].status, 'investigating')
   assert.equal('customerDiscordId' in publicPayload.items[0], false)
+  await call(`/community/tickets/${issue.id}`, 'PUT', {
+    title: 'Another private edit', body: 'Never copy this private follow-up onto the public board.',
+  }, customer)
+  assert.equal((await (await call('/community/issues', 'GET')).json()).items[0].body, issue.body)
 
   const invalidStatus = await call(`/community/staff/issues/${issue.id}`, 'PUT', {
     title: issue.title, body: issue.body, status: 'pending', published: true,

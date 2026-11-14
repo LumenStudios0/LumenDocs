@@ -29,3 +29,24 @@
 .website-tabs { display: flex; flex-wrap: wrap; gap: 7px; margin: 18px 0; }
 .website-tabs button[aria-pressed=true] { color: var(--vp-c-brand-1); border-color: var(--vp-c-brand-1); background: var(--vp-c-brand-soft); }
 @media (max-width: 640px) { .website-columns { grid-template-columns: 1fr; } }
+.ticket-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 18px 0; }
+.ticket-toolbar :is(h3, p) { margin: 0; }
+.ticket-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ticket-cards > article { border-radius: 16px; background: linear-gradient(135deg, #7b3ff209, transparent 70%), var(--vp-c-bg-soft); transition: border-color .2s ease; }
+.ticket-cards > article:hover { border-color: var(--vp-c-brand-2); }
+.ticket-labels { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+.ticket-labels .website-badge { color: var(--vp-c-brand-1); background: var(--vp-c-brand-soft); border: 0; text-transform: none; }
+.ticket-heading { margin: 20px 0; padding-bottom: 18px; border-bottom: 1px solid var(--vp-c-divider); }
+.ticket-heading h3 { font-size: clamp(1.2rem, 3vw, 1.65rem); letter-spacing: -.035em; overflow-wrap: anywhere; }
+.ticket-thread { display: grid; gap: 14px; margin: 18px 0; }
+.ticket-message { padding: 18px; border: 1px solid var(--vp-c-divider); border-radius: 14px; background: var(--vp-c-bg); }
+.ticket-message-staff { border-left: 3px solid var(--vp-c-brand-1); background: var(--vp-c-brand-soft); }
+.ticket-routing { padding: 18px; border: 1px solid var(--vp-c-divider); border-radius: 14px; }
+.ticket-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.ticket-filters form { display: flex; align-items: end; gap: 8px; min-width: 0; }
+.ticket-filters form label { flex: 1; min-width: 0; }
+.ticket-filters form button { margin-bottom: 14px; }
+.website-badge[data-status=open] { color: var(--vp-c-brand-1); border-color: var(--vp-c-brand-2); }
+.website-badge[data-status=waiting] { color: var(--vp-c-warning-1); background: var(--vp-c-warning-soft); }
+.website-badge[data-status=closed] { color: var(--vp-c-text-3); }
+@media (max-width: 640px) { .ticket-cards, .ticket-filters { grid-template-columns: minmax(0, 1fr); } }

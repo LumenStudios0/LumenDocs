@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { accountRequest, LicenseApiError } from './licensing-api'
 import { getDiscordSession } from './discord-session'
+import { visibleServiceError, licenseServiceNotice } from './service-errors'
 
 type Product = {
   name: string
@@ -59,7 +60,8 @@ async function loadOwnership() {
     if (requestError instanceof LicenseApiError && requestError.status === 404) ownedIds.value = []
     else {
       console.error('Unable to load verified products:', requestError)
-      error.value = requestError instanceof Error ? requestError.message : 'Could not load your verified products.'
+      const message = await visibleServiceError(requestError instanceof Error ? requestError.message : 'Could not load your verified products.', requestError instanceof LicenseApiError ? requestError.status : 0, 'licensing')
+      if (requestId === generation) error.value = message
     }
   } finally { if (requestId === generation) loading.value = false }
 }
@@ -121,7 +123,7 @@ onUnmounted(() => {
         <span v-else>{{ visibleProducts.length }} products</span>
       </div>
       <p v-if="selectedCategory === 'owned' && loading" role="status">Checking verified entitlements…</p>
-      <p v-else-if="selectedCategory === 'owned' && error" class="ownership-error" role="alert">{{ error }}</p>
+      <p v-else-if="selectedCategory === 'owned' && error" :class="{ 'ownership-error': error !== licenseServiceNotice }" :role="error === licenseServiceNotice ? 'status' : 'alert'">{{ error }}</p>
       <div v-else-if="selectedCategory === 'owned' && ownedProducts.length" class="account-product-grid">
         <article v-for="item in ownedProducts" :key="item.id" class="account-product-card">
           <div class="account-product-card-head"><span class="account-product-mark" aria-hidden="true">{{ (item.product?.name || item.id).slice(0, 1) }}</span><span class="account-product-category">Verified entitlement</span></div>

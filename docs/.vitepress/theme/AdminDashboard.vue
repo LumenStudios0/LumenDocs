@@ -519,6 +519,7 @@ function handleSession() {
   }
 }
 onMounted(() => {
+  if (/^[0-9a-f-]{36}$/i.test(new URLSearchParams(window.location.search).get('ticket') || '')) websiteOperations.value = true
   void verifyTestOwner()
   void loadView()
   clockTimer = setInterval(() => { clock.value = Date.now() }, 60000)

@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import { getDiscordSession } from './discord-session'
 import { accountRequest, LicenseApiError } from './licensing-api'
+import { visibleServiceError, licenseServiceNotice } from './service-errors'
 
 interface LicenseInfo {
   licenseKey?: string
@@ -57,12 +58,12 @@ async function loadExistingLicense(token: string) {
       licenseKey.value = result.licenseKey
       productIds.value = result.license?.productIds ?? []
     } else {
-      errorMessage.value = result.error ?? 'Could not load your shared license key.'
+      errorMessage.value = await visibleServiceError(result.error ?? 'Could not load your shared license key.', 0, 'licensing')
     }
   } catch (error) {
     if (error instanceof LicenseApiError && error.status === 404) return
     console.error('Unable to load the customer license key:', error)
-    errorMessage.value = 'Could not load your license key. Please try again later.'
+    errorMessage.value = error instanceof LicenseApiError ? error.message : await visibleServiceError('Could not load your license key.', 0, 'licensing')
   }
 }
 
@@ -103,7 +104,7 @@ async function claimFromCallback(token: string) {
     })
     const result = await response.json() as LicenseInfo
     if (!response.ok || typeof result.licenseKey !== 'string') {
-      errorMessage.value = result.error ?? 'Your purchase could not be verified. Please try again.'
+      errorMessage.value = await visibleServiceError(result.error ?? 'Your purchase could not be verified. Please try again.', response.status, 'licensing')
       return true
     }
     if (token !== getDiscordSession()) return true
@@ -145,7 +146,7 @@ async function startClaim() {
     })
     const result = await response.json() as { authorizeUrl?: string; state?: string; error?: string }
     if (!response.ok || !result.authorizeUrl || !result.state) {
-      errorMessage.value = result.error ?? 'Could not start BuiltByBit sign-in.'
+      errorMessage.value = await visibleServiceError(result.error ?? 'Could not start BuiltByBit sign-in.', response.status, 'licensing')
       return
     }
     sessionStorage.setItem('lumen-builtbybit-state', result.state)
@@ -214,7 +215,7 @@ onUnmounted(() => window.removeEventListener('lumen-discord-user', handleSession
       </button>
       <p class="claim-refresh-note">New purchases require reconnecting. Your first shared-key claim replaces legacy per-product keys; update your plugin configs and re-add your IPs.</p>
       <p v-if="message" class="claim-message" role="status">{{ message }}</p>
-      <p v-if="errorMessage" class="claim-error" role="alert">{{ errorMessage }}</p>
+      <p v-if="errorMessage" :class="errorMessage === licenseServiceNotice ? 'claim-message' : 'claim-error'" :role="errorMessage === licenseServiceNotice ? 'status' : 'alert'">{{ errorMessage }}</p>
     </div>
 
     <div class="claim-key-card">

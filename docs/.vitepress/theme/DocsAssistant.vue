@@ -142,7 +142,7 @@ interface AmbientTrack {
   description: string
   secret?: boolean
   rareChance?: number
-  modeOnly?: 'banana' | 'minecraft' | 'dinosaur'
+  modeOnly?: 'banana'
   chaotic?: boolean
   monkeyCalls?: boolean
   creeperEffects?: boolean
@@ -854,7 +854,7 @@ const ambientTracks: AmbientTrack[] = [
   {
     name: 'Creeper Rave',
     description: 'An original blocky synth track with hissy risers and rumbling pixel-blast effects.',
-    modeOnly: 'minecraft',
+    secret: true,
     chaotic: true,
     creeperEffects: true,
     waveform: 'square',
@@ -876,44 +876,8 @@ const ambientTracks: AmbientTrack[] = [
       [65.41, 130.81, 196, 261.63],
     ],
   },
-  {
-    name: 'Cretaceous Sunrise',
-    description: 'An original, cinematic prehistoric adventure with warm strings, soaring bells, and gentle dinosaur drums.',
-    modeOnly: 'dinosaur',
-    masterVolume: 0.075,
-    waveform: 'triangle',
-    filterFrequency: 2600,
-    chordInterval: 4800,
-    chordVolume: 0.11,
-    notes: {
-      frequencies: [261.63, 329.63, 392, 523.25, 440, 392, 329.63, 293.66],
-      waveform: 'sine',
-      volume: 0.095,
-      attack: 0.12,
-      decay: 1.1,
-      interval: 620,
-    },
-    rhythm: {
-      steps: [82.41, null, 110, null, 98, null, 123.47, null],
-      stepMs: 760,
-      volume: 0.035,
-      decay: 0.8,
-      waveform: 'triangle',
-      filter: 'lowpass',
-      filterFrequency: 220,
-    },
-    chords: [
-      [130.81, 196, 261.63, 329.63],
-      [146.83, 220, 293.66, 369.99],
-      [164.81, 246.94, 329.63, 392],
-      [110, 164.81, 220, 293.66],
-    ],
-  },
 ]
 
-const getTrackClass = (trackName: string) =>
-  `lumen-track-${trackName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`
-const ambientTrackClasses = ambientTracks.map(track => getTrackClass(track.name))
 const selectableAmbientTracks = ambientTracks.filter(track => !track.secret && !track.modeOnly)
 const tracklistTracks = ambientTracks
 const trackDurations: Record<string, number> = {
@@ -939,7 +903,6 @@ const trackDurations: Record<string, number> = {
   'Hidden Signal': 56,
   'Banana Jungle': 64,
   'Creeper Rave': 72,
-  'Cretaceous Sunrise': 90,
 }
 const rhythmVoices: Record<string, 'sub' | 'kick' | 'pluck' | 'bell' | 'digital' | 'drum'> = {
   Tides: 'sub',
@@ -964,7 +927,6 @@ const rhythmVoices: Record<string, 'sub' | 'kick' | 'pluck' | 'bell' | 'digital'
   'Hidden Signal': 'digital',
   'Banana Jungle': 'digital',
   'Creeper Rave': 'kick',
-  'Cretaceous Sunrise': 'drum',
 }
 
 function getTrackDuration(track: AmbientTrack) {
@@ -978,16 +940,12 @@ function formatTrackTime(seconds: number) {
 
 function setAmbientTrackEffect(trackName?: string) {
   const root = document.documentElement
-  root.classList.remove(...ambientTrackClasses)
-  root.classList.toggle('lumen-music-playing', Boolean(trackName))
-  root.classList.toggle('lumen-music-animations-off', Boolean(trackName) && !musicAnimationsEnabled.value)
-  if (trackName) {
-    root.classList.add(getTrackClass(trackName))
-  }
+  root.classList.toggle('lumen-track-paper-lanterns', trackName === 'Paper Lanterns')
+  root.classList.toggle('lumen-music-animations-off', trackName === 'Paper Lanterns' && !musicAnimationsEnabled.value)
 }
 
 function updateMusicAnimationPreference() {
-  const isPlaying = Boolean(activeTrack)
+  const isPlaying = activeTrack?.name === 'Paper Lanterns'
   document.documentElement.classList.toggle(
     'lumen-music-animations-off',
     isPlaying && !musicAnimationsEnabled.value,
@@ -1417,12 +1375,8 @@ function startAmbientMusic(forceTrackName?: string, startPositionSeconds = 0) {
 
   const now = audioContext.currentTime
   const bananaTrackIndex = ambientTracks.findIndex(track => track.modeOnly === 'banana')
-  const minecraftTrackIndex = ambientTracks.findIndex(track => track.modeOnly === 'minecraft')
-  const dinosaurTrackIndex = ambientTracks.findIndex(track => track.modeOnly === 'dinosaur')
   const secretTrackIndex = ambientTracks.findIndex(track => track.secret)
   const isBananaMode = document.documentElement.classList.contains('lumen-banana')
-  const isMinecraftMode = document.documentElement.classList.contains('lumen-minecraft')
-  const isDinosaurMode = document.documentElement.classList.contains('lumen-dino-soundtrack')
   const forcedTrackIndex = forceTrackName
     ? ambientTracks.findIndex(track => track.name === forceTrackName)
     : -1
@@ -1430,7 +1384,7 @@ function startAmbientMusic(forceTrackName?: string, startPositionSeconds = 0) {
     track.name === selectedMusicTrack.value && !track.secret && !track.modeOnly,
   )
   const canPlayAmbientSecret = forcedTrackIndex < 0 && selectedTrackIndex < 0 &&
-    !isBananaMode && !isMinecraftMode && !isDinosaurMode
+    !isBananaMode
   const rareTrackIndex = ambientTracks.findIndex(track => track.rareChance !== undefined)
   const playRareTrack = canPlayAmbientSecret && rareTrackIndex >= 0 &&
     Math.random() < (ambientTracks[rareTrackIndex]?.rareChance ?? 0)
@@ -1440,8 +1394,8 @@ function startAmbientMusic(forceTrackName?: string, startPositionSeconds = 0) {
     .filter(index => !ambientTracks[index].secret && !ambientTracks[index].modeOnly && index !== lastMusicTrack)
   const trackIndex = forcedTrackIndex >= 0
     ? forcedTrackIndex
-    : isDinosaurMode || isBananaMode || isMinecraftMode
-      ? isDinosaurMode ? dinosaurTrackIndex : isBananaMode ? bananaTrackIndex : minecraftTrackIndex
+    : isBananaMode
+      ? bananaTrackIndex
       : playRareTrack
         ? rareTrackIndex
       : playSecretTrack
@@ -1788,20 +1742,6 @@ function handleThemeModeChange() {
   }
 }
 
-function handleDinosaurSoundtrack() {
-  if (ambientMusic.value && audioContext) {
-    stopAmbientMusic(0.12)
-    try {
-      startAmbientMusic()
-    } catch (error) {
-      console.error('Unable to start the dinosaur soundtrack:', error)
-      activeMusicTrack.value = ''
-    }
-    return
-  }
-  void toggleAmbientMusic()
-}
-
 function stopAmbientMusic(fadeDuration = 1.2) {
   setAmbientTrackEffect()
   if (!audioContext || !musicMaster) return
@@ -1862,10 +1802,6 @@ async function toggleAmbientMusic() {
 }
 
 function resumeAmbientMusic() {
-  if (!ambientMusic.value && document.documentElement.classList.contains('lumen-dino-soundtrack')) {
-    void toggleAmbientMusic()
-    return
-  }
   if (!ambientMusic.value || !audioContext || audioContext.state === 'running') return
 
   void audioContext.resume().catch(error => {
@@ -1902,7 +1838,6 @@ onMounted(() => {
   document.addEventListener('click', playClickSound, true)
   document.addEventListener('pointerdown', resumeAmbientMusic, true)
   window.addEventListener('lumen-theme-mode-change', handleThemeModeChange)
-  window.addEventListener('lumen-dinosaur-soundtrack', handleDinosaurSoundtrack)
   window.addEventListener('keydown', onKeydown)
   document.addEventListener('pointerdown', handleAccountMenuPointerDown)
   window.addEventListener('keydown', handleAccountMenuKeydown)
@@ -1913,7 +1848,6 @@ onUnmounted(() => {
   document.removeEventListener('click', playClickSound, true)
   document.removeEventListener('pointerdown', resumeAmbientMusic, true)
   window.removeEventListener('lumen-theme-mode-change', handleThemeModeChange)
-  window.removeEventListener('lumen-dinosaur-soundtrack', handleDinosaurSoundtrack)
   window.removeEventListener('keydown', onKeydown)
   document.removeEventListener('pointerdown', handleAccountMenuPointerDown)
   window.removeEventListener('keydown', handleAccountMenuKeydown)

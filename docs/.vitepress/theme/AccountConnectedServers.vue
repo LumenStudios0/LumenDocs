@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { accountRequest } from './licensing-api'
+import { accountRequest, LicenseApiError } from './licensing-api'
+import { visibleServiceError, licenseServiceNotice } from './service-errors'
 import { getDiscordSession } from './discord-session'
 
 interface ConnectedServer { id: string; name: string; address?: string; status?: string }
@@ -39,7 +40,8 @@ async function refresh() {
     updatedAt.value = new Date().toLocaleTimeString()
   } catch (requestError) {
     console.error('Unable to load connected license servers:', requestError)
-    if (requestId === generation) error.value = requestError instanceof Error ? requestError.message : 'Could not load connected servers.'
+    const message = await visibleServiceError(requestError instanceof Error ? requestError.message : 'Could not load connected servers.', requestError instanceof LicenseApiError ? requestError.status : 0, 'licensing')
+    if (requestId === generation) error.value = message
   } finally {
     if (requestId === generation) loading.value = false
   }
@@ -86,7 +88,7 @@ onUnmounted(() => {
       <span>{{ visibleServers.length }} / {{ servers.length }}</span>
     </div>
     <p v-if="loading" class="server-empty" role="status">Loading your installations…</p>
-    <p v-else-if="error" class="server-error" role="alert">{{ error }}</p>
+    <p v-else-if="error" :class="error === licenseServiceNotice ? 'server-empty' : 'server-error'" :role="error === licenseServiceNotice ? 'status' : 'alert'">{{ error }}</p>
     <div v-else-if="visibleServers.length" class="server-list">
       <article v-for="server in visibleServers" :key="server.id">
         <span class="server-mark" aria-hidden="true">▤</span>

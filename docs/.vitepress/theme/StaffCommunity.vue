@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
 import { getDiscordSession } from './discord-session'
-import { communityRequest, communityDate, type CommunityPage, type Issue, type Notification, type Reply, type Service, type ServiceStatus, type Ticket } from './community-api'
+import { communityRequest, communityDate, type CommunityPage, type Issue, type Notification, type Reply, type Service, type ServiceStatus, type Ticket, type StaffMember } from './community-api'
 import { staffReplyTemplates } from './staff-reply-templates'
 import pluginData from './plugin-compatibility-data.json'
 
@@ -23,6 +23,13 @@ const replies = ref<Reply[]>([])
 const reply = ref('')
 const templateIndex = ref('')
 const statusDraft = ref<'open' | 'waiting' | 'closed'>('open')
+const titleDraft = ref('')
+const assigneeDraft = ref('')
+const labelsDraft = ref('')
+const assignmentFilter = ref('all')
+const labelFilter = ref('')
+const members = ref<StaffMember[]>([])
+const currentStaffId = ref('')
 const title = ref('')
 const body = ref('')
 const productId = ref('')
@@ -35,6 +42,7 @@ const statusChoices: ServiceStatus[] = ['operational', 'degraded', 'outage', 'ma
 const statusEdits = ref<Record<string, { status: string; message: string }>>({})
 let generation = 0
 let token = ''
+let deepLinkHandled = false
 const tabs: { id: Tab; name: string }[] = [
   { id: 'tickets', name: 'Website tickets' }, { id: 'issues', name: 'Known issues' },
   { id: 'notifications', name: 'Publish notifications' }, { id: 'status', name: 'Service status' },
@@ -52,13 +60,23 @@ async function load(target = 1) {
       services.value = result.services
       statusEdits.value = Object.fromEntries(result.services.map(service => [service.id, { status: service.overrideStatus || 'auto', message: service.message }]))
     } else {
-      const path = `/staff/${targetTab}?page=${target}&pageSize=20${targetTab === 'tickets' ? `&status=${ticketStatus.value}` : ''}`
+      const path = `/staff/${targetTab}?page=${target}&pageSize=20${targetTab === 'tickets' ? `&status=${ticketStatus.value}&assigned=${encodeURIComponent(assignmentFilter.value)}&label=${encodeURIComponent(labelFilter.value)}` : ''}`
       const result = await communityRequest<CommunityPage<Ticket | Issue | Notification>>(path)
       if (requestId !== generation) return
-      if (targetTab === 'tickets') tickets.value = result.items as Ticket[]
+      if (targetTab === 'tickets') {
+        const staff = await communityRequest<{ members: StaffMember[]; currentStaffId: string }>('/staff/members')
+        if (requestId !== generation) return
+        members.value = staff.members; currentStaffId.value = staff.currentStaffId
+        tickets.value = result.items as Ticket[]
+      }
       if (targetTab === 'issues') issues.value = result.items as Issue[]
       if (targetTab === 'notifications') announcements.value = result.items as Notification[]
       page.value = result.page; total.value = result.total
+      const requested = new URLSearchParams(window.location.search).get('ticket')
+      if (targetTab === 'tickets' && !deepLinkHandled && requested && /^[0-9a-f-]{36}$/i.test(requested)) {
+        deepLinkHandled = true
+        await open(requested)
+      }
     }
   } catch (requestError) {
     if (requestId === generation) {
@@ -72,6 +90,12 @@ function changeTab(target: Tab) {
   tab.value = target; title.value = ''; body.value = ''; productId.value = ''; issueId.value = ''
   void load()
 }
+function backToQueue() {
+  const url = new URL(window.location.href)
+  url.searchParams.delete('ticket')
+  window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash)
+  void load(page.value)
+}
 async function open(id: string) {
   const requestId = ++generation
   loading.value = true; error.value = ''; selected.value = null
@@ -80,6 +104,9 @@ async function open(id: string) {
     if (requestId === generation) {
       selected.value = result.ticket; replies.value = result.replies; reply.value = ''
       statusDraft.value = result.ticket.status; templateIndex.value = ''
+      titleDraft.value = result.ticket.title
+      assigneeDraft.value = result.ticket.assignedTo?.id || ''
+      labelsDraft.value = result.ticket.labels.join(', ')
     }
   } catch (requestError) { if (requestId === generation) error.value = textError(requestError) }
   finally { if (requestId === generation) loading.value = false }
@@ -111,7 +138,15 @@ function updateTicket() {
   if (!selected.value) return
   const id = selected.value.id
   if (statusDraft.value === 'closed' && !window.confirm('Close this website ticket? The customer will no longer be able to reply until staff reopen it.')) return
-  void write(`/staff/tickets/${id}`, 'PUT', { status: statusDraft.value }, () => open(id), 'Ticket status saved.')
+  void write(`/staff/tickets/${id}`, 'PUT', {
+    status: statusDraft.value, title: titleDraft.value, assigneeId: assigneeDraft.value || null,
+    labels: labelsDraft.value.split(',').map(label => label.trim()).filter(Boolean),
+  }, () => open(id), 'Ticket details, assignment and labels saved.')
+}
+function retryAlert() {
+  if (!selected.value) return
+  const id = selected.value.id
+  void write(`/staff/tickets/${id}/alert`, 'POST', {}, () => open(id), 'Alert delivery checked. See its delivery status below.')
 }
 function insertTemplate() {
   const template = staffReplyTemplates[Number(templateIndex.value)]
@@ -144,8 +179,10 @@ function sessionChanged() {
   let current = ''
   try { current = getDiscordSession() } catch (sessionError) { console.error('Staff session unavailable:', sessionError) }
   if (current === token) return
+  deepLinkHandled = false
   generation++; selected.value = null; replies.value = []; tickets.value = []; issues.value = []; announcements.value = []; services.value = []
   title.value = ''; body.value = ''; reply.value = ''
+  titleDraft.value = ''; assigneeDraft.value = ''; labelsDraft.value = ''; members.value = []
   void load()
 }
 onMounted(() => { void load(); window.addEventListener('lumen-discord-user', sessionChanged) })
@@ -156,20 +193,22 @@ onUnmounted(() => { generation++; window.removeEventListener('lumen-discord-user
   <section class="website-workspace" aria-label="Staff website operations">
     <header><p class="website-kicker">STAFF DASHBOARD / WEBSITE OPERATIONS</p><h2>Support, updates, and service health.</h2><p class="website-note">These controls use the website database, independently of the licensing API. Every write requires a verified staff Discord session. Local license test mode does not apply here.</p></header>
     <nav class="website-tabs" aria-label="Staff website tools"><button v-for="item in tabs" :key="item.id" type="button" :aria-pressed="tab === item.id" :disabled="saving" @click="changeTab(item.id)">{{ item.name }}</button></nav>
-    <button type="button" :disabled="loading || saving" @click="load(page)">Refresh staff data</button>
+    <button type="button" :disabled="loading || saving" @click="selected ? open(selected.id) : load(page)">Refresh staff data</button>
     <p v-if="error" class="website-message website-error" role="alert">{{ error }}</p><p v-if="notice" class="website-message" role="status">{{ notice }}</p><p v-if="loading" role="status" class="website-note">Loading authorized website data…</p>
 
     <template v-if="tab === 'tickets'">
-      <label v-if="!selected">Ticket queue<select v-model="ticketStatus" :disabled="saving" @change="load(1)"><option value="all">All statuses</option><option value="open">Open</option><option value="waiting">Waiting</option><option value="closed">Closed</option></select></label>
-      <section v-if="selected" class="website-panel">
-        <button type="button" :disabled="saving" @click="load(page)">← Ticket queue</button><h3>{{ selected.title }}</h3><p class="website-meta">{{ selected.type }} · {{ selected.productId || 'General' }} · Discord ID {{ selected.customerDiscordId }} · {{ communityDate(selected.createdAt) }}</p><p class="website-body">{{ selected.body }}</p>
-        <form @submit.prevent="updateTicket"><label>Ticket status<select v-model="statusDraft"><option value="open">Open</option><option value="waiting">Waiting for customer</option><option value="closed">Closed</option></select></label><button type="submit" :disabled="saving">Save ticket status</button></form>
-        <div class="website-list"><article v-for="item in replies" :key="item.id"><p class="website-meta">{{ item.staff ? 'Staff' : 'Customer' }} · {{ item.authorName }} · {{ communityDate(item.createdAt) }}</p><p class="website-body">{{ item.body }}</p></article></div>
+      <div v-if="!selected" class="ticket-filters"><label>Status<select v-model="ticketStatus" :disabled="saving" @change="load(1)"><option value="all">All statuses</option><option value="open">Open</option><option value="waiting">Waiting</option><option value="closed">Closed</option></select></label><label>Assignment<select v-model="assignmentFilter" :disabled="saving" @change="load(1)"><option value="all">Everyone</option><option value="unassigned">Unassigned</option><option v-if="currentStaffId" :value="currentStaffId">Assigned to me</option><option v-for="member in members.filter(item => item.id !== currentStaffId)" :key="member.id" :value="member.id">{{ member.name }}</option></select></label><form @submit.prevent="load(1)"><label>Label<input v-model="labelFilter" maxlength="30" placeholder="bug, urgent, billing"></label><button type="submit" :disabled="loading || saving">Filter</button></form></div>
+      <section v-if="selected" class="website-panel ticket-conversation">
+        <button type="button" :disabled="saving" @click="backToQueue">← Ticket queue</button><header class="ticket-heading"><p class="website-kicker">TICKET {{ selected.id.slice(0, 8) }}</p><h3>{{ selected.title }}</h3><p class="website-meta"><span class="website-badge" :data-status="selected.status">{{ selected.status }}</span>{{ selected.type }} · {{ selected.productId || 'General' }}</p><p class="website-note">Opened by {{ selected.customerName }} · Discord ID {{ selected.customerDiscordId }}<br>{{ communityDate(selected.createdAt) }}</p></header>
+        <form class="ticket-routing" @submit.prevent="updateTicket"><h3>Ticket routing</h3><label>Title<input v-model="titleDraft" required minlength="3" maxlength="160"></label><div class="website-columns"><label>Status<select v-model="statusDraft"><option value="open">Open</option><option value="waiting">Waiting for customer</option><option value="closed">Closed</option></select></label><label>Assigned staff<select v-model="assigneeDraft"><option value="">Unassigned</option><option v-for="member in members" :key="member.id" :value="member.id">{{ member.name }} · {{ member.id }}</option></select></label></div><button type="button" :disabled="saving || !currentStaffId" @click="assigneeDraft = currentStaffId">Assign to me</button><label>Labels<input v-model="labelsDraft" maxlength="250" placeholder="bug, urgent, needs-logs"></label><p class="website-note">Comma-separated, up to eight labels. Labels are visible to the ticket owner.</p><button class="website-primary" type="submit" :disabled="saving">Save ticket changes</button></form>
+        <p class="website-note" role="status">Discord alert: {{ !selected.alertConfigured ? 'Webhook is not configured. Set DISCORD_BUG_REPORT_WEBHOOK on the Worker.' : selected.alert?.state || 'No alert recorded' }}<span v-if="selected.alert?.lastError"> · {{ selected.alert.lastError }}</span></p><button v-if="selected.alertConfigured && selected.alert && ['pending', 'failed'].includes(selected.alert.state)" type="button" :disabled="saving" @click="retryAlert">Retry Discord alert</button>
+        <article class="ticket-message"><p class="website-meta">{{ selected.customerName }} · Original request</p><p class="website-body">{{ selected.body }}</p><p v-if="selected.serverSoftware" class="website-note">{{ selected.serverSoftware }} · Minecraft {{ selected.minecraftVersion }}</p></article>
+        <div class="ticket-thread"><article v-for="item in replies" :key="item.id" class="ticket-message" :class="{ 'ticket-message-staff': item.staff }"><p class="website-meta"><span class="website-badge">{{ item.staff ? 'Staff' : 'Customer' }}</span>{{ item.authorName }} · {{ communityDate(item.createdAt) }}</p><p class="website-body">{{ item.body }}</p></article></div>
         <form v-if="selected.status !== 'closed'" @submit.prevent="sendReply"><label>Preset reply template<select v-model="templateIndex"><option value="">Choose a reply template</option><option v-for="(preset, index) in staffReplyTemplates" :key="preset.title" :value="String(index)">{{ preset.title }}</option></select></label><button type="button" :disabled="saving || templateIndex === ''" @click="insertTemplate">Insert template into draft</button><label>Reply (review before sending)<textarea v-model="reply" required maxlength="4000" rows="8" /></label><p class="website-note">Replace bracketed placeholders and verify advice for the customer's exact plugin/version. Templates are never sent automatically.</p><button class="website-primary" type="submit" :disabled="saving || !reply.trim()">Send staff reply</button></form>
         <p v-else class="website-note">Reopen this ticket before replying.</p>
         <a href="/known-issues">Open public known-issue board →</a>
       </section>
-      <div v-else class="website-list"><article v-for="ticket in tickets" :key="ticket.id"><p class="website-meta"><span class="website-badge">{{ ticket.status }}</span>{{ ticket.type }} · {{ ticket.customerDiscordId }} · {{ communityDate(ticket.updatedAt) }}</p><h3>{{ ticket.title }}</h3><button type="button" :disabled="loading || saving" @click="open(ticket.id)">Open ticket →</button></article></div>
+      <div v-else class="website-list ticket-cards"><article v-for="ticket in tickets" :key="ticket.id"><p class="website-meta"><span class="website-badge" :data-status="ticket.status">{{ ticket.status }}</span>{{ ticket.type }} · #{{ ticket.id.slice(0, 8) }}</p><h3>{{ ticket.title }}</h3><p class="website-note">{{ ticket.customerName }} · {{ ticket.productId || 'General support' }}<br>{{ ticket.assignedTo?.name || 'Unassigned' }}</p><div class="ticket-labels"><span v-for="label in ticket.labels" :key="label" class="website-badge">{{ label }}</span></div><div class="ticket-toolbar"><span class="website-meta">{{ communityDate(ticket.updatedAt) }}</span><button type="button" :disabled="loading || saving" @click="open(ticket.id)">Open ticket →</button></div></article></div>
     </template>
     <template v-if="tab === 'issues'">
       <form class="website-panel" @submit.prevent="saveIssue"><h3>{{ issueId ? 'Edit known issue' : 'Publish a known issue' }}</h3><p class="website-note">Review bug tickets, then publish a sanitized summary and verified workaround here. Never copy customer identities, keys, or private logs to the public board.</p><label>Title<input v-model="title" required maxlength="120"></label><label>Plugin / product ID<input v-model="productId" maxlength="100"></label><label>Issue and workaround<textarea v-model="body" required maxlength="4000" rows="6"></textarea></label><label>Status<select v-model="issueStatus"><option value="open">Open</option><option value="investigating">Investigating</option><option value="resolved">Resolved</option></select></label><label class="website-check"><input v-model="published" type="checkbox">Publish on public known-issue board</label><div class="website-actions"><button class="website-primary" type="submit" :disabled="saving">Save known issue</button><button type="button" :disabled="saving" @click="editIssue()">Clear draft</button></div></form>

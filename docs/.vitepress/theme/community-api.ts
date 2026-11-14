@@ -1,4 +1,5 @@
 import { getDiscordSession } from './discord-session'
+import { visibleServiceError } from './service-errors'
 
 export interface Ticket {
   id: string
@@ -7,10 +8,19 @@ export interface Ticket {
   body: string
   productId?: string | null
   status: 'open' | 'waiting' | 'closed'
+  customerName: string
+  assignedTo: { id: string; name: string } | null
+  labels: string[]
+  serverSoftware?: string | null
+  minecraftVersion?: string | null
+  alertDelivery?: string
+  alertConfigured?: boolean
+  alert?: { state: string; attempts: number; lastError: string | null } | null
   customerDiscordId?: string
   createdAt: string
   updatedAt: string
 }
+export interface StaffMember { id: string; name: string }
 export interface Reply { id: string; body: string; authorName: string; staff: boolean; createdAt: string }
 export interface Issue {
   id: string
@@ -48,7 +58,7 @@ export interface CommunityPage<T> { items: T[]; total: number; page: number; pag
 
 export async function communityRequest<T>(path: string, init: RequestInit = {}, authenticated = true): Promise<T> {
   const configured = import.meta.env.VITE_DOCS_ASSISTANT_ENDPOINT
-  if (!configured) throw new Error('The website service endpoint is not configured.')
+  if (!configured) throw new Error(await visibleServiceError('The website service endpoint is not configured.', 0, 'website'))
   const url = new URL(configured, window.location.origin)
   url.pathname = url.pathname.replace(/\/chat\/?$/, '').replace(/\/$/, '') + '/community' + path.split('?')[0]
   url.search = path.includes('?') ? path.slice(path.indexOf('?') + 1) : ''
@@ -68,9 +78,9 @@ export async function communityRequest<T>(path: string, init: RequestInit = {}, 
   try { result = await response.json() }
   catch (error) {
     console.error('Website service returned an invalid response:', error)
-    throw new Error(`The website service returned an invalid response (${response.status}).`)
+    throw new Error(await visibleServiceError(`The website service returned an invalid response (${response.status}).`, 0, 'website'))
   }
-  if (!response.ok) throw new Error(result?.error || `Website request failed (${response.status}).`)
+  if (!response.ok) throw new Error(await visibleServiceError(result?.error || `Website request failed (${response.status}).`, response.status, 'website'))
   return result
 }
 

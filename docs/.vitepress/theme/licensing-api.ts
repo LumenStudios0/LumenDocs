@@ -1,4 +1,5 @@
 import { getDiscordSession } from './discord-session'
+import { visibleServiceError } from './service-errors'
 
 export class LicenseApiError extends Error {
   constructor(message: string, public status = 0) {
@@ -12,7 +13,7 @@ export async function accountRequest<T>(path: string, init: RequestInit = {}): P
   const token = getDiscordSession()
   if (!token) throw new LicenseApiError('Sign in with Discord to view your license account.', 401)
   const configured = import.meta.env.VITE_DOCS_ASSISTANT_ENDPOINT
-  if (!configured) throw new LicenseApiError('The customer licensing endpoint is not configured.')
+  if (!configured) throw new LicenseApiError(await visibleServiceError('The customer licensing endpoint is not configured.', 0, 'licensing'))
   const url = new URL(configured, window.location.origin)
   url.pathname = url.pathname.replace(/\/chat\/?$/, '').replace(/\/$/, '') + path
   url.search = ''
@@ -40,11 +41,11 @@ export async function accountRequest<T>(path: string, init: RequestInit = {}): P
     try { result = await response.json() }
     catch (error) {
       console.error('Invalid licensing API response:', error)
-      throw new LicenseApiError(`The licensing service returned an invalid response (${response.status}).`, response.status)
+      throw new LicenseApiError(await visibleServiceError(`The licensing service returned an invalid response (${response.status}).`, 0, 'licensing'), response.status)
     }
     if (!response.ok) {
       throw new LicenseApiError(
-        typeof result?.detail === 'string' ? result.detail : result?.error ?? `License request failed (${response.status}).`,
+        await visibleServiceError(typeof result?.detail === 'string' ? result.detail : result?.error ?? `License request failed (${response.status}).`, response.status, 'licensing'),
         response.status,
       )
     }

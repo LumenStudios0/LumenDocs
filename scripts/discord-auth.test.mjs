@@ -365,6 +365,16 @@ test('account server endpoint clearly reports the unconnected license service', 
   assert.equal(result.code, 'LICENSE_SERVICE_UNAVAILABLE')
 })
 
+test('only verified staff see technical licensing configuration errors on customer routes', async t => {
+  const staff = await createSessionToken(t, '1400375985211441242')
+  const response = await worker.fetch(
+    request('/account/license-key', { origin, authorization: `Bearer ${staff}` }),
+    env(),
+  )
+  assert.equal(response.status, 503)
+  assert.match((await response.json()).error, /LICENSE_API_URL.*LICENSE_ADMIN_API_TOKEN/)
+})
+
 test('account IP endpoint validates addresses and reports an unconnected license service', async t => {
   const token = await createSessionToken(t)
   const invalid = await worker.fetch(
@@ -390,7 +400,8 @@ test('account IP endpoint validates addresses and reports an unconnected license
   assert.equal(valid.status, 503)
   const result = await valid.json()
   assert.equal(result.code, 'LICENSE_SERVICE_UNAVAILABLE')
-  assert.match(result.error, /LICENSE_API_URL.*LICENSE_ADMIN_API_TOKEN/)
+  assert.match(result.error, /license system is temporarily unavailable/)
+  assert.doesNotMatch(result.error, /LICENSE_API_URL|LICENSE_ADMIN_API_TOKEN/)
 })
 
 test('account IP endpoint proxies reads and updates for the signed-in Discord account', async t => {

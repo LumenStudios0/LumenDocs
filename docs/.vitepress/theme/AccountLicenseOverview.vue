@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { getDiscordSession } from './discord-session'
 import { accountRequest, LicenseApiError } from './licensing-api'
 import { effectiveLicenseStatus } from './licensing-utils.mjs'
+import { licenseServiceNotice, visibleServiceError } from './service-errors'
 
 interface LicenseInfo {
   licenseKey?: string
@@ -21,7 +22,9 @@ const updatedAt = ref('')
 let generation = 0
 let lastToken = ''
 const ready = computed(() => hasKey.value === true && status.value === 'active' && (ipCount.value ?? 0) > 0)
+const serviceDown = computed(() => licenseError.value === licenseServiceNotice || ipError.value === licenseServiceNotice)
 const headline = computed(() => loading.value ? 'Checking your license…'
+  : serviceDown.value ? 'Licensing is temporarily unavailable'
   : ready.value ? 'License and server IPs configured'
     : hasKey.value === false ? 'Start with your first purchase'
       : hasKey.value === null ? 'Your account needs a connection'
@@ -56,7 +59,8 @@ async function refresh() {
             status.value = 'unclaimed'
           } else {
             console.error('Unable to load license health:', error)
-            licenseError.value = error instanceof Error ? error.message : 'Could not load license information.'
+            const message = await visibleServiceError(error instanceof Error ? error.message : 'Could not load license information.', error instanceof LicenseApiError ? error.status : 0, 'licensing')
+            if (requestId === generation) licenseError.value = message
           }
         }
       })(),
@@ -71,8 +75,9 @@ async function refresh() {
         } catch (error) {
           if (requestId !== generation) return
           console.error('Unable to load license IP usage:', error)
-          ipError.value = error instanceof LicenseApiError && error.status === 404
-            ? 'Claim a license before adding IP addresses.' : error instanceof Error ? error.message : 'Could not load IP usage.'
+          const message = error instanceof LicenseApiError && error.status === 404
+            ? 'Claim a license before adding IP addresses.' : await visibleServiceError(error instanceof Error ? error.message : 'Could not load IP usage.', error instanceof LicenseApiError ? error.status : 0, 'licensing')
+          if (requestId === generation) ipError.value = message
         }
       })(),
     ])
@@ -145,12 +150,13 @@ onUnmounted(() => {
       <button type="button" :disabled="loading" @click="refresh">{{ loading ? 'Refreshing…' : 'Refresh account' }}</button>
     </header>
     <div class="health-metrics">
-      <article><span>LICENSE STATUS</span><strong :class="{ 'health-ready': ready }">{{ loading ? 'Checking…' : status.replaceAll('_', ' ') }}</strong><small>{{ hasKey === false ? 'Connect BuiltByBit to claim a key' : 'Reported by the licensing service' }}</small></article>
+      <article><span>LICENSE STATUS</span><strong :class="{ 'health-ready': ready }">{{ loading ? 'Checking…' : serviceDown ? 'Unavailable' : status.replaceAll('_', ' ') }}</strong><small>{{ serviceDown ? 'Please check back later' : hasKey === false ? 'Connect BuiltByBit to claim a key' : 'Reported by the licensing service' }}</small></article>
       <article><span>ELIGIBLE PRODUCTS</span><strong>{{ hasKey === null ? '—' : productIds.length }}</strong><small>Verified entitlements on your shared license</small></article>
       <article><span>SERVER IP SLOTS</span><strong>{{ ipCount === null ? '—' : ipCount }} <em>/ 3</em></strong><progress :value="ipCount ?? 0" max="3" aria-label="Used IP address slots" /><small>{{ ipCount === null ? 'Usage unavailable' : `${3 - ipCount} ${ipCount === 2 ? 'slot' : 'slots'} available` }}</small></article>
     </div>
-    <p v-if="licenseError" class="health-error" role="alert">{{ licenseError }}</p>
-    <p v-if="ipError" class="health-error" role="alert">{{ ipError }}</p>
+    <p v-if="serviceDown" class="health-service-notice" role="status">{{ licenseServiceNotice }}</p>
+    <p v-if="licenseError && licenseError !== licenseServiceNotice" class="health-error" role="alert">{{ licenseError }}</p>
+    <p v-if="ipError && ipError !== licenseServiceNotice" class="health-error" role="alert">{{ ipError }}</p>
     <div class="health-bottom">
       <div class="health-checklist">
         <p class="health-eyebrow">SETUP CHECKLIST</p>
@@ -199,6 +205,7 @@ onUnmounted(() => {
 .health-tags code { padding: 5px 9px; overflow-wrap: anywhere; }
 .license-health footer { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--vp-c-divider); color: var(--vp-c-text-3); font-size: .7rem; }
 .health-error { padding: 10px 12px; border: 1px solid var(--vp-c-danger-2); border-radius: 8px; color: var(--vp-c-danger-1); font-size: .85rem; }
+.health-service-notice { padding: 16px 18px; border: 1px solid var(--vp-c-divider); border-radius: 12px; background: var(--vp-c-brand-soft); color: var(--vp-c-text-2); font-size: .85rem; line-height: 1.7; }
 @media (max-width: 640px) { .license-health header, .license-health footer { align-items: flex-start; flex-direction: column; } .health-bottom { grid-template-columns: 1fr; } .health-metrics article { padding: 12px 8px; } .health-metrics strong { font-size: 1.12rem; } .health-metrics small { font-size: .65rem; } }
 @media (max-width: 420px) { .health-metrics { grid-template-columns: 1fr; } .health-metrics article { grid-template-columns: 1fr auto; padding: 16px; } .health-metrics article + article { border-left: 0; border-top: 1px solid var(--vp-c-divider); } .health-metrics strong { grid-column: 2; grid-row: 1 / 3; align-self: center; max-width: 100px; text-align: right; } .health-metrics small { font-size: .7rem; } .health-metrics progress { grid-column: 1 / -1; } }
 </style>

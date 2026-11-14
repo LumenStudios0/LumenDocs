@@ -27,6 +27,12 @@ const title = ref('')
 const body = ref('')
 const productId = ref('')
 const type = ref('support')
+const showComposer = ref(false)
+const serverSoftware = ref('')
+const minecraftVersion = ref('')
+const editing = ref(false)
+const editTitle = ref('')
+const editBody = ref('')
 let generation = 0
 let token = ''
 let deepLinkHandled = false
@@ -88,7 +94,7 @@ async function openTicket(id: string) {
   selected.value = null
   try {
     const result = await communityRequest<{ ticket: Ticket; replies: Reply[] }>(`/tickets/${id}`)
-    if (requestId === generation) { selected.value = result.ticket; replies.value = result.replies; reply.value = '' }
+    if (requestId === generation) { selected.value = result.ticket; replies.value = result.replies; reply.value = ''; editing.value = false }
   } catch (requestError) { if (requestId === generation) error.value = requestError instanceof Error ? requestError.message : 'Could not open ticket.' }
   finally { if (requestId === generation) loading.value = false }
 }
@@ -107,16 +113,53 @@ async function submit() {
       notice.value = `${result.message || 'Bug submitted for staff review.'} View your private ticket in My tickets.`
     } else {
       const result = await communityRequest<{ ticket: Ticket }>('/tickets', {
-        method: 'POST', body: JSON.stringify({ type: type.value, title: title.value, body: body.value, productId: productId.value || undefined }),
+        method: 'POST', body: JSON.stringify({
+          type: type.value, title: title.value, body: body.value, productId: productId.value || undefined,
+          ...(type.value === 'compatibility' ? { serverSoftware: serverSoftware.value, minecraftVersion: minecraftVersion.value } : {}),
+        }),
       })
       if (captured !== getDiscordSession()) return
       await load(1)
       await openTicket(result.ticket.id)
+      showComposer.value = false
       notice.value = 'Your ticket has been saved on the website.'
     }
-    title.value = ''; body.value = ''; productId.value = ''
+    title.value = ''; body.value = ''; productId.value = ''; serverSoftware.value = ''; minecraftVersion.value = ''
   } catch (requestError) { if (captured === getDiscordSession()) error.value = requestError instanceof Error ? requestError.message : 'Submission failed.' }
   finally { submitting.value = false }
+}
+function startEditing() {
+  if (!selected.value) return
+  editTitle.value = selected.value.title
+  editBody.value = selected.value.body
+  editing.value = true
+}
+function backToTickets() {
+  const url = new URL(window.location.href)
+  url.searchParams.delete('ticket')
+  window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash)
+  void load(page.value)
+}
+async function saveTicketDetails() {
+  if (!selected.value || submitting.value) return
+  const id = selected.value.id
+  const captured = getDiscordSession()
+  submitting.value = true; error.value = ''; notice.value = ''
+  let saved = false
+  try {
+    await communityRequest(`/tickets/${id}`, {
+      method: 'PUT', body: JSON.stringify({ title: editTitle.value, body: editBody.value }),
+    })
+    saved = true
+    if (captured !== getDiscordSession()) return
+    await openTicket(id)
+    if (captured === getDiscordSession()) {
+      if (error.value) error.value = `Ticket changes saved, but the conversation could not refresh. ${error.value}`
+      else notice.value = 'Ticket details updated.'
+    }
+  } catch (requestError) {
+    if (captured === getDiscordSession()) error.value = `${saved ? 'Ticket changes saved; refresh failed. ' : ''}${requestError instanceof Error ? requestError.message : 'Could not update ticket.'}`
+  } finally { submitting.value = false }
 }
 async function sendReply() {
   if (!selected.value || submitting.value) return
@@ -158,8 +201,10 @@ function changedSession() {
   try { current = getDiscordSession() } catch (sessionError) { console.error('Unable to read website session:', sessionError) }
   if (current === token) return
   generation++
+  deepLinkHandled = false
   tickets.value = []; notifications.value = []; selected.value = null; replies.value = []
   title.value = ''; body.value = ''; reply.value = ''; notice.value = ''
+  editing.value = false; editTitle.value = ''; editBody.value = ''; showComposer.value = false
   void load()
 }
 onMounted(() => {
@@ -172,24 +217,27 @@ onUnmounted(() => { generation++; clearInterval(timer); window.removeEventListen
 
 <template>
   <section class="website-workspace" :aria-label="String(frontmatter.title || headers[mode][1])">
-    <header><p class="website-kicker">{{ headers[mode][0] }}</p><h2>{{ headers[mode][1] }}</h2><p class="website-note">{{ headers[mode][2] }}</p><button type="button" :disabled="loading || submitting" @click="load(page)">{{ loading ? 'Loading…' : 'Refresh' }}</button></header>
+    <header><p class="website-kicker">{{ headers[mode][0] }}</p><h2>{{ headers[mode][1] }}</h2><p class="website-note">{{ headers[mode][2] }}</p><button type="button" :disabled="loading || submitting" @click="selected ? openTicket(selected.id) : load(page)">{{ loading ? 'Loading…' : 'Refresh' }}</button></header>
     <p v-if="error" class="website-message website-error" role="alert">{{ error }}</p>
     <p v-if="notice" class="website-message" role="status">{{ notice }}</p>
     <p v-if="loading" class="website-note" role="status">Loading website data…</p>
     <p v-if="!signedIn && mode !== 'status'" class="website-message">Use <strong>Log in</strong> in the header to connect your Discord account {{ mode === 'issues' ? 'before submitting a bug.' : 'to view your private workspace.' }}</p>
 
     <template v-if="mode === 'tickets' && signedIn">
-      <section v-if="selected" class="website-panel">
-        <button type="button" :disabled="loading || submitting" @click="load(page)">← All my tickets</button>
-        <h3>{{ selected.title }}</h3><p class="website-meta"><span class="website-badge">{{ selected.status }}</span>{{ selected.type }} · {{ selected.productId || 'General' }} · {{ communityDate(selected.createdAt) }}</p>
-        <p class="website-body">{{ selected.body }}</p>
-        <div class="website-list"><article v-for="item in replies" :key="item.id"><p class="website-meta">{{ item.staff ? 'Staff' : 'Customer' }} · {{ item.authorName }} · {{ communityDate(item.createdAt) }}</p><p class="website-body">{{ item.body }}</p></article></div>
+      <section v-if="selected" class="website-panel ticket-conversation">
+        <button type="button" :disabled="loading || submitting" @click="backToTickets">← All my tickets</button>
+        <header class="ticket-heading"><p class="website-kicker">TICKET {{ selected.id.slice(0, 8) }}</p><h3>{{ selected.title }}</h3><p class="website-meta"><span class="website-badge" :data-status="selected.status">{{ selected.status === 'waiting' ? 'Waiting for your reply' : selected.status }}</span>{{ selected.type }} · {{ selected.productId || 'General' }}</p><p class="website-note">Opened by {{ selected.customerName }} · {{ communityDate(selected.createdAt) }}<br>Assigned to {{ selected.assignedTo?.name || 'the support team' }}</p><div class="ticket-labels"><span v-for="label in selected.labels" :key="label" class="website-badge">{{ label }}</span></div></header>
+        <form v-if="editing" @submit.prevent="saveTicketDetails"><label>Ticket title<input v-model="editTitle" required minlength="3" maxlength="160"></label><label>Details<textarea v-model="editBody" required minlength="5" maxlength="8000" rows="6" /></label><div class="website-actions"><button class="website-primary" type="submit" :disabled="submitting">Save changes</button><button type="button" :disabled="submitting" @click="editing = false">Cancel</button></div></form>
+        <article v-else class="ticket-message"><p class="website-meta">{{ selected.customerName }} · Original request</p><p class="website-body">{{ selected.body }}</p><p v-if="selected.serverSoftware" class="website-note">{{ selected.serverSoftware }} · Minecraft {{ selected.minecraftVersion }}</p><button v-if="selected.status !== 'closed'" type="button" :disabled="submitting" @click="startEditing">Edit ticket details</button></article>
+        <div class="ticket-thread"><article v-for="item in replies" :key="item.id" class="ticket-message" :class="{ 'ticket-message-staff': item.staff }"><p class="website-meta"><span class="website-badge">{{ item.staff ? 'Staff' : 'Customer' }}</span>{{ item.authorName }} · {{ communityDate(item.createdAt) }}</p><p class="website-body">{{ item.body }}</p></article></div>
+        <p v-if="!replies.length" class="website-note">Your request is with the support team. Replies will appear here and in your notification center.</p>
         <form v-if="selected.status !== 'closed'" @submit.prevent="sendReply"><label>Reply<textarea v-model="reply" required maxlength="4000" rows="4" :disabled="submitting" /></label><button class="website-primary" type="submit" :disabled="submitting || !reply.trim()">Send reply</button></form>
         <p v-else class="website-note">This ticket is closed. Create a new ticket if you need further help.</p>
       </section>
       <template v-else>
-        <details class="website-panel"><summary>Create a ticket</summary><form @submit.prevent="submit"><label>Type<select v-model="type"><option value="support">Support</option><option value="bug">Bug report</option><option value="compatibility">Compatibility</option><option value="feature">Feature request</option></select></label><label>Title<input v-model="title" required maxlength="120"></label><label>Plugin / product ID (optional)<input v-model="productId" maxlength="100"></label><label>Details<textarea v-model="body" required maxlength="4000" rows="6" placeholder="Describe the issue and reproduction steps. Remove credentials from logs."></textarea></label><button class="website-primary" type="submit" :disabled="submitting">Create website ticket</button></form></details>
-        <div class="website-list"><article v-for="ticket in tickets" :key="ticket.id"><p class="website-meta"><span class="website-badge">{{ ticket.status }}</span>{{ ticket.type }} · {{ communityDate(ticket.updatedAt) }}</p><h3>{{ ticket.title }}</h3><button type="button" :disabled="loading || submitting" @click="openTicket(ticket.id)">Open conversation →</button></article></div>
+        <div class="ticket-toolbar"><div><h3>Your conversations</h3><p class="website-note">{{ total }} private {{ total === 1 ? 'ticket' : 'tickets' }} · Linked automatically to your Discord account</p></div><button class="website-primary" type="button" :disabled="submitting" @click="showComposer = !showComposer">{{ showComposer ? 'Cancel new ticket' : '+ New ticket' }}</button></div>
+        <form v-if="showComposer" class="website-panel ticket-composer" @submit.prevent="submit"><h3>How can we help?</h3><p class="website-message">No username needed. This ticket belongs to the Discord account you are logged into.</p><div class="website-columns"><label>Type<select v-model="type"><option value="support">Support</option><option value="bug">Bug report</option><option value="compatibility">Compatibility</option><option value="feature">Feature request</option></select></label><label>Plugin<select v-model="productId"><option value="">General / no specific plugin</option><option v-for="plugin in pluginData.plugins" :key="plugin.id" :value="plugin.id">{{ plugin.name }}</option></select></label></div><div v-if="type === 'compatibility'" class="website-columns"><label>Server software<input v-model="serverSoftware" required maxlength="100" placeholder="Paper, Purpur, etc."></label><label>Minecraft version<input v-model="minecraftVersion" required maxlength="50" placeholder="1.21.4"></label></div><label>Short title<input v-model="title" required minlength="3" maxlength="160" placeholder="What do you need help with?"></label><label>Details<textarea v-model="body" required minlength="5" maxlength="4000" rows="6" placeholder="What happened, what you expected, and steps to reproduce. Remove credentials from logs."></textarea></label><button class="website-primary" type="submit" :disabled="submitting">{{ submitting ? 'Saving ticket…' : 'Send to support' }}</button></form>
+        <div class="website-list ticket-cards"><article v-for="ticket in tickets" :key="ticket.id"><p class="website-meta"><span class="website-badge" :data-status="ticket.status">{{ ticket.status === 'waiting' ? 'Reply requested' : ticket.status }}</span>{{ ticket.type }} · #{{ ticket.id.slice(0, 8) }}</p><h3>{{ ticket.title }}</h3><p class="website-note">{{ ticket.productId || 'General support' }} · {{ ticket.assignedTo?.name || 'Awaiting assignment' }}</p><div class="ticket-labels"><span v-for="label in ticket.labels" :key="label" class="website-badge">{{ label }}</span></div><div class="ticket-toolbar"><span class="website-meta">Updated {{ communityDate(ticket.updatedAt) }}</span><button type="button" :disabled="loading || submitting" @click="openTicket(ticket.id)">Open conversation →</button></div></article></div>
         <p v-if="!loading && !error && !tickets.length" class="website-note">No tickets on this page.</p>
       </template>
     </template>

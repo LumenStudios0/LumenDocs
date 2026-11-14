@@ -37,6 +37,12 @@ function getAdminRole(discordId, env) {
   return configuredAdmins.includes(discordId) ? 'admin' : null
 }
 
+function getStaffMembers(env) {
+  return [...new Set([OWNER_DISCORD_ID, STUDIO_LEAD_DISCORD_ID,
+    ...(env.ADMIN_DISCORD_IDS || '').split(',').map(id => id.trim()).filter(id => /^\d{5,22}$/.test(id))])]
+    .map(id => ({ id, name: id === OWNER_DISCORD_ID ? 'Studio owner' : id === STUDIO_LEAD_DISCORD_ID ? 'Studio lead' : 'Studio staff' }))
+}
+
 function base64UrlEncode(value) {
   const bytes = typeof value === 'string' ? new TextEncoder().encode(value) : value
   let binary = ''
@@ -1007,8 +1013,9 @@ export default {
 
     if (path.startsWith('/community') || path === '/bug-report' || path === '/reports') {
       try {
-        return await handleCommunity(request, env, origin, path, { respond, verifyLoginToken, getAdminRole })
-      } catch {
+        return await handleCommunity(request, env, origin, path, { respond, verifyLoginToken, getAdminRole, getStaffMembers })
+      } catch (error) {
+        console.error('Community request failed unexpectedly:', error)
         return respond({ error: 'The community service is temporarily unavailable' }, 503, origin)
       }
     }
@@ -1031,7 +1038,19 @@ export default {
       path === '/account/profile' ||
       path === '/account/delete'
     ) {
-      return accountLicenseApi(request, env, origin, path)
+      const response = await accountLicenseApi(request, env, origin, path)
+      if (response.status >= 500) {
+        const authorization = request.headers.get('Authorization') || ''
+        const user = await verifyLoginToken(authorization.startsWith('Bearer ') ? authorization.slice(7) : '', env)
+        if (!user || !getAdminRole(user.id, env)) {
+          console.error('Customer licensing request failed:', path, response.status)
+          return respond({
+            error: 'The license system is temporarily unavailable or being worked on. Please try again later.',
+            code: 'LICENSE_SERVICE_UNAVAILABLE',
+          }, response.status, origin)
+        }
+      }
+      return response
     }
 
     if (path === '/dinosaur-discoveries') {

@@ -32,11 +32,10 @@ The homepage layout and animations live in `docs/.vitepress/theme/HomeExperience
 
 The assistant and admin dashboard use the Cloudflare Worker in `worker/chat.js` through the same-origin `https://lumenstudio.fyi/api/` route. Discord OAuth starts at `https://lumen-docs-assistant.lumennetwork0.workers.dev/auth/login` and returns to `/auth/callback` on that same host. Keep `workers_dev = true` in `wrangler.toml`: custom-domain routes alone do not enable this hostname. The login and callback must share a host so the browser sends the OAuth state cookie. The Worker deployment checks the live redirect to Discord and its callback/cookie configuration.
 
-Configure the Discord webhook only as a Cloudflare Worker secret, then deploy the worker:
+New website tickets send a short staff-dashboard link through the existing Discord webhook. Ticket details, usernames, and logs stay on the website; Discord receives only "A new ticket has been opened! Click here to open it." Configure the webhook only as a Cloudflare Worker secret, then deploy through the Worker workflow so the D1 migrations are applied:
 
 ```sh
 npx wrangler secret put DISCORD_BUG_REPORT_WEBHOOK
-npx wrangler deploy
 ```
 
 Never put the webhook URL in site code, GitHub Pages variables, or committed files. If a webhook URL has been shared publicly, delete it and create a replacement before configuring the secret. Run worker tests with `npm run test:worker`.
@@ -45,7 +44,9 @@ Never put the webhook URL in site code, GitHub Pages variables, or committed fil
 
 The customer dashboard reads shared-license status, verified product IDs, IP usage, and connected installations from the Worker. Customers can reconnect BuiltByBit to refresh purchases, copy key-free diagnostics, search reported installations, and replace the complete three-address allowlist. Removing the last IP disables validation; the interface asks for confirmation. A first shared-key claim replaces legacy per-product keys and requires updating plugin configs and server IPs.
 
-The staff workspace at `/admin/` has customer, license inventory, audit, and product registry views. Lists are paginated; filters, sorting, attention counts (including active licenses expiring within 30 days), and CSV exports apply only to the loaded page or selected customer. Exports omit keys and IP addresses; audit details redact credential-named fields. New license keys are masked and cleared when switching customers or signing out. Existing Worker authorization and supported mutation routes remain the enforcement layer. These features require the configured licensing backend described in `worker/README.md`; an unavailable service is shown as an error, not an empty successful result.
+The staff workspace at `/admin/` has customer, license inventory, audit, and product registry views. Lists are paginated; filters, sorting, attention counts (including active licenses expiring within 30 days), and CSV exports apply only to the loaded page or selected customer. Exports omit keys and IP addresses; audit details redact credential-named fields. New license keys are masked and cleared when switching customers or signing out. Existing Worker authorization and supported mutation routes remain the enforcement layer. These features require the configured licensing backend described in `worker/README.md`; customers see a clear maintenance/unavailable notice while verified staff retain technical diagnostics. Unavailable data is never presented as a successful empty account.
+
+Tickets belong automatically to the verified Discord account, without a username field. Customers can edit the title and original details of their open tickets. Staff can rename tickets, assign authorized staff, add up to eight labels, and filter by assignment/status/label. Discord ticket links open the matching conversation in **Staff Dashboard**. Alerts are queued atomically with tickets, retried by the five-minute job up to five attempts, and show delivery status/retry controls to staff. Delivery is at-least-once: after an ambiguous timeout, verify Discord before manually retrying.
 
 Run `npm run test:licensing` for expiry-boundary, allowlist, CSV, and audit-redaction checks. The Pages workflow runs these alongside the Worker tests.
 
