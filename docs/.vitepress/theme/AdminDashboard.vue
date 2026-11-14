@@ -7,6 +7,7 @@ import { clearAdminTestData, createAdminTestStore, TEST_OWNER_ID } from './admin
 import StaffCommunity from './StaffCommunity.vue'
 import StaffPluginRegistry from './StaffPluginRegistry.vue'
 import StaffAccessSettings from './StaffAccessSettings.vue'
+import ProductReleaseManager from './ProductReleaseManager.vue'
 import { useSiteDialog } from './site-dialog'
 const { confirm: confirmSiteAction } = useSiteDialog()
 
@@ -63,7 +64,7 @@ const accessError = ref('')
 const accessReady = ref(false)
 const can = (permission: string) => testMode.value || permissions.value.includes(permission)
 const availableViews = computed(() => views.filter(tab => can(tab.id === 'products' ? 'plugins.view' : tab.id === 'audit' ? 'audit.view' : 'customers.view')))
-const communityAccess = computed(() => ['tickets.view', 'issues.manage', 'notifications.manage', 'status.manage'].some(can))
+const communityAccess = computed(() => ['tickets.view', 'issues.manage', 'notifications.manage', 'status.manage', 'licenses.grant'].some(can))
 const pages = reactive<Record<View, number>>({ customers: 1, licenses: 1, audit: 1, products: 1 })
 const totals = reactive<Record<View, number>>({ customers: 0, licenses: 0, audit: 0, products: 0 })
 const customers = ref<Customer[]>([])
@@ -294,7 +295,11 @@ async function loadView(page = pages[view.value]) {
   lastUpdated.value = ''
   try {
     lastToken = getDiscordSession()
-    if (target === 'products') { loaded.value = true; return }
+    if (target === 'products') {
+      const registry = await fetchRegistryItems<AdminProduct>(adminRequest, '/products')
+      if (requestId === generation) { products.value = registry; loaded.value = true }
+      return
+    }
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
     if (target === 'customers' && appliedQuery.value) params.set('query', appliedQuery.value)
     const result = validatePage(await adminRequest<Page<Customer | AdminLicense | AuditEntry | AdminProduct>>(
@@ -719,7 +724,8 @@ onUnmounted(() => {
       <div v-if="auditMaxPage > 1" class="staff-pagination"><button type="button" :disabled="busy || auditCurrentPage <= 1" @click="loadAuditPage(auditCurrentPage - 1)">Previous events</button><span>Page {{ auditCurrentPage }} / {{ auditMaxPage }}</span><button type="button" :disabled="busy || auditCurrentPage >= auditMaxPage" @click="loadAuditPage(auditCurrentPage + 1)">Next events</button></div>
     </section>
 
-    <StaffPluginRegistry v-if="loaded && !user && view === 'products' && can('plugins.view')" :request="adminRequest" :test-mode="testMode" :permissions="permissions" />
+    <StaffPluginRegistry v-if="loaded && !user && view === 'products' && can('plugins.view')" :request="adminRequest" :test-mode="testMode" :permissions="permissions" @products-loaded="products = $event" />
+    <ProductReleaseManager v-if="loaded && !user && view === 'products' && !testMode" :permissions="permissions" :products="products" />
     <div v-if="loaded && !user && view !== 'audit' && view !== 'products'" class="staff-pagination"><button type="button" :disabled="busy || pages[view] <= 1" @click="loadView(pages[view] - 1)">Previous page</button><span>Page {{ pages[view] }} / {{ maxPage }} · {{ totals[view] }} total</span><button type="button" :disabled="busy || pages[view] >= maxPage" @click="loadView(pages[view] + 1)">Next page</button></div>
     <footer class="staff-footer">{{ testMode ? 'Local simulation only. Reset to undo all test edits; exit to return to the real API.' : 'Access is checked by the Worker on every live request. Administrator credentials never reach this page.' }}</footer>
     </template>

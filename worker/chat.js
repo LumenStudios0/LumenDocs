@@ -1,6 +1,7 @@
 import { handleCommunity, runCommunityChecks } from './community.js'
 import { adminPermission, getAdminRole, getStaffMembers, hasPermission, rememberMember, resolveAccess, websiteAdminApi } from './access-control.js'
 import { claimDiscordPurchases, submitBuiltByBitClaim } from './builtbybit.js'
+import { handleProductTools } from './product-tools.js'
 
 const jsonHeaders = {
   'Content-Type': 'application/json; charset=utf-8',
@@ -1059,6 +1060,15 @@ export default {
       } catch (error) {
         console.error('Website access lookup failed:', error)
         return respond({ error: 'Website access could not be verified. Please try again later.' }, 503, origin)
+      }
+    }
+
+    if (path.startsWith('/studio/')) {
+      try {
+        return await handleProductTools(request, env, origin, path, { respond, verifyLoginToken })
+      } catch (error) {
+        console.error('Product tools request failed:', error)
+        return respond({ error: 'Product tools are temporarily unavailable. If a batch was submitted, check customer accounts before retrying.' }, 503, origin)
       }
     }
 

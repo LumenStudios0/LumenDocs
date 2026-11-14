@@ -60,6 +60,16 @@ Run `npm run test:licensing` for expiry-boundary, allowlist, CSV, and audit-reda
 
 If the licensing backend is unavailable, the signed-in studio owner can select **Open my editable test account** on `/admin/`. The page verifies the owner ID and role through the Worker's `/auth/me` endpoint before enabling this explicit local mode. It seeds the owner account, two synthetic products, and a test license; grants, restrictions, verification, IP changes, deletion, and audit events are simulated and saved only in this browser's local storage. Keys are labeled `TEST-ONLY-NOT-VALID` and cannot activate plugins. **Reset test data** restores the seed; **Exit test mode** returns to the real API. Mode is not automatically enabled on failure or on reload, and changing the signed-in session exits it. Discord authentication still requires a working Worker. This is a UI practice tool, not a backend substitute or an authorization bypass.
 
+## Publishing and support workflows
+
+Customers can request a plugin trial at `/account/trials`; staff review requests in **Tickets, updates & status**. Trial approval requires license-grant permission and a working licensing API. Existing active access is preserved. Closed tickets accept owner-only satisfaction ratings; staff can escalate tickets and configure unanswered-ticket reminders through the existing Discord webhook.
+
+Staff notifications support HTTPS image links, rich formatting, and scheduled publication. Published staff updates and product releases appear at `/updates`. Formatting includes headings, bold, italic, code, and allowlisted text colors; raw HTML is not executed. The status page keeps incident history, and customers can subscribe to published known issues.
+
+**Plugins & products** includes bulk grants (up to 10 customers per batch) and a release manager with drafts, stable/beta channels, compatibility notes, and public release notes. Each successful bulk grant sends a private notification. Existing active access is skipped; uncertain upstream results must be checked on the customer profile before retrying. No distributable JAR files or release JAR assets were found in the studio plugin repositories during setup, so direct plugin downloads were intentionally skipped rather than exposing source repositories.
+
+Expiry reminders run with the five-minute job, scanning customer entitlements in bounded pages. Notifications are private and deduplicated separately for the seven-day and one-day windows. Deployment applies community migrations `0006` and `0007`; no new storage credentials or webhook are required.
+
 ## Keeping guides accurate
 
 Commands and supported versions can vary by release, so check the notes that came with your jar. Need a license? Follow the [Discord license guide](https://lumenstudios0.github.io/LumenDocs/getting-started/licensing). Never add license keys, plugin tokens, database passwords, Discord webhooks, or other private credentials here.

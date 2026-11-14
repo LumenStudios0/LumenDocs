@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { DatabaseSync } from 'node:sqlite'
 import worker from '../worker/chat.js'
 import { ROLES } from '../shared/permissions.mjs'
+import { runCommunityExpansionChecks } from '../worker/community-expansion.js'
 
 const origin = 'https://lumenstudio.fyi'
 const staffId = '1400375985211441242'
@@ -28,7 +29,7 @@ async function tokenFor(id, name) {
 
 function createD1() {
   const sqlite = new DatabaseSync(':memory:')
-  const migrations = Promise.all(['0001_community.sql', '0002_ticket_routing.sql', '0003_community_forum.sql', '0004_website_access.sql', '0005_member_registration.sql'].map(
+  const migrations = Promise.all(['0001_community.sql', '0002_ticket_routing.sql', '0003_community_forum.sql', '0004_website_access.sql', '0005_member_registration.sql', '0006_community_expansion.sql', '0007_product_tools.sql'].map(
     name => readFile(new URL(`../worker/migrations/community/${name}`, import.meta.url), 'utf8'),
   ))
   const database = {
@@ -968,4 +969,483 @@ test('registry removals are narrowly permission controlled and configured access
   assert.equal((await api('/admin/plugins/shards', 'DELETE')).status, 500)
   assert.equal((await api('/auth/me')).status, 503)
   assert.equal(forwarded.length, before)
+})
+
+test('ticket ratings require the closed ticket owner; escalation and follow-up require staff', async t => {
+  const { db, api } = await accessFixture(t)
+  const customer = await tokenFor(customerId, 'Customer')
+  const other = await tokenFor('123456789012345679', 'Other')
+  const created = await (await api('/community/tickets', 'POST', { type: 'support', title: 'Rating test', body: 'Please help with setup.' }, customer)).json()
+  const id = created.ticket.id
+  assert.equal(created.ticket.followUpHours, 24)
+  assert.equal(created.ticket.rating, null)
+  assert.equal((await api(`/community/tickets/${id}/rating`, 'PUT', { score: 5 }, customer)).status, 409)
+  assert.equal((await api(`/community/staff/tickets/${id}/escalation`, 'PUT', { reason: 'Needs developer investigation' }, customer)).status, 403)
+  assert.equal((await api(`/community/staff/tickets/${id}/escalation`, 'PUT', { reason: 'Needs investigation', targetId: customerId })).status, 400)
+  const escalation = await (await api(`/community/staff/tickets/${id}/escalation`, 'PUT', { reason: 'Needs investigation', targetId: staffId })).json()
+  assert.equal(escalation.ticket.escalation.by, staffId)
+  assert.equal(escalation.ticket.escalation.targetId, staffId)
+  for (const hours of [0, 169, 1.5, '24']) assert.equal((await api(`/community/staff/tickets/${id}/follow-up`, 'PUT', { hours })).status, 400)
+  assert.equal((await api(`/community/staff/tickets/${id}/follow-up`, 'PUT', { hours: 2 })).status, 200)
+  assert.equal((await api(`/community/staff/tickets/${id}`, 'PUT', { status: 'closed', followUpHours: 3 })).status, 200)
+  assert.equal((await api(`/community/tickets/${id}/rating`, 'PUT', { score: 5 }, other)).status, 404)
+  assert.equal((await api(`/community/tickets/${id}/rating`, 'PUT', { score: 5 })).status, 404)
+  for (const score of [0, 6, 4.5, '5']) assert.equal((await api(`/community/tickets/${id}/rating`, 'PUT', { score }, customer)).status, 400)
+  assert.equal((await api(`/community/tickets/${id}/rating`, 'PUT', { score: 5, comment: 'x'.repeat(2001) }, customer)).status, 400)
+  const comment = '**Thanks** <script>not executable raw text</script>'
+  assert.equal((await api(`/community/tickets/${id}/rating`, 'PUT', { score: 5, comment }, customer)).status, 200)
+  const detail = await (await api(`/community/tickets/${id}`, 'GET', undefined, customer)).json()
+  assert.deepEqual(detail.ticket.rating, { score: 5, comment })
+  assert.equal(detail.ticket.followUpHours, 3)
+  assert.equal(db.sqlite.prepare('SELECT rating_score FROM community_tickets WHERE id = ?').get(id).rating_score, 5)
+})
+
+test('targeted escalations atomically assign and notify only the authorized target without customer content', async t => {
+  const { db, api, assign } = await accessFixture(t)
+  const customer = await tokenFor(customerId, 'Customer private name')
+  const targetId = '123456789012345679'
+  const target = await tokenFor(targetId, 'Target Support')
+  await assign(targetId, 'support_team')
+  db.sqlite.prepare('UPDATE website_members SET display_name = ? WHERE discord_id = ?').run('Target Support', targetId)
+  await api('/community/preferences', 'PUT', { updates: false, announcements: false, ticketReplies: false, products: [] }, target)
+  const id = (await (await api('/community/tickets', 'POST', {
+    type: 'support', title: 'Private customer title', body: 'Private customer logs and license keys',
+  }, customer)).json()).ticket.id
+  const path = `/community/staff/tickets/${id}/escalation`
+  const body = { reason: 'Private investigation reason', targetId }
+  db.failBatchAt = 1
+  assert.equal((await api(path, 'PUT', body)).status, 503)
+  db.failBatchAt = null
+  const unchanged = db.sqlite.prepare('SELECT escalation_reason, assignee_id FROM community_tickets WHERE id = ?').get(id)
+  assert.equal(unchanged.escalation_reason, null)
+  assert.equal(unchanged.assignee_id, null)
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM community_notifications WHERE kind = 'escalation'").get().n, 0)
+  const saved = await (await api(path, 'PUT', body)).json()
+  assert.equal(saved.ticket.assignedTo.id, targetId)
+  assert.equal(saved.ticket.assignedTo.name, 'Target Support')
+  const inbox = await (await api('/community/notifications', 'GET', undefined, target)).json()
+  assert.equal(inbox.total, 1)
+  assert.equal(inbox.items[0].kind, 'escalation')
+  assert.equal(inbox.items[0].body, 'A ticket needs your attention')
+  assert.equal(inbox.items[0].link, `/admin/?ticket=${id}`)
+  assert.doesNotMatch(JSON.stringify(inbox), /Private|Customer private|license keys|investigation/)
+  assert.equal((await (await api('/community/notifications')).json()).total, 0)
+  assert.equal((await (await api('/community/notifications', 'GET', undefined, customer)).json()).total, 0)
+  assert.equal((await api(`/community/notifications/${inbox.items[0].id}/read`, 'POST', {})).status, 404)
+  assert.equal((await api(`/community/notifications/${inbox.items[0].id}/read`, 'POST', {}, target)).status, 200)
+  assert.equal((await api(path, 'PUT', { reason: 'Unrouted escalation flag' })).status, 200)
+  assert.equal(db.sqlite.prepare('SELECT assignee_id FROM community_tickets WHERE id = ?').get(id).assignee_id, targetId)
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM community_notifications WHERE kind = 'escalation'").get().n, 1)
+  assert.equal((await api(path, 'PUT', { reason: 'Reject customer target', targetId: customerId })).status, 400)
+})
+
+test('scheduled images publish atomically once with proper audience; cancellation and validation work', async t => {
+  const { db, config, api } = await accessFixture(t)
+  const customer = await tokenFor(customerId, 'Customer')
+  const base = { title: 'Scheduled release', body: '**Raw markdown**', kind: 'update', audience: 'all', imageUrl: 'https://images.example/update.png' }
+  for (const imageUrl of ['http://images.example/image.png', 'javascript:alert(1)', 'data:image/png;base64,abc', 'https://user:password@example.com/a', 'https://example.com/' + 'x'.repeat(2000), {}]) {
+    assert.equal((await api('/community/staff/notifications', 'POST', { ...base, imageUrl })).status, 400)
+  }
+  for (const scheduledAt of ['invalid', new Date(Date.now() - 1000).toISOString(), new Date(Date.now() + 366 * 86400000).toISOString(), 1234]) {
+    assert.equal((await api('/community/staff/notifications', 'POST', { ...base, scheduledAt })).status, 400)
+  }
+  const scheduledAt = new Date(Date.now() + 3600000).toISOString()
+  const scheduled = await (await api('/community/staff/notifications', 'POST', { ...base, scheduledAt })).json()
+  const id = scheduled.notification.id
+  assert.equal(scheduled.scheduled, true)
+  assert.equal((await (await api('/community/updates', 'GET', undefined, null)).json()).total, 0)
+  assert.equal((await (await api('/community/notifications', 'GET', undefined, customer)).json()).total, 0)
+  assert.equal((await (await api('/community/staff/scheduled')).json()).items[0].imageUrl, base.imageUrl)
+  assert.equal((await api(`/community/staff/scheduled/${id}`, 'DELETE', undefined, customer)).status, 403)
+  const cancelled = await (await api('/community/staff/notifications', 'POST', { ...base, scheduledAt })).json()
+  assert.equal((await api(`/community/staff/scheduled/${cancelled.notification.id}`, 'DELETE')).status, 200)
+  assert.equal((await api(`/community/staff/scheduled/${cancelled.notification.id}`, 'DELETE')).status, 404)
+  db.sqlite.prepare("UPDATE community_scheduled_notifications SET scheduled_at = '2020-01-01T00:00:00.000Z'").run()
+  db.failBatchAt = 1
+  await runCommunityExpansionChecks(config)
+  assert.equal(db.sqlite.prepare('SELECT COUNT(*) AS n FROM community_notifications').get().n, 0)
+  db.failBatchAt = null
+  await Promise.all([runCommunityExpansionChecks(config), runCommunityExpansionChecks(config)])
+  await runCommunityExpansionChecks(config)
+  assert.equal(db.sqlite.prepare('SELECT COUNT(*) AS n FROM community_notifications').get().n, 1)
+  assert.equal((await api(`/community/staff/scheduled/${id}`, 'DELETE')).status, 404)
+  const updates = await (await api('/community/updates', 'GET', undefined, null)).json()
+  assert.equal(updates.items[0].id, id)
+  assert.equal(updates.items[0].imageUrl, base.imageUrl)
+  assert.equal(updates.items[0].body, base.body)
+  await api('/community/staff/notifications', 'POST', { ...base, audience: 'staff' })
+  await api('/community/staff/notifications', 'POST', { ...base, kind: 'announcement' })
+  await api('/community/staff/notifications', 'POST', { ...base, audience: 'product', productId: 'other-product' })
+  assert.equal((await (await api('/community/updates', 'GET', undefined, null)).json()).total, 2)
+  await api('/community/preferences', 'PUT', { updates: true, announcements: true, ticketReplies: true, products: ['shards'] }, customer)
+  const inbox = await (await api('/community/notifications', 'GET', undefined, customer)).json()
+  assert.equal(inbox.total, 2)
+  assert.equal(inbox.items.some(item => item.audience === 'staff' || item.productId === 'other-product'), false)
+})
+
+test('published issue subscriptions send private generic notifications, never draft changes', async t => {
+  const { db, api } = await accessFixture(t)
+  const customer = await tokenFor(customerId, 'Customer')
+  const other = await tokenFor('123456789012345679', 'Other')
+  const issueBody = { title: 'Known issue', body: 'Sanitized public details', status: 'open', published: true }
+  const created = await (await api('/community/staff/issues', 'POST', issueBody)).json()
+  const id = created.issue.id
+  assert.equal((await api(`/community/issues/${id}/subscription`, 'PUT', { subscribed: true }, null)).status, 401)
+  assert.equal((await api(`/community/issues/${id}/subscription`, 'PUT', { subscribed: 'yes' }, customer)).status, 400)
+  assert.equal((await (await api(`/community/issues/${id}/subscription`, 'PUT', { subscribed: true }, customer)).json()).subscribed, true)
+  await api(`/community/issues/${id}/subscription`, 'PUT', { subscribed: true }, customer)
+  await api('/community/preferences', 'PUT', { updates: false, announcements: false, ticketReplies: false, products: [] }, customer)
+  await api(`/community/staff/issues/${id}`, 'PUT', { ...issueBody, status: 'resolved' })
+  await api(`/community/staff/issues/${id}`, 'PUT', { ...issueBody, status: 'resolved' })
+  let inbox = await (await api('/community/notifications', 'GET', undefined, customer)).json()
+  assert.equal(inbox.total, 1)
+  assert.equal(inbox.items[0].kind, 'issue')
+  assert.equal(inbox.items[0].link, '/known-issues?channel=known-issues')
+  assert.match(inbox.items[0].title, /resolved/)
+  assert.equal((await api(`/community/notifications/${inbox.items[0].id}/read`, 'POST', {}, customer)).status, 200)
+  assert.equal((await api(`/community/notifications/${inbox.items[0].id}/read`, 'POST', {}, other)).status, 404)
+  assert.equal((await (await api('/community/notifications', 'GET', undefined, other)).json()).total, 0)
+  await api(`/community/staff/issues/${id}`, 'PUT', { ...issueBody, body: 'SECRET_PRIVATE_DRAFT', published: false })
+  assert.equal((await api(`/community/issues/${id}/subscription`, 'GET', undefined, customer)).status, 404)
+  await api(`/community/staff/issues/${id}`, 'PUT', { ...issueBody, body: 'SECRET_PRIVATE_EDIT', published: false })
+  inbox = await (await api('/community/notifications', 'GET', undefined, customer)).json()
+  assert.equal(inbox.total, 1)
+  assert.doesNotMatch(JSON.stringify(inbox), /SECRET|Sanitized/)
+  assert.equal(db.sqlite.prepare('SELECT COUNT(*) AS n FROM community_issue_subscriptions').get().n, 1)
+})
+
+test('effective service changes produce incident history, hidden automatic changes and unchanged states do not', async t => {
+  const { db, api } = await accessFixture(t)
+  const update = (status, message = '') => api('/community/staff/status/website', 'PUT', { status, message })
+  await update('outage', 'Investigating a public website outage')
+  await update('outage', 'Updated message without a transition')
+  assert.equal(db.sqlite.prepare('SELECT COUNT(*) AS n FROM community_incidents').get().n, 1)
+  db.sqlite.prepare("UPDATE community_service_status SET automatic_status = 'operational' WHERE service_id = 'website'").run()
+  assert.equal(db.sqlite.prepare('SELECT COUNT(*) AS n FROM community_incidents').get().n, 1)
+  await update('maintenance', 'Planned maintenance')
+  await update('auto')
+  const history = await (await api('/community/incidents?pageSize=2', 'GET', undefined, null)).json()
+  assert.equal(history.total, 3)
+  assert.equal(history.items.length, 2)
+  const rows = db.sqlite.prepare('SELECT * FROM community_incidents ORDER BY rowid').all()
+  assert.deepEqual(rows.map(row => [row.previous_status, row.status]), [['unknown', 'outage'], ['outage', 'maintenance'], ['maintenance', 'operational']])
+  assert.equal(rows.every(row => row.resolved_at), true)
+  assert.equal(rows[2].message, '')
+  db.sqlite.prepare("UPDATE community_service_status SET automatic_status = 'outage' WHERE service_id = 'website'").run()
+  assert.equal(db.sqlite.prepare('SELECT status, resolved_at FROM community_incidents ORDER BY rowid DESC LIMIT 1').get().resolved_at, null)
+})
+
+test('follow-up reminders deduplicate unanswered cycles and exclude closed, waiting and staff-last tickets', async t => {
+  const { db, config, api } = await accessFixture(t)
+  const customer = await tokenFor(customerId, 'Customer_PII')
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  const payloads = []
+  globalThis.fetch = async (input, options) => {
+    assert.equal(new URL(input).hostname, 'discord.com')
+    payloads.push(JSON.parse(options.body))
+    return new Response(null, { status: 204 })
+  }
+  async function create() {
+    return (await (await api('/community/tickets', 'POST', {
+      type: 'support', title: 'Private title @everyone', body: 'Private log license-key-secret',
+    }, customer)).json()).ticket.id
+  }
+  const ids = await Promise.all([create(), create(), create(), create()])
+  await api(`/community/staff/tickets/${ids[1]}`, 'PUT', { status: 'closed' })
+  await api(`/community/staff/tickets/${ids[2]}`, 'PUT', { status: 'waiting' })
+  await api(`/community/tickets/${ids[3]}/replies`, 'POST', { body: 'Staff response' })
+  await api(`/community/staff/tickets/${ids[3]}`, 'PUT', { status: 'open' })
+  config.DISCORD_BUG_REPORT_WEBHOOK = 'https://discord.com/api/webhooks/123456/test-secret'
+  const past = new Date(Date.now() - 26 * 3600000).toISOString()
+  db.sqlite.prepare("UPDATE community_tickets SET unanswered_since = ? WHERE status = 'open'").run(past)
+  await Promise.all([runCommunityExpansionChecks(config), runCommunityExpansionChecks(config)])
+  await runCommunityExpansionChecks(config)
+  assert.equal(payloads.length, 1)
+  assert.match(payloads[0].content, /^This ticket has not been answered for 26 hours\. \[Open ticket\]\(https:\/\/lumenstudio\.fyi\/admin\/\?ticket=/)
+  assert.deepEqual(payloads[0].allowed_mentions, { parse: [] })
+  assert.doesNotMatch(JSON.stringify(payloads), /Private|Customer_PII|everyone|license-key-secret|test-secret/)
+  await api(`/community/tickets/${ids[0]}/replies`, 'POST', { body: 'Still waiting, same cycle' }, customer)
+  await runCommunityExpansionChecks(config)
+  assert.equal(payloads.length, 1)
+  await api(`/community/tickets/${ids[0]}/replies`, 'POST', { body: 'Please send more details' })
+  await api(`/community/tickets/${ids[0]}/replies`, 'POST', { body: 'New customer response' }, customer)
+  await runCommunityExpansionChecks(config)
+  assert.equal(payloads.length, 1)
+  db.sqlite.prepare('UPDATE community_tickets SET unanswered_since = ? WHERE id = ?').run(past, ids[0])
+  await runCommunityExpansionChecks(config)
+  assert.equal(payloads.length, 2)
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM community_ticket_followups WHERE state = 'sent'").get().n, 2)
+})
+
+test('follow-up retries back off explicit transient failures but never replay ambiguous delivery', async t => {
+  const { db, config, api } = await accessFixture(t)
+  const customer = await tokenFor(customerId, 'Customer')
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  const id = (await (await api('/community/tickets', 'POST', { type: 'support', title: 'Retry test', body: 'A customer question' }, customer)).json()).ticket.id
+  const past = new Date(Date.now() - 26 * 3600000).toISOString()
+  db.sqlite.prepare('UPDATE community_tickets SET unanswered_since = ? WHERE id = ?').run(past, id)
+  config.DISCORD_BUG_REPORT_WEBHOOK = 'https://discord.com/api/webhooks/123456/test-secret'
+  let calls = 0
+  globalThis.fetch = async () => { calls++; return new Response(null, { status: 429 }) }
+  await runCommunityExpansionChecks(config)
+  await runCommunityExpansionChecks(config)
+  assert.equal(calls, 1)
+  assert.equal(db.sqlite.prepare('SELECT state FROM community_ticket_followups').get().state, 'pending')
+  db.sqlite.prepare('UPDATE community_ticket_followups SET next_attempt_at = ?').run(past)
+  globalThis.fetch = async () => { calls++; throw new Error('Ambiguous delivery with secret URL') }
+  await runCommunityExpansionChecks(config)
+  await runCommunityExpansionChecks(config)
+  assert.equal(calls, 2)
+  assert.equal(db.sqlite.prepare('SELECT state FROM community_ticket_followups').get().state, 'failed')
+})
+
+test('trial review grants once only after verifying active linked product and no owned entitlement', async t => {
+  const { db, config, api } = await accessFixture(t)
+  const customer = await tokenFor(customerId, 'Customer')
+  const other = await tokenFor('123456789012345679', 'Other')
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  let grants = 0
+  globalThis.fetch = async (input, options) => {
+    const url = new URL(input)
+    assert.equal(options.headers.Authorization, `Bearer ${config.LICENSE_ADMIN_API_TOKEN}`)
+    if (url.pathname === '/v1/admin/products') return Response.json({ items: [{ productId: 'shards', active: true, plugins: ['shards-plugin'] }], page: 1, pageSize: 100, total: 1 })
+    if (url.pathname === `/v1/admin/customers/${customerId}`) return Response.json({ customerDiscordId: customerId, status: 'active', products: [] })
+    assert.equal(url.pathname, '/v1/admin/licenses')
+    const body = JSON.parse(options.body)
+    assert.equal(body.customerDiscordId, customerId)
+    assert.equal(body.productId, 'shards')
+    assert.ok(Math.abs(Date.parse(body.expiresAt) - Date.now() - 9 * 86400000) < 10000)
+    grants++
+    return Response.json({ licenseId: 'license-1', licenseKey: 'secret-license-key' }, { status: 201 })
+  }
+  const created = await (await api('/community/trials', 'POST', { productId: 'shards', reason: 'I want to evaluate this plugin.' }, customer)).json()
+  const id = created.item.id
+  assert.equal(created.item.status, 'pending')
+  assert.equal((await api('/community/trials', 'POST', { productId: 'shards', reason: 'Duplicate request' }, customer)).status, 409)
+  assert.equal((await api('/community/trials', 'POST', { productId: 'shards', reason: 'x'.repeat(13000) }, customer)).status, 413)
+  assert.equal((await (await api('/community/trials', 'GET', undefined, other)).json()).total, 0)
+  assert.equal((await api(`/community/staff/trials/${id}`, 'PUT', { status: 'approved' }, customer)).status, 403)
+  const statuses = await Promise.all([1, 2].map(() => api(`/community/staff/trials/${id}`, 'PUT', { status: 'approved', durationDays: 9, reviewNote: 'Approved after review' }).then(response => response.status)))
+  assert.deepEqual(statuses.sort(), [200, 409])
+  assert.equal(grants, 1)
+  assert.equal(db.sqlite.prepare('SELECT status FROM community_trials WHERE id = ?').get(id).status, 'approved')
+  assert.equal((await api(`/community/staff/trials/${id}`, 'PUT', { status: 'approved' })).status, 409)
+  const inbox = await (await api('/community/notifications', 'GET', undefined, customer)).json()
+  assert.equal(inbox.total, 1)
+  assert.equal(inbox.items[0].kind, 'license')
+  assert.doesNotMatch(JSON.stringify(inbox), /secret-license-key/)
+})
+
+test('trial catalog exposes only exact active linked registry IDs across verified pages', async t => {
+  const { db, api } = await accessFixture(t)
+  const customer = await tokenFor(customerId, 'Customer')
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  const first = Array.from({ length: 100 }, (_, index) => ({
+    productId: index === 0 ? '1' : `inactive-${index}`, name: index === 0 ? 'LumenShards' : 'Inactive',
+    active: index === 0, plugins: ['shards'], token: 'server-only-token',
+  }))
+  const last = [
+    { productId: 'gladiator', name: 'Gladiator', active: true, plugins: ['gladiator'], token: 'server-only-token' },
+    { productId: 'unlinked', name: 'Not grantable', active: true, plugins: [] },
+  ]
+  let incomplete = false
+  globalThis.fetch = async input => {
+    const page = Number(new URL(input).searchParams.get('page'))
+    return Response.json({ items: page === 1 ? first : incomplete ? [] : last, page, pageSize: 100, total: 102 })
+  }
+  assert.equal((await api('/community/trial-products', 'GET', undefined, null)).status, 401)
+  const catalog = await (await api('/community/trial-products', 'GET', undefined, customer)).json()
+  assert.deepEqual(catalog.items, [{ productId: '1', name: 'LumenShards' }, { productId: 'gladiator', name: 'Gladiator' }])
+  assert.doesNotMatch(JSON.stringify(catalog), /server-only-token|inactive-|unlinked/)
+  for (const productId of ['lumen-shards', 'bogus', 'unlinked', 'inactive-1', '../licenses']) {
+    assert.equal((await api('/community/trials', 'POST', { productId, reason: 'Evaluate the product' }, customer)).status, 400)
+  }
+  assert.equal(db.sqlite.prepare('SELECT COUNT(*) AS n FROM community_trials').get().n, 0)
+  assert.equal((await api('/community/trials', 'POST', { productId: '1', reason: 'Evaluate the product' }, customer)).status, 201)
+  incomplete = true
+  assert.equal((await api('/community/trial-products', 'GET', undefined, customer)).status, 503)
+  assert.equal((await api('/community/trials', 'POST', { productId: 'gladiator', reason: 'Evaluate the product' }, customer)).status, 503)
+  assert.equal(db.sqlite.prepare('SELECT COUNT(*) AS n FROM community_trials').get().n, 1)
+})
+
+test('new licensing customers can receive trials only after confirmed customer lookup 404', async t => {
+  const { db, api } = await accessFixture(t)
+  const customer = await tokenFor(customerId, 'Prospective Customer')
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  let lookupStatus = 500
+  let grants = 0
+  globalThis.fetch = async (input, options) => {
+    const url = new URL(input)
+    if (url.pathname === '/v1/admin/products') {
+      return Response.json({ items: [{ productId: '1', active: true, plugins: ['shards'] }], page: 1, pageSize: 100, total: 1 })
+    }
+    if (url.pathname === `/v1/admin/customers/${customerId}`) return new Response('Customer not found', { status: lookupStatus })
+    assert.equal(url.pathname, '/v1/admin/licenses')
+    assert.equal(JSON.parse(options.body).customerDiscordId, customerId)
+    grants++
+    return Response.json({ licenseId: 'new-customer-trial', licenseKey: 'private-trial-key' }, { status: 201 })
+  }
+  const created = await api('/community/trials', 'POST', { productId: '1', reason: 'Try the product before buying' }, customer)
+  assert.equal(created.status, 201)
+  const id = (await created.json()).item.id
+  for (lookupStatus of [500, 401, 403, 429]) {
+    assert.equal((await api(`/community/staff/trials/${id}`, 'PUT', { status: 'approved' })).status, 503)
+    assert.equal(grants, 0)
+    assert.equal(db.sqlite.prepare('SELECT status FROM community_trials WHERE id = ?').get(id).status, 'pending')
+  }
+  lookupStatus = 404
+  const result = await api(`/community/staff/trials/${id}`, 'PUT', { status: 'approved' })
+  assert.equal(result.status, 200)
+  assert.equal((await result.json()).item.status, 'approved')
+  assert.equal(grants, 1)
+  const inbox = await (await api('/community/notifications', 'GET', undefined, customer)).json()
+  assert.equal(inbox.items[0].kind, 'license')
+  assert.doesNotMatch(JSON.stringify(inbox), /private-trial-key/)
+})
+
+test('invalid configured follow-up webhooks log an explicit configuration error without their URL', async t => {
+  const { config } = await accessFixture(t)
+  const originalError = console.error
+  const originalFetch = globalThis.fetch
+  t.after(() => { console.error = originalError; globalThis.fetch = originalFetch })
+  const errors = []
+  console.error = (...args) => errors.push(args.join(' '))
+  globalThis.fetch = async () => { assert.fail('Invalid webhook must not receive any request') }
+  for (const webhook of ['invalid-secret-value', 'http://discord.com/api/webhooks/123456/private-token', 'https://attacker.example/api/webhooks/123456/private-token']) {
+    config.DISCORD_BUG_REPORT_WEBHOOK = webhook
+    await runCommunityExpansionChecks(config)
+  }
+  assert.equal(errors.length, 3)
+  assert.equal(errors.every(error => /follow-up webhook configuration is invalid/.test(error)), true)
+  assert.doesNotMatch(errors.join(' '), /secret-value|private-token|attacker|https?:/)
+})
+
+test('trial approvals protect paid ownership, require grants permission, and lock ambiguous grants against retry', async t => {
+  const { db, api, assign } = await accessFixture(t)
+  const customer = await tokenFor(customerId, 'Customer')
+  const supportId = '123456789012345679'
+  const support = await tokenFor(supportId, 'Limited Support')
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  await assign(supportId, 'support_team')
+  const permissions = ROLES.find(role => role.id === 'support_team').permissions.filter(permission => permission !== 'licenses.grant')
+  db.sqlite.prepare('INSERT INTO website_role_permissions (role_id,permissions) VALUES (?,?)').run('support_team', JSON.stringify(permissions))
+  let owned = true
+  let active = true
+  let grants = 0
+  globalThis.fetch = async input => {
+    const url = new URL(input)
+    if (url.pathname === '/v1/admin/products') return Response.json({ items: [{ productId: 'shards', active, plugins: ['shards'] }], page: 1, pageSize: 100, total: 1 })
+    if (url.pathname.includes('/customers/')) return Response.json({ customerDiscordId: customerId, status: 'active', products: owned ? [{ productId: 'shards', status: 'active', expiresAt: null }] : [] })
+    grants++
+    throw new Error('Timeout after grant may have committed')
+  }
+  const id = (await (await api('/community/trials', 'POST', { productId: 'shards', reason: 'Please evaluate my trial request' }, customer)).json()).item.id
+  assert.equal((await api('/community/staff/trials', 'GET', undefined, support)).status, 403)
+  assert.equal((await api(`/community/staff/trials/${id}`, 'PUT', { status: 'declined' }, support)).status, 403)
+  assert.equal((await api(`/community/staff/trials/${id}`, 'PUT', { status: 'approved' }, support)).status, 403)
+  assert.equal((await api(`/community/staff/trials/${id}`, 'PUT', { status: 'approved' })).status, 409)
+  assert.equal(grants, 0)
+  owned = false; active = false
+  assert.equal((await api(`/community/staff/trials/${id}`, 'PUT', { status: 'approved' })).status, 409)
+  assert.equal(grants, 0)
+  active = true
+  assert.equal((await api(`/community/staff/trials/${id}`, 'PUT', { status: 'approved', durationDays: 31 })).status, 400)
+  assert.equal((await api(`/community/staff/trials/${id}`, 'PUT', { status: 'approved' })).status, 502)
+  assert.equal((await api(`/community/staff/trials/${id}`, 'PUT', { status: 'approved' })).status, 409)
+  assert.equal(grants, 1)
+  assert.equal(db.sqlite.prepare('SELECT status FROM community_trials WHERE id = ?').get(id).status, 'grant_failed')
+  assert.equal((await api('/community/trials', 'POST', { productId: 'shards', reason: 'Retrying is not safe' }, customer)).status, 409)
+})
+
+test('staff with license-grant permission can list and approve trials without ticket-management permission', async t => {
+  const { db, api, assign } = await accessFixture(t)
+  const grantId = '123456789012345679'
+  const grantStaff = await tokenFor(grantId, 'License staff')
+  const customer = await tokenFor(customerId, 'Customer')
+  await assign(grantId, 'support_team')
+  db.sqlite.prepare('INSERT INTO website_role_permissions (role_id,permissions) VALUES (?,?)')
+    .run('support_team', JSON.stringify(['dashboard.view', 'licenses.grant']))
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  globalThis.fetch = async input => {
+    const url = new URL(input)
+    if (url.pathname === '/v1/admin/products') return Response.json({ items: [{ productId: '1', active: true, plugins: ['shards'] }], page: 1, pageSize: 100, total: 1 })
+    if (url.pathname.includes('/customers/')) return new Response(null, { status: 404 })
+    assert.equal(url.pathname, '/v1/admin/licenses')
+    return Response.json({ licenseId: 'trial-license' }, { status: 201 })
+  }
+  const created = await (await api('/community/trials', 'POST', { productId: '1', reason: 'Evaluate the product' }, customer)).json()
+  assert.equal((await api('/community/staff/trials', 'GET', undefined, grantStaff)).status, 200)
+  assert.equal((await api(`/community/staff/trials/${created.item.id}`, 'PUT', { status: 'approved' }, grantStaff)).status, 200)
+  assert.equal((await api('/community/staff/tickets', 'GET', undefined, grantStaff)).status, 403)
+})
+
+test('confirmed trial grants are never replayed when local finalization fails', async t => {
+  const { db, api } = await accessFixture(t)
+  const customer = await tokenFor(customerId, 'Customer')
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  let grants = 0
+  globalThis.fetch = async input => {
+    const url = new URL(input)
+    if (url.pathname === '/v1/admin/products') return Response.json({ items: [{ productId: 'shards', active: true, plugins: ['shards'] }], page: 1, pageSize: 100, total: 1 })
+    if (url.pathname.includes('/customers/')) return Response.json({ customerDiscordId: customerId, status: 'active', products: [] })
+    grants++
+    return Response.json({ licenseKey: 'key-must-stay-private' }, { status: 201 })
+  }
+  const id = (await (await api('/community/trials', 'POST', { productId: 'shards', reason: 'Evaluate the product' }, customer)).json()).item.id
+  db.failBatchAt = 1
+  const result = await api(`/community/staff/trials/${id}`, 'PUT', { status: 'approved' })
+  assert.equal(result.status, 502)
+  const payload = await result.json()
+  assert.match(payload.error, /grant was confirmed.*do not grant it again/)
+  assert.doesNotMatch(JSON.stringify(payload), /key-must-stay-private/)
+  db.failBatchAt = null
+  assert.equal((await api(`/community/staff/trials/${id}`, 'PUT', { status: 'approved' })).status, 409)
+  assert.equal(grants, 1)
+  assert.equal(db.sqlite.prepare('SELECT status FROM community_trials WHERE id = ?').get(id).status, 'processing')
+  assert.equal(db.sqlite.prepare('SELECT COUNT(*) AS n FROM community_notifications').get().n, 0)
+})
+
+test('follow-up cron bounds each batch and honors per-ticket configured delay', async t => {
+  const { db, config } = await accessFixture(t)
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  config.DISCORD_BUG_REPORT_WEBHOOK = 'https://discord.com/api/webhooks/123456/test-secret'
+  let sent = 0
+  globalThis.fetch = async () => { sent++; return new Response(null, { status: 204 }) }
+  const past = new Date(Date.now() - 3 * 3600000).toISOString()
+  const insert = db.sqlite.prepare(`INSERT INTO community_tickets
+    (id,owner_id,owner_name,type,title,body,status,created_at,updated_at,follow_up_hours) VALUES (?,?,?,'support','Help','Question','open',?,?,?)`)
+  for (let index = 0; index < 21; index++) insert.run(crypto.randomUUID(), customerId, 'Private name', past, past, 2)
+  insert.run(crypto.randomUUID(), customerId, 'Private name', past, past, 24)
+  await runCommunityExpansionChecks(config)
+  assert.equal(sent, 20)
+  await runCommunityExpansionChecks(config)
+  assert.equal(sent, 21)
+  await runCommunityExpansionChecks(config)
+  assert.equal(sent, 21)
+})
+
+test('community staff quotas separate reads and writes while customer reads do not spend support write quota', async t => {
+  const { config, api } = await accessFixture(t)
+  const customer = await tokenFor(customerId, 'Customer')
+  const keys = { read: [], write: [], user: [] }
+  config.ADMIN_READ_LIMITER = { limit: async ({ key }) => { keys.read.push(key); return { success: true } } }
+  config.ADMIN_WRITE_LIMITER = { limit: async ({ key }) => { keys.write.push(key); return { success: true } } }
+  config.ASSISTANT_LIMITER = { limit: async ({ key }) => { keys.user.push(key); return { success: false } } }
+  for (let n = 0; n < 15; n++) assert.equal((await api('/community/tickets', 'GET', undefined, customer)).status, 200)
+  assert.equal(keys.user.length, 0)
+  assert.equal((await api('/community/trials', 'POST', { productId: 'shards', reason: 'A trial request' }, customer)).status, 429)
+  assert.equal((await api('/community/staff/trials')).status, 200)
+  assert.equal((await api('/community/staff/notifications', 'POST', { title: 'Staff publication', body: 'A new announcement', kind: 'announcement', audience: 'all' })).status, 201)
+  assert.equal(keys.write.at(-1), `admin:${staffId}`)
+  assert.equal(keys.read.at(-1), `admin:${staffId}`)
+  assert.equal(keys.read[0], `community-read:${customerId}`)
 })

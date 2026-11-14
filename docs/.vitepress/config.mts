@@ -48,6 +48,7 @@ export default defineConfig({
       { text: 'Documentation', link: '/docs/' },
       { text: 'Plugins', link: '/plugins/' },
       { text: 'Customer portal', link: '/account/' },
+      { text: 'Updates', link: '/updates' },
       { text: 'Support', link: '/reports/' },
     ],
     sidebar: {
@@ -67,6 +68,7 @@ export default defineConfig({
             { text: 'Dashboard', link: '/account/' },
             { text: 'My licenses', link: '/account/licenses' },
             { text: 'Products purchased', link: '/account/products' },
+            { text: 'Plugin trial requests', link: '/account/trials' },
             { text: 'Account settings', link: '/account/settings' },
             { text: 'My tickets', link: '/account/tickets' },
             { text: 'Notifications & preferences', link: '/account/notifications' },

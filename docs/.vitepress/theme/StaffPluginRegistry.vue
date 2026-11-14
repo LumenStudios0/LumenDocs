@@ -12,6 +12,7 @@ const props = defineProps<{
   testMode: boolean
   permissions: string[]
 }>()
+const emit = defineEmits<{ productsLoaded: [products: Product[]] }>()
 const can = (permission: string) => props.permissions.includes(permission)
 const plugins = ref<Plugin[]>([])
 const products = ref<Product[]>([])
@@ -68,6 +69,7 @@ async function load() {
     if (requestId !== generation) return
     plugins.value = pluginRows
     products.value = productRows
+    emit('productsLoaded', productRows)
   } finally { if (requestId === generation) loading.value = false }
 }
 async function refresh() {

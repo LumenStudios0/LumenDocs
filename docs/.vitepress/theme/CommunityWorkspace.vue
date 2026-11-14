@@ -5,8 +5,14 @@ import { getDiscordSession } from './discord-session'
 import { communityRequest, communityDate, type CommunityPage, type Issue, type Notification, type Preferences, type Reply, type Service, type Ticket } from './community-api'
 import pluginData from './plugin-compatibility-data.json'
 import { CommunityUnavailableError } from './community-errors.mjs'
+import RichContent from './RichContent.vue'
+import RichEditor from './RichEditor.vue'
+import IncidentHistory from './IncidentHistory.vue'
+import IssueSubscription from './IssueSubscription.vue'
+import { useSiteDialog } from './site-dialog'
+const { confirm } = useSiteDialog()
 
-const props = defineProps<{ mode: 'tickets' | 'issues' | 'notifications' | 'status' }>()
+const props = defineProps<{ mode: 'tickets' | 'issues' | 'notifications' | 'status' | 'updates' }>()
 const { frontmatter } = useData()
 const signedIn = ref(false)
 const loading = ref(false)
@@ -36,6 +42,8 @@ const minecraftVersion = ref('')
 const editing = ref(false)
 const editTitle = ref('')
 const editBody = ref('')
+const ratingScore = ref(5)
+const ratingComment = ref('')
 let generation = 0
 let token = ''
 let deepLinkHandled = false
@@ -45,6 +53,7 @@ const headers = {
   issues: ['COMMUNITY SUPPORT', 'Confirmed issues. Clear workarounds.', 'Published issues are reviewed by staff. Connect Discord to submit a bug; your submission stays private until staff publish a sanitized issue.'],
   notifications: ['YOUR NOTIFICATION CENTER', 'Updates you choose to receive.', 'In-app announcements, plugin updates, and ticket replies. Preferences do not send email or Discord messages.'],
   status: ['SERVICE HEALTH', 'Lumen service status.', 'When the website service is connected, automatic probes run every five minutes. Staff can add a maintenance notice or override a status.'],
+  updates: ['STUDIO NEWS', 'Latest product updates.', 'Public updates and release notes from the Lumen Studios team.'],
 }
 
 function session() {
@@ -67,6 +76,9 @@ async function load(target = 1, quiet = false) {
     if (props.mode === 'status') {
       const result = await communityRequest<{ services: Service[]; intervalMinutes: number }>('/status', {}, false)
       if (requestId === generation) { services.value = result.services; serviceReady.value = true }
+    } else if (props.mode === 'updates') {
+      const result = await communityRequest<CommunityPage<Notification>>(`/updates?page=${target}&pageSize=20`, {}, false)
+      if (requestId === generation) { notifications.value = result.items; total.value = result.total; page.value = result.page; serviceReady.value = true }
     } else if (props.mode === 'issues') {
       const result = await communityRequest<CommunityPage<Issue>>(`/issues?page=${target}&pageSize=20`, {}, false)
       if (requestId === generation) { issues.value = result.items; total.value = result.total; page.value = result.page; serviceReady.value = true }
@@ -111,7 +123,7 @@ async function openTicket(id: string) {
   selected.value = null
   try {
     const result = await communityRequest<{ ticket: Ticket; replies: Reply[] }>(`/tickets/${id}`)
-    if (requestId === generation) { selected.value = result.ticket; replies.value = result.replies; reply.value = ''; editing.value = false }
+    if (requestId === generation) { selected.value = result.ticket; replies.value = result.replies; reply.value = ''; editing.value = false; ratingScore.value = result.ticket.rating?.score ?? 5; ratingComment.value = result.ticket.rating?.comment ?? '' }
   } catch (requestError) {
     if (requestId === generation) {
       error.value = requestError instanceof Error ? requestError.message : 'Could not open ticket.'
@@ -205,6 +217,19 @@ async function sendReply() {
       error.value = requestError instanceof Error ? requestError.message : 'Could not send reply.'
       checkAvailabilityError(requestError)
     }
+    async function saveRating() {
+      if (!selected.value || submitting.value || !Number.isInteger(Number(ratingScore.value)) || ratingScore.value < 1 || ratingScore.value > 5) return
+      const id = selected.value.id, captured = getDiscordSession()
+      if (!await confirm('Save your support rating for this closed ticket?', { title: 'Rate support', confirmText: 'Save rating' }) || captured !== getDiscordSession()) return
+      submitting.value = true; error.value = ''; notice.value = ''
+      try {
+        await communityRequest(`/tickets/${id}/rating`, { method: 'PUT', body: JSON.stringify({ score: Number(ratingScore.value), comment: ratingComment.value }) })
+        if (captured !== getDiscordSession()) return
+        await openTicket(id)
+        notice.value = error.value ? 'Rating saved, but ticket refresh failed.' : 'Your rating was saved.'
+      } catch (e) { if (captured === getDiscordSession()) error.value = e instanceof Error ? e.message : 'Could not save rating.' }
+      finally { submitting.value = false }
+    }
   }
   finally { submitting.value = false }
 }
@@ -253,15 +278,16 @@ function changedSession() {
   deepLinkHandled = false
   tickets.value = []; notifications.value = []; selected.value = null; replies.value = []
   title.value = ''; body.value = ''; reply.value = ''; notice.value = ''
-  editing.value = false; editTitle.value = ''; editBody.value = ''; showComposer.value = false
+  editing.value = false; editTitle.value = ''; editBody.value = ''; showComposer.value = false; ratingScore.value = 5; ratingComment.value = ''
   void load()
 }
 onMounted(() => {
   void load()
   window.addEventListener('lumen-discord-user', changedSession)
+  window.addEventListener('storage', changedSession)
   if (props.mode === 'status') timer = setInterval(() => { if (!document.hidden && !loading.value) void load(1, true) }, 5 * 60000)
 })
-onUnmounted(() => { generation++; clearInterval(timer); window.removeEventListener('lumen-discord-user', changedSession) })
+onUnmounted(() => { generation++; clearInterval(timer); window.removeEventListener('lumen-discord-user', changedSession); window.removeEventListener('storage', changedSession) })
 </script>
 
 <template>
@@ -271,7 +297,7 @@ onUnmounted(() => { generation++; clearInterval(timer); window.removeEventListen
     <p v-if="serviceUnavailable" class="website-note">Live data is unavailable, so sending and editing are disabled. <a href="https://discord.gg/lumenstudios">Contact support on Discord →</a></p>
     <p v-if="notice" class="website-message" role="status">{{ notice }}</p>
     <p v-if="loading" class="website-note" role="status">Loading website data…</p>
-    <p v-if="!signedIn && mode !== 'status'" class="website-message">Use <strong>Log in</strong> in the header to connect your Discord account {{ mode === 'issues' ? 'before submitting a bug.' : 'to view your private workspace.' }}</p>
+    <p v-if="!signedIn && mode !== 'status' && mode !== 'updates'" class="website-message">Use <strong>Log in</strong> in the header to connect your Discord account {{ mode === 'issues' ? 'before submitting a bug.' : 'to view your private workspace.' }}</p>
 
     <fieldset class="website-service-controls" :disabled="loading || submitting || !serviceReady" aria-label="Website service controls">
     <template v-if="mode === 'tickets' && signedIn">
@@ -279,11 +305,12 @@ onUnmounted(() => { generation++; clearInterval(timer); window.removeEventListen
         <button type="button" :disabled="loading || submitting" @click="backToTickets">← All my tickets</button>
         <header class="ticket-heading"><p class="website-kicker">TICKET {{ selected.id.slice(0, 8) }}</p><h3>{{ selected.title }}</h3><p class="website-meta"><span class="website-badge" :data-status="selected.status">{{ selected.status === 'waiting' ? 'Waiting for your reply' : selected.status }}</span>{{ selected.type }} · {{ selected.productId || 'General' }}</p><p class="website-note">Opened by {{ selected.customerName }} · {{ communityDate(selected.createdAt) }}<br>Assigned to {{ selected.assignedTo?.name || 'the support team' }}</p><div class="ticket-labels"><span v-for="label in selected.labels" :key="label" class="website-badge">{{ label }}</span></div></header>
         <form v-if="editing" @submit.prevent="saveTicketDetails"><label>Ticket title<input v-model="editTitle" required minlength="3" maxlength="160"></label><label>Details<textarea v-model="editBody" required minlength="5" maxlength="8000" rows="6" /></label><div class="website-actions"><button class="website-primary" type="submit" :disabled="submitting">Save changes</button><button type="button" :disabled="submitting" @click="editing = false">Cancel</button></div></form>
-        <article v-else class="ticket-message"><p class="website-meta">{{ selected.customerName }} · Original request</p><p class="website-body">{{ selected.body }}</p><p v-if="selected.serverSoftware" class="website-note">{{ selected.serverSoftware }} · Minecraft {{ selected.minecraftVersion }}</p><button v-if="selected.status !== 'closed'" type="button" :disabled="submitting" @click="startEditing">Edit ticket details</button></article>
-        <div class="ticket-thread"><article v-for="item in replies" :key="item.id" class="ticket-message" :class="{ 'ticket-message-staff': item.staff }"><p class="website-meta"><span class="ticket-author"><strong>{{ item.authorName }}</strong><span v-if="item.staff" class="ticket-support-badge">Support</span><span v-else class="website-badge">Customer</span></span><time :datetime="item.createdAt">{{ communityDate(item.createdAt) }}</time></p><p class="website-body">{{ item.body }}</p></article></div>
+        <article v-else class="ticket-message"><p class="website-meta">{{ selected.customerName }} · Original request</p><RichContent :text="selected.body" /><p v-if="selected.serverSoftware" class="website-note">{{ selected.serverSoftware }} · Minecraft {{ selected.minecraftVersion }}</p><button v-if="selected.status !== 'closed'" type="button" :disabled="submitting" @click="startEditing">Edit ticket details</button></article>
+        <div class="ticket-thread"><article v-for="item in replies" :key="item.id" class="ticket-message" :class="{ 'ticket-message-staff': item.staff }"><p class="website-meta"><span class="ticket-author"><strong>{{ item.authorName }}</strong><span v-if="item.staff" class="ticket-support-badge">Support</span><span v-else class="website-badge">Customer</span></span><time :datetime="item.createdAt">{{ communityDate(item.createdAt) }}</time></p><RichContent :text="item.body" /></article></div>
         <p v-if="!replies.length" class="website-note">Your request is with the support team. Replies will appear here and in your notification center.</p>
-        <form v-if="selected.status !== 'closed'" @submit.prevent="sendReply"><label>Reply<textarea v-model="reply" required maxlength="4000" rows="4" :disabled="submitting" /></label><button class="website-primary" type="submit" :disabled="submitting || !reply.trim()">Send reply</button></form>
+        <form v-if="selected.status !== 'closed'" @submit.prevent="sendReply"><label>Reply<RichEditor v-model="reply" required :rows="4" :disabled="submitting" /></label><button class="website-primary" type="submit" :disabled="submitting || !reply.trim()">Send reply</button></form>
         <p v-else class="website-note">This ticket is closed. Create a new ticket if you need further help.</p>
+        <form v-if="selected.status === 'closed'" class="website-panel" @submit.prevent="saveRating"><h3>Rate your support</h3><label>Score<select v-model.number="ratingScore"><option v-for="score in 5" :key="score" :value="score">{{ score }} / 5</option></select></label><label>Comment (optional)<textarea v-model="ratingComment" maxlength="1000" rows="3" /></label><button type="submit" :disabled="submitting">{{ selected.rating ? 'Update rating' : 'Save rating' }}</button></form>
       </section>
       <template v-else>
         <div class="ticket-toolbar"><div><h3>Your conversations</h3><p class="website-note">{{ serviceReady ? `${total} private ${total === 1 ? 'ticket' : 'tickets'}` : 'Tickets have not loaded' }} · Linked automatically to your Discord account</p></div><button class="website-primary" type="button" :disabled="submitting" @click="showComposer = !showComposer">{{ showComposer ? 'Cancel new ticket' : '+ New ticket' }}</button></div>
@@ -295,20 +322,22 @@ onUnmounted(() => { generation++; clearInterval(timer); window.removeEventListen
 
     <template v-if="mode === 'issues'">
       <details v-if="signedIn" class="website-panel"><summary>Submit a bug for staff review</summary><form @submit.prevent="submit"><label>Short title<input v-model="title" required maxlength="120"></label><label>Plugin / product ID<input v-model="productId" maxlength="100"></label><label>What happened?<textarea v-model="body" required maxlength="4000" rows="6" placeholder="Expected result, actual result, exact plugin/server versions, and reproduction steps. No secrets."></textarea></label><button class="website-primary" type="submit" :disabled="submitting">Submit bug</button><p class="website-note">Your Discord identity is verified server-side. Reports create private website tickets and are not public until staff review.</p></form></details>
-      <div class="website-list"><article v-for="issue in issues" :key="issue.id"><p class="website-meta"><span class="website-badge" :data-status="issue.status">{{ issue.status }}</span>{{ issue.productId || 'General' }} · Updated {{ communityDate(issue.updatedAt) }}</p><h3>{{ issue.title }}</h3><p class="website-body">{{ issue.body }}</p></article></div>
+      <div class="website-list"><article v-for="issue in issues" :key="issue.id"><p class="website-meta"><span class="website-badge" :data-status="issue.status">{{ issue.status }}</span>{{ issue.productId || 'General' }} · Updated {{ communityDate(issue.updatedAt) }}</p><h3>{{ issue.title }}</h3><p class="website-body">{{ issue.body }}</p><IssueSubscription :id="issue.id" /></article></div>
       <p v-if="!loading && !error && !issues.length" class="website-note">No staff-published issues on this page. This is not a guarantee that every plugin is bug-free.</p>
       <a href="/account/tickets">View my submissions and tickets →</a>
     </template>
 
     <template v-if="mode === 'notifications' && signedIn">
       <details class="website-panel"><summary>Notification preferences</summary><form @submit.prevent="savePreferences"><label class="website-check"><input v-model="preferences.updates" type="checkbox">Plugin update notifications</label><label class="website-check"><input v-model="preferences.announcements" type="checkbox">Studio announcements</label><label class="website-check"><input v-model="preferences.ticketReplies" type="checkbox">Replies to my support tickets</label><fieldset><legend>Plugin topics</legend><p class="website-note">Select the plugins you want updates for. Leave all unchecked to receive every plugin topic. This does not change ownership or licenses.</p><div class="website-columns"><label v-for="plugin in pluginData.plugins" :key="plugin.id" class="website-check"><input v-model="preferences.products" type="checkbox" :value="plugin.id">{{ plugin.name }}</label></div></fieldset><label>Additional topic IDs (optional)<input v-model="customTopics" maxlength="1000" placeholder="Comma-separated topic IDs"></label><button class="website-primary" type="submit" :disabled="submitting">Save preferences</button></form></details>
-      <div class="website-list"><article v-for="item in notifications" :key="item.id"><p class="website-meta"><span class="website-badge">{{ item.kind }}</span>{{ item.read ? 'Read' : 'Unread' }} · {{ item.productId || 'Studio' }} · {{ communityDate(item.createdAt) }}</p><h3>{{ item.title }}</h3><p class="website-body">{{ item.body }}</p><div class="website-actions"><a v-if="item.link && item.link.startsWith('/') && !item.link.startsWith('//')" :href="item.link">View details →</a><button v-if="!item.read" type="button" @click="markRead(item)">Mark read</button></div></article></div>
+      <div class="website-list"><article v-for="item in notifications" :key="item.id"><p class="website-meta"><span class="website-badge">{{ item.kind }}</span>{{ item.read ? 'Read' : 'Unread' }} · {{ item.productId || 'Studio' }} · {{ communityDate(item.createdAt) }}</p><h3>{{ item.title }}</h3><RichContent :text="item.body" :image-url="item.imageUrl" /><div class="website-actions"><a v-if="item.link && item.link.startsWith('/') && !item.link.startsWith('//')" :href="item.link">View details →</a><button v-if="!item.read" type="button" @click="markRead(item)">Mark read</button></div></article></div>
       <p v-if="!loading && !error && !notifications.length" class="website-note">No notifications match your preferences on this page.</p>
     </template>
 
+    <template v-if="mode === 'updates'"><div class="website-list"><article v-for="item in notifications" :key="item.id"><p class="website-meta">{{ item.productId || 'Studio' }} · {{ communityDate(item.createdAt) }}</p><h3>{{ item.title }}</h3><RichContent :text="item.body" :image-url="item.imageUrl" /></article></div><p v-if="!loading && !error && !notifications.length" class="website-note">No public updates on this page.</p></template>
     <template v-if="mode === 'status'">
       <div class="website-list"><article v-for="service in services" :key="service.id"><p class="website-meta"><span class="website-badge" :data-status="service.status">{{ service.status }}</span>{{ service.overrideStatus ? 'Staff override' : 'Automatic result' }}</p><h3>{{ service.name }}</h3><p v-if="service.message" class="website-body">{{ service.message }}</p><p class="website-note">Last automatic check: {{ communityDate(service.checkedAt) }} · Automatic result: <span class="website-badge" :data-status="service.automaticStatus">{{ service.automaticStatus }}</span></p></article></div>
       <p class="website-note">{{ serviceReady ? 'This page refreshes every five minutes while visible. Checks cover service reachability, not every feature or Minecraft server.' : 'No live service checks are available yet. This page does not assume services are healthy when the status Worker is unavailable.' }}</p>
+      <IncidentHistory />
     </template>
     <div v-if="mode !== 'status' && !selected && total > 20" class="website-pagination"><button type="button" :disabled="loading || submitting || page <= 1" @click="load(page - 1)">Previous</button><span>Page {{ page }} / {{ Math.ceil(total / 20) }}</span><button type="button" :disabled="loading || submitting || page * 20 >= total" @click="load(page + 1)">Next</button></div>
     </fieldset>

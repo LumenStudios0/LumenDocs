@@ -1,4 +1,6 @@
 import { hasPermission, resolveAccess, siteSettings } from './access-control.js'
+import { expansionRoute, runCommunityExpansionChecks, validImageUrl } from './community-expansion.js'
+import { runProductChecks } from './product-tools.js'
 
 const STATUS_VALUES = new Set(['operational', 'degraded', 'outage', 'maintenance'])
 const SERVICES = [
@@ -43,6 +45,12 @@ function ticketView(row, staff = false) {
     minecraftVersion: row.minecraft_version,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    rating: row.rating_score == null ? null : { score: row.rating_score, comment: row.rating_comment ?? '' },
+    escalation: row.escalation_reason ? {
+      reason: row.escalation_reason, by: row.escalation_by, createdAt: row.escalation_at,
+      ...(row.escalation_target_id ? { targetId: row.escalation_target_id } : {}),
+    } : null,
+    followUpHours: row.follow_up_hours ?? 24,
     ...(staff ? { customerDiscordId: row.owner_id } : {}),
   }
 }
@@ -123,6 +131,7 @@ function notificationView(row, read = false, includeAudience = false) {
     createdAt: row.created_at,
     read: Boolean(read),
     link: row.link,
+    imageUrl: row.image_url ?? null,
     ...(includeAudience ? { audience: row.audience } : {}),
   }
 }
@@ -150,11 +159,15 @@ async function session(request, env, deps, staffRequired = false) {
   return { user, role, access }
 }
 
-async function limit(request, env, user, deps, key = 'community') {
-  if (!env.ASSISTANT_LIMITER) {
+async function limit(request, env, user, deps, staff = false) {
+  const read = request.method === 'GET' || request.method === 'HEAD'
+  const limiter = staff ? (read ? env.ADMIN_READ_LIMITER : env.ADMIN_WRITE_LIMITER)
+    : read ? (env.COMMUNITY_READ_LIMITER ?? env.ADMIN_READ_LIMITER)
+      : (env.COMMUNITY_WRITE_LIMITER ?? env.ASSISTANT_LIMITER)
+  if (!limiter) {
     return json(request, { error: 'The community service is not configured' }, 503, deps.respond)
   }
-  const result = await env.ASSISTANT_LIMITER.limit({ key: `${key}:${user.id}` })
+  const result = await limiter.limit({ key: staff ? `admin:${user.id}` : `${read ? 'community-read' : 'community'}:${user.id}` })
   return result.success
     ? null
     : json(request, { error: 'Please wait before using the community service again' }, 429, deps.respond)
@@ -340,7 +353,7 @@ async function notifications(request, env, url, user, deps, staff) {
       ? `product_id IN (${productSlots})`
       : 'product_id IS NOT NULL'
     where = `WHERE
-      (audience = 'user' AND recipient_id = ? AND (kind = 'license' OR ? = 1)) OR
+      (audience = 'user' AND recipient_id = ? AND (kind IN ('license','issue','escalation') OR ? = 1)) OR
       (audience = 'all' AND ((kind = 'update' AND ? = 1) OR (kind = 'announcement' AND ? = 1)) AND
         ${allProductFilter}) OR
       (audience = 'product' AND ((kind = 'update' AND ? = 1) OR (kind = 'announcement' AND ? = 1)) AND
@@ -387,19 +400,37 @@ async function createNotification(request, env, user, deps) {
   if (!validText(body.title, 3, 160) || !validText(body.body, 1, 6000) ||
       !['update', 'announcement'].includes(body.kind) || !['all', 'product', 'staff'].includes(body.audience) ||
       (body.audience === 'product' && !validText(body.productId, 1, 100)) ||
-      (body.productId != null && !validText(body.productId, 1, 100))) {
+      (body.productId != null && !validText(body.productId, 1, 100)) || !validImageUrl(body.imageUrl)) {
     return json(request, { error: 'Invalid notification' }, 400, deps.respond)
   }
   const now = new Date().toISOString()
+  let scheduledAt = null
+  if (body.scheduledAt != null) {
+    const time = typeof body.scheduledAt === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(body.scheduledAt) ? Date.parse(body.scheduledAt) : NaN
+    if (!Number.isFinite(time) || time <= Date.now() || time > Date.now() + 365 * 86400000) {
+      return json(request, { error: 'Schedule must be a future ISO date within 365 days' }, 400, deps.respond)
+    }
+    scheduledAt = new Date(time).toISOString()
+  }
   const notification = {
     id: crypto.randomUUID(), title: cleanText(body.title), body: cleanText(body.body),
     kind: body.kind, product_id: body.productId ? cleanText(body.productId) : null,
-    audience: body.audience, link: '/account/notifications', created_at: now,
+    audience: body.audience, link: '/account/notifications', created_at: now, image_url: body.imageUrl ?? null,
+  }
+  if (scheduledAt) {
+    await env.COMMUNITY_DB.prepare(
+      `INSERT INTO community_scheduled_notifications (id,title,body,kind,product_id,audience,image_url,scheduled_at,created_at,created_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+    ).bind(notification.id, notification.title, notification.body, notification.kind, notification.product_id,
+      notification.audience, notification.image_url, scheduledAt, now, user.id).run()
+    return json(request, { scheduled: true, notification: {
+      ...notificationView(notification, false, true), scheduledAt, state: 'pending',
+    } }, 201, deps.respond)
   }
   await env.COMMUNITY_DB.prepare(
-    `INSERT INTO community_notifications (id, title, body, kind, product_id, audience, link, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).bind(notification.id, notification.title, notification.body, notification.kind, notification.product_id, notification.audience, notification.link, now).run()
+    `INSERT INTO community_notifications (id, title, body, kind, product_id, audience, link, created_at, image_url)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(notification.id, notification.title, notification.body, notification.kind, notification.product_id, notification.audience, notification.link, now, notification.image_url).run()
   return json(request, { notification: notificationView(notification, false, true) }, 201, deps.respond)
 }
 
@@ -446,6 +477,9 @@ async function updateStaffTicket(request, env, deps, id, user) {
   const row = await env.COMMUNITY_DB.prepare('SELECT * FROM community_tickets WHERE id = ?').bind(id).first()
   if (!row) return json(request, { error: 'Ticket not found' }, 404, deps.respond)
   const body = parsed.value
+  if (body.followUpHours !== undefined && (!Number.isInteger(body.followUpHours) || body.followUpHours < 1 || body.followUpHours > 168)) {
+    return json(request, { error: 'Follow-up hours must be 1–168' }, 400, deps.respond)
+  }
   const assigneeId = body.assigneeId === undefined ? row.assignee_id : body.assigneeId
   if (assigneeId !== null && (!/^\d{5,22}$/.test(assigneeId) || !(await deps.getStaffMembers(env)).some(member => member.id === assigneeId))) {
     return json(request, { error: 'Assign tickets only to an authorized staff account' }, 400, deps.respond)
@@ -460,9 +494,9 @@ async function updateStaffTicket(request, env, deps, id, user) {
   const assignedName = assigneeId === user.id ? user.globalName || user.username
     : assigneeId === row.assignee_id ? row.assignee_name : assigneeId ? 'Studio staff' : null
   const result = await env.COMMUNITY_DB.prepare(
-    'UPDATE community_tickets SET status = ?, assignee_id = ?, assignee_name = ?, labels = ?, title = ?, updated_at = ? WHERE id = ?',
+    'UPDATE community_tickets SET status = ?, assignee_id = ?, assignee_name = ?, labels = ?, title = ?, updated_at = ?, follow_up_hours = ? WHERE id = ?',
   ).bind(body.status, assigneeId, assignedName, JSON.stringify([...new Set(labels.map(label => label.trim().toLowerCase()))]),
-    cleanText(title), new Date().toISOString(), id).run()
+    cleanText(title), new Date().toISOString(), body.followUpHours ?? row.follow_up_hours, id).run()
   return result.meta?.changes === 0 ? json(request, { error: 'Ticket not found' }, 404, deps.respond) : json(request, { ok: true }, 200, deps.respond)
 }
 
@@ -523,9 +557,23 @@ async function saveIssue(request, env, deps, id = crypto.randomUUID()) {
        VALUES (?, '', ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(id, cleanText(body.title), cleanText(body.body), productId, body.status, +body.published, now, now).run()
   } else {
-    const result = await env.COMMUNITY_DB.prepare(
+    const statements = []
+    if (body.published) {
+      statements.push(env.COMMUNITY_DB.prepare(
+        `INSERT INTO community_notifications (id,recipient_id,title,body,kind,product_id,audience,link,created_at)
+         SELECT lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-' || hex(randomblob(2)) || '-' || hex(randomblob(2)) || '-' || hex(randomblob(6))),
+           s.user_id,?,'A published issue you follow has been updated.','issue',?,'user','/known-issues?channel=known-issues',?
+         FROM community_issue_subscriptions s JOIN community_issues i ON i.id = s.issue_id
+         WHERE i.id = ? AND i.published = 1 AND
+           (i.title != ? OR i.body != ? OR i.status != ? OR COALESCE(i.product_id,'') != COALESCE(?,''))`,
+      ).bind(body.status === 'resolved' ? 'An issue you follow was resolved' : 'An issue you follow was updated',
+        productId, now, id, cleanText(body.title), cleanText(body.body), body.status, productId))
+    }
+    statements.push(env.COMMUNITY_DB.prepare(
       'UPDATE community_issues SET title = ?, body = ?, product_id = ?, status = ?, published = ?, updated_at = ? WHERE id = ?',
-    ).bind(cleanText(body.title), cleanText(body.body), productId, body.status, +body.published, now, id).run()
+    ).bind(cleanText(body.title), cleanText(body.body), productId, body.status, +body.published, now, id))
+    const results = await env.COMMUNITY_DB.batch(statements)
+    const result = results[results.length - 1]
     if (result.meta?.changes === 0) return json(request, { error: 'Issue not found' }, 404, deps.respond)
   }
   const issue = { id, title: cleanText(body.title), body: cleanText(body.body), product_id: productId, status: body.status, created_at: now, updated_at: now }
@@ -628,6 +676,8 @@ async function checkedStatus(url, options = {}) {
 }
 
 export async function runCommunityChecks(env) {
+  try { await runCommunityExpansionChecks(env) } catch { console.error('Community expansion checks failed') }
+  try { await runProductChecks(env) } catch { console.error('Product checks failed') }
   if (env.COMMUNITY_DB && env.DISCORD_BUG_REPORT_WEBHOOK) {
     await env.COMMUNITY_DB.prepare(
       `UPDATE community_ticket_alerts SET state = 'failed', last_error = 'Previous delivery status is unknown. Check Discord before retrying.'
@@ -888,7 +938,7 @@ export async function handleCommunity(request, env, origin, path, deps) {
   const suffix = legacyAlias ? path : path.slice('/community'.length) || '/'
   const threadMatch = suffix.match(new RegExp(`^/forum/(${UUID})$`, 'i'))
   const isPublic = !legacyAlias && request.method === 'GET' &&
-    (suffix === '/status' || suffix === '/issues' || suffix === '/forum' || Boolean(threadMatch))
+    (['/status', '/issues', '/forum', '/incidents', '/updates'].includes(suffix) || Boolean(threadMatch))
   if (isPublic) {
     const authorization = request.headers.get('Authorization') || ''
     const viewer = authorization.startsWith('Bearer ') ? await deps.verifyLoginToken(authorization.slice(7), env) : null
@@ -898,6 +948,9 @@ export async function handleCommunity(request, env, origin, path, deps) {
     const dbFailure = await requireDb(request, env, deps, viewerStaff)
     if (dbFailure) return dbFailure
     try {
+      if (suffix === '/incidents' || suffix === '/updates') return await expansionRoute(
+        request, env, suffix, viewer, viewerAccess, deps, { json, bodyJson, paginate, parsePage, validText, ticketView, notificationView },
+      )
       if (suffix === '/forum') return await forumList(request, env, url, deps, viewerStaff, viewer?.id, canAnnounce)
       if (threadMatch) return await forumThread(request, env, deps, threadMatch[1], viewerStaff, viewer?.id, canAnnounce)
       return suffix === '/status' ? await statusResponse(request, env, deps) : await issueList(request, env, url, deps)
@@ -912,7 +965,7 @@ export async function handleCommunity(request, env, origin, path, deps) {
   const { user, role, access } = auth
   const dbFailure = await requireDb(request, env, deps, Boolean(role))
   if (dbFailure) return dbFailure
-  const privateResponse = await limit(request, env, user, deps)
+  const privateResponse = await limit(request, env, user, deps, Boolean(role))
   if (privateResponse) return privateResponse
   if (staffPath) {
     const permission = suffix === '/staff/members' || suffix === '/staff/tickets' && request.method === 'GET' ? 'tickets.view'
@@ -920,13 +973,17 @@ export async function handleCommunity(request, env, origin, path, deps) {
         : suffix.startsWith('/staff/tickets/') ? 'tickets.manage'
           : suffix.startsWith('/staff/issues') ? 'issues.manage'
             : suffix.startsWith('/staff/forum/') ? 'forum.moderate'
-              : suffix.startsWith('/staff/notifications') ? 'notifications.manage'
+              : suffix.startsWith('/staff/notifications') || suffix.startsWith('/staff/scheduled') ? 'notifications.manage'
+                : suffix.startsWith('/staff/trials') ? 'licenses.grant'
                 : suffix.startsWith('/staff/status/') ? 'status.manage' : null
     if (!permission) return json(request, { error: 'Staff route not found' }, 404, deps.respond)
     if (!hasPermission(access, permission)) return json(request, { error: `Permission required: ${permission}` }, 403, deps.respond)
   }
 
   try {
+    const expansion = await expansionRoute(request, env, suffix, user, access, deps,
+      { json, bodyJson, paginate, parsePage, validText, ticketView, notificationView })
+    if (expansion) return expansion
     if (legacyAlias) {
       const parsed = await bodyJson(request, 8000)
       if (parsed.error) return json(request, { error: parsed.error }, parsed.status, deps.respond)

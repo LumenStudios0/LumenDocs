@@ -6,6 +6,9 @@ import {
 } from './community-api'
 import { CommunityUnavailableError } from './community-errors.mjs'
 import pluginData from './plugin-compatibility-data.json'
+import IssueSubscription from './IssueSubscription.vue'
+import RichContent from './RichContent.vue'
+import RichEditor from './RichEditor.vue'
 
 type ChannelId = 'all' | 'known-issues' | ForumChannel
 const channels: { id: ChannelId; name: string; icon: string; topic: string; group: string }[] = [
@@ -48,6 +51,7 @@ const messages = ref<HTMLElement | null>(null)
 let generation = 0
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 let refreshTimer: ReturnType<typeof setInterval> | undefined
+let sessionToken = ''
 
 const current = computed(() => channels.find(item => item.id === channel.value) ?? channels[0])
 const signedIn = computed(() => viewer.value.signedIn || Boolean(safeSession()))
@@ -166,12 +170,14 @@ function startThread() {
 
 async function createThread() {
   if (busy.value) return
+  const captured = safeSession()
   busy.value = true; error.value = ''; notice.value = ''
   try {
     const result = await communityRequest<{ thread: ForumThread }>('/forum', {
       method: 'POST',
       body: JSON.stringify({ channel: newChannel.value, title: newTitle.value, body: newBody.value, productId: newProduct.value || undefined }),
     })
+    if (captured !== safeSession()) return
     newTitle.value = ''; newBody.value = ''; newProduct.value = ''; composing.value = false
     channel.value = result.thread.channel
     await openThread(result.thread.id)
@@ -182,10 +188,12 @@ async function createThread() {
 
 async function sendReply() {
   if (!selected.value || busy.value || !replyBody.value.trim()) return
+  const captured = safeSession()
   busy.value = true; error.value = ''
   const id = selected.value.id
   try {
     await communityRequest(`/forum/${id}/posts`, { method: 'POST', body: JSON.stringify({ body: replyBody.value }) })
+    if (captured !== safeSession()) return
     replyBody.value = ''
     await openThread(id, true)
   } catch (requestError) { fail(requestError, 'Could not send your reply.') }
@@ -197,10 +205,12 @@ function replyKeydown(event: KeyboardEvent) {
 
 async function mutate(path: string, payload: Record<string, unknown>, message: string) {
   if (!selected.value || busy.value) return
+  const captured = safeSession()
   busy.value = true; error.value = ''; notice.value = ''
   const id = selected.value.id
   try {
     await communityRequest(path, { method: 'PUT', body: JSON.stringify(payload) })
+    if (captured !== safeSession()) return
     await openThread(id, true)
     notice.value = message
   } catch (requestError) { fail(requestError, 'Could not update this thread.') }
@@ -219,9 +229,15 @@ watch([search, statusFilter], () => {
 })
 
 function onSessionChange() {
-  if (selected.value) void openThread(selected.value.id, true); else void loadList(page.value, true)
+  const current = safeSession()
+  if (current === sessionToken) return
+  sessionToken = current; generation++
+  viewer.value = { signedIn: false, staff: false }; posts.value = []; selected.value = null
+  newTitle.value = ''; newBody.value = ''; replyBody.value = ''; composing.value = false; notice.value = ''; error.value = ''
+  syncUrl(); void loadList(page.value)
 }
 onMounted(() => {
+  sessionToken = safeSession()
   const params = new URLSearchParams(window.location.search)
   const requested = params.get('channel')
   if (requested && channels.some(item => item.id === requested)) channel.value = requested as ChannelId
@@ -288,7 +304,7 @@ onUnmounted(() => {
           <label>Plugin<select v-model="newProduct"><option value="">General / no plugin</option><option v-for="product in products" :key="product.id" :value="product.id">{{ product.name }}</option></select></label>
         </div>
         <label>Title<input v-model="newTitle" required minlength="3" maxlength="160" placeholder="Short summary, e.g. Crates won't open on 1.21"></label>
-        <label>Message<textarea v-model="newBody" required minlength="2" maxlength="8000" rows="6" placeholder="Plugin and server versions, what you expected, what happened. Never share license keys or tokens."></textarea></label>
+        <label>Message<RichEditor v-model="newBody" required :maxlength="8000" /></label><p class="website-note">Include plugin and server versions. Never share license keys or tokens.</p>
         <p class="website-note">Posts are public and show your Discord display name. Staff may hide posts that break the rules.</p>
         <div class="website-actions"><button class="website-primary" type="submit" :disabled="busy || !signedIn || unavailable">Post thread</button><button type="button" @click="composing = false">Cancel</button></div>
       </form>
@@ -315,7 +331,7 @@ onUnmounted(() => {
             <span class="forum-avatar" :style="{ '--avatar-hue': hue(selected.author.name) }" aria-hidden="true">{{ initials(selected.author.name) }}</span>
             <div class="forum-message-body">
               <p class="forum-author"><strong>{{ selected.author.name }}</strong><span v-if="selected.author.staff" class="ticket-support-badge">Support</span><span class="forum-op">OP</span><time :datetime="selected.createdAt" :title="fullDate(selected.createdAt)">{{ relative(selected.createdAt) }}</time></p>
-              <p class="forum-text">{{ selected.body }}</p>
+              <RichContent class="forum-text" :text="selected.body" />
             </div>
           </article>
           <div v-if="posts.length" class="forum-divider"><span>{{ selected.replyCount }} {{ selected.replyCount === 1 ? 'reply' : 'replies' }}</span></div>
@@ -324,7 +340,7 @@ onUnmounted(() => {
             <div class="forum-message-body">
               <p class="forum-author"><strong>{{ post.authorName }}</strong><span v-if="post.staff" class="ticket-support-badge">Support</span><time :datetime="post.createdAt" :title="fullDate(post.createdAt)">{{ relative(post.createdAt) }}</time>
                 <button v-if="viewer.staff" type="button" class="forum-post-mod" :disabled="busy" @click="moderatePost(post)">{{ post.hidden ? 'Restore' : 'Hide' }}</button></p>
-              <p class="forum-text">{{ post.body }}</p>
+              <RichContent class="forum-text" :text="post.body" />
             </div>
           </article>
           <p v-if="!posts.length" class="forum-empty">No replies yet. Be the first to help.</p>
@@ -351,6 +367,7 @@ onUnmounted(() => {
               <p class="forum-row-title">{{ issue.title }}</p>
               <p class="forum-row-preview">{{ issue.body }}</p>
               <p class="forum-row-meta"><span class="website-badge" :data-status="issue.status">{{ issue.status }}</span><span v-if="issue.productId">{{ productName(issue.productId) }}</span><span>Updated {{ relative(issue.updatedAt) }}</span></p>
+              <IssueSubscription :id="issue.id" />
             </div>
           </li>
         </ul>

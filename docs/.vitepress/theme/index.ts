@@ -13,6 +13,7 @@ import DocsAssistant from './DocsAssistant.vue'
 import HomeExperience from './HomeExperience.vue'
 import CommunityWorkspace from './CommunityWorkspace.vue'
 import CommunityForum from './CommunityForum.vue'
+import TrialRequests from './TrialRequests.vue'
 import CompatibilityChecker from './CompatibilityChecker.vue'
 import ErrorGuides from './ErrorGuides.vue'
 import DocBookmarks from './DocBookmarks.vue'
@@ -36,6 +37,7 @@ export default {
     app.component('HomeExperience', HomeExperience)
     app.component('CommunityWorkspace', CommunityWorkspace)
     app.component('CommunityForum', CommunityForum)
+    app.component('TrialRequests', TrialRequests)
     app.component('CompatibilityChecker', CompatibilityChecker)
     app.component('ErrorGuides', ErrorGuides)
     app.component('DocBookmarks', DocBookmarks)
@@ -63,6 +65,8 @@ export default {
         { text: 'Documentation', link: '/docs/', detail: 'Answers, without the digging.', icon: 'M4 3h12l4 4v14H4zM14 3v6h6M8 13h8M8 17h5' },
         { text: 'Plugin catalog', link: '/plugins/', detail: 'Find your next server upgrade.', icon: 'm12 3 9 5-9 5-9-5zM3 8v9l9 5 9-5V8M12 13v9' },
         { text: 'Customer portal', link: '/account/', detail: 'Your products. Your workspace.', icon: 'M3 4h18v16H3zM3 9h18M9 9v11' },
+        { text: 'Product trials', link: '/account/trials', detail: 'Request and track trial access.', icon: 'M12 3v9l6 3M5 5a9 9 0 1 0 14 0' },
+        { text: 'Studio updates', link: '/updates', detail: 'The latest product news.', icon: 'M4 4h16v16H4zM7 8h10M7 12h10M7 16h6' },
         { text: 'Getting started', link: '/getting-started/', detail: 'From download to first launch.', icon: 'm12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z' },
         { text: 'Support & requests', link: '/reports/', detail: 'Get a hand. Share an idea.', icon: 'M4 4h16v12H9l-5 5zM8 8h8M8 12h5' },
         { text: 'Release notes', link: '/changelogs/', detail: 'See what is new at Lumen.', icon: 'M12 8v5l3 2M4 6a9 9 0 1 1-1 9M3 3v5h5' },

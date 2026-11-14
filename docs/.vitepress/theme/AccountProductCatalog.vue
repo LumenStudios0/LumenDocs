@@ -81,6 +81,7 @@ onUnmounted(() => {
 
 <template>
   <section class="account-products" aria-label="Product ownership">
+    <p class="account-product-note"><a href="/account/trials">Request a plugin trial →</a> · <a href="/updates">Read staff updates and product releases →</a></p>
     <div class="account-product-tabs" role="tablist" aria-label="Product category">
       <button
         id="owned-products-tab"

@@ -20,6 +20,9 @@ export interface Ticket {
   customerDiscordId?: string
   createdAt: string
   updatedAt: string
+  rating?: { score: number; comment?: string } | null
+  escalation?: { reason: string; by: string; createdAt: string; targetId?: string } | null
+  followUpHours?: number
 }
 export interface StaffMember { id: string; name: string }
 export interface Reply { id: string; body: string; authorName: string; staff: boolean; createdAt: string }
@@ -56,13 +59,16 @@ export interface Notification {
   id: string
   title: string
   body: string
-  kind: 'update' | 'announcement' | 'ticket' | 'license'
+  kind: 'update' | 'announcement' | 'ticket' | 'license' | 'issue' | 'escalation'
   productId?: string | null
   audience?: string
   createdAt: string
   read: boolean
   link: string
+  imageUrl?: string | null
 }
+export interface TrialRequest { id: string; productId: string; reason: string; status: 'pending' | 'processing' | 'approved' | 'declined' | 'failed' | 'grant_failed'; createdAt: string; reviewNote?: string; customerDiscordId?: string; expiresAt?: string | null }
+export interface Incident { id: string; serviceId: string; status: string; previousStatus: string; startedAt: string; resolvedAt: string | null; message: string }
 export interface Preferences { updates: boolean; announcements: boolean; ticketReplies: boolean; products: string[] }
 export type ServiceStatus = 'operational' | 'degraded' | 'outage' | 'maintenance' | 'unknown'
 export interface Service {

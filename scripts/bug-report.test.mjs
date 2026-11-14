@@ -25,7 +25,7 @@ async function tokenFor(id = customerId) {
 
 function createD1() {
   const sqlite = new DatabaseSync(':memory:')
-  const ready = Promise.all(['0001_community.sql', '0002_ticket_routing.sql', '0004_website_access.sql', '0005_member_registration.sql'].map(
+  const ready = Promise.all(['0001_community.sql', '0002_ticket_routing.sql', '0004_website_access.sql', '0005_member_registration.sql', '0006_community_expansion.sql', '0007_product_tools.sql'].map(
     name => readFile(new URL(`../worker/migrations/community/${name}`, import.meta.url), 'utf8'),
   )).then(sqls => sqls.forEach(sql => sqlite.exec(sql)))
   return {
@@ -135,7 +135,7 @@ test('legacy reports translate compatibility and feature submissions into ticket
     assert.equal(response.status, 201)
     const { ticket } = await response.json()
     assert.equal(ticket.type, 'compatibility')
-    assert.deepEqual(Object.keys(ticket), ['id', 'type', 'title', 'body', 'productId', 'status', 'customerName', 'assignedTo', 'labels', 'serverSoftware', 'minecraftVersion', 'createdAt', 'updatedAt'])
+    assert.deepEqual(Object.keys(ticket), ['id', 'type', 'title', 'body', 'productId', 'status', 'customerName', 'assignedTo', 'labels', 'serverSoftware', 'minecraftVersion', 'createdAt', 'updatedAt', 'rating', 'escalation', 'followUpHours'])
     assert.match(ticket.body, new RegExp(`Compatibility result: ${status}`))
     assert.match(ticket.body, /Server software: Paper/)
     assert.match(ticket.body, /Minecraft version: 1\.21\.4/)
