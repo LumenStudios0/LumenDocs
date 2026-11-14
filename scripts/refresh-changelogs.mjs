@@ -8,20 +8,19 @@ const outputPath = resolve(root, 'docs/changelogs/updates.md')
 const userAgent = 'LumenStudiosDocsChangelogBot/1.0 (+https://lumenstudio.fyi)'
 
 export const products = [
-  ['LumenAuction', 'lumenauction.132967', 'LumenAuction'],
-  ['Gladiator', 'gladiator.132519', 'GLADIATOR'],
-  ['LumenSpoofer', 'lumenspoof.135950', 'LumenSpoofer'],
-  ['LumenDuels', 'lumenduels.119760', 'LumenDuels'],
-  ['LumenDuels Premium', 'lumenduels-premium.132188', 'LumenDuels-Premium'],
-  ['LumenBounty', 'lumenbounty.132973', null],
-  ['LumenEconomy', 'lumeneconomy.132341', 'LumenEconomy'],
-  ['LumenEssentials', 'lumenessentials.132966', 'LumenEssentials'],
-  ['LumenOrder', 'lumenorders.132969', 'LumenOrders'],
-  ['LumenShards', 'lumenshards.116897', 'LumenShards'],
-  ['LumenSpawners', 'lumenspawners.132970', 'LumenSpawners'],
-].map(([name, slug, repository]) => ({
+  ['LumenAuction', 'lumenauction.132967'],
+  ['Gladiator', 'gladiator.132519'],
+  ['LumenSpoofer', 'lumenspoof.135950'],
+  ['LumenDuels', 'lumenduels.119760'],
+  ['LumenDuels Premium', 'lumenduels-premium.132188'],
+  ['LumenBounty', 'lumenbounty.132973'],
+  ['LumenEconomy', 'lumeneconomy.132341'],
+  ['LumenEssentials', 'lumenessentials.132966'],
+  ['LumenOrder', 'lumenorders.132969'],
+  ['LumenShards', 'lumenshards.116897'],
+  ['LumenSpawners', 'lumenspawners.132970'],
+].map(([name, slug]) => ({
   name,
-  repository,
   url: `https://builtbybit.com/resources/${slug}/`,
 }))
 
@@ -233,55 +232,16 @@ export async function fetchCreatorUpdates(product, authorization) {
   return entries
 }
 
-async function fetchRepositoryUpdates(product, token) {
-  if (!token || !product.repository) return []
-
-  const url = `https://api.github.com/repos/LumenStudios0/${product.repository}/commits?per_page=20`
-  try {
-    const response = await fetch(url, {
-      headers: {
-        Accept: 'application/vnd.github+json',
-        Authorization: `Bearer ${token}`,
-        'X-GitHub-Api-Version': '2022-11-28',
-        'User-Agent': userAgent,
-      },
-      signal: AbortSignal.timeout(20000),
-    })
-    if (!response.ok) {
-      console.warn(`${product.name}: source repository returned HTTP ${response.status}`)
-      return []
-    }
-
-    const commits = await response.json()
-    return commits.flatMap(commit => {
-      const title = commit.commit?.message?.split('\n')[0]?.trim()
-      const date = commit.commit?.author?.date
-      if (!title || !date || !commit.html_url) return []
-      return [{
-        title,
-        date,
-        text: title,
-        url: commit.html_url,
-        source: 'github',
-      }]
-    })
-  } catch (error) {
-    console.warn(`${product.name}: could not fetch source repository updates: ${error.message}`)
-    return []
-  }
-}
-
 function escapeMarkdown(text) {
   return text.replace(/([\\`*_{}[\]<>])/g, '\\$1')
 }
 
-function renderMarkdown(cache) {
+export function renderMarkdown(cache) {
   const sections = products.map(product => {
-    const entries = cache[product.name] ?? []
+    const entries = (cache[product.name] ?? []).filter(entry => entry.source === 'builtbybit')
     const content = entries.length
       ? entries.map(entry => {
-        const source = entry.source === 'github' ? 'Source repository development update' : 'Official BuiltByBit update'
-        return `### ${escapeMarkdown(entry.title)}\n\n**${escapeMarkdown(entry.date)}** · [${source} ↗](${entry.url})\n\n${escapeMarkdown(entry.text)}\n`
+        return `### ${escapeMarkdown(entry.title)}\n\n**${escapeMarkdown(entry.date)}** · [Official BuiltByBit update ↗](${entry.url})\n\n${escapeMarkdown(entry.text)}\n`
       }).join('\n')
       : '_No update entries have been published or could be verified for this product yet._'
     return `## ${product.name}\n\n${content}`
@@ -290,7 +250,7 @@ function renderMarkdown(cache) {
   return [
     '# Recent product updates',
     '',
-    'Official BuiltByBit updates are preferred. When a listing blocks automated access, recent source-repository commits are shown separately as development updates. The updater checks every 10 minutes; source availability and GitHub Actions scheduling may affect refresh timing.',
+    'Browse published product updates below. For the latest release notes, visit the official product pages.',
     '',
     ...sections.flatMap(section => [section, '']),
   ].join('\n').trimEnd() + '\n'
@@ -303,21 +263,19 @@ async function main() {
   } catch (error) {
     if (error.code !== 'ENOENT') throw error
   }
+  for (const name of Object.keys(cache)) {
+    cache[name] = cache[name].filter(entry => entry.source === 'builtbybit')
+  }
 
   let receivedEntries = 0
-  const sourceToken = process.env.LUMEN_SOURCE_READ_TOKEN
   const updatesAuthorization = process.env.BUILDBYBIT_UPDATES_AUTHORIZATION
   if (!updatesAuthorization) {
     console.warn('BUILDBYBIT_UPDATES_AUTHORIZATION is not configured; creator API updates are disabled.')
   }
-  if (!sourceToken) {
-    console.warn('LUMEN_SOURCE_READ_TOKEN is not configured; private repository fallback is disabled.')
-  }
   for (const product of products) {
     const apiEntries = updatesAuthorization ? await fetchCreatorUpdates(product, updatesAuthorization) : []
     const builtByBitEntries = apiEntries.length ? apiEntries : await fetchProductUpdates(product)
-    const repositoryEntries = await fetchRepositoryUpdates(product, sourceToken)
-    const entries = [...builtByBitEntries, ...repositoryEntries]
+    const entries = builtByBitEntries
     if (entries.length) {
       const combined = [...entries, ...(cache[product.name] ?? [])]
       cache[product.name] = [...new Map(combined.map(entry => [`${entry.source}|${entry.date}|${entry.title}`, entry])).values()]

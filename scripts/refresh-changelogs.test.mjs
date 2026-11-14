@@ -1,6 +1,15 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { extractUpdateEntries, fetchCreatorUpdates, fetchProductUpdates } from './refresh-changelogs.mjs'
+import { extractUpdateEntries, fetchCreatorUpdates, fetchProductUpdates, renderMarkdown } from './refresh-changelogs.mjs'
+
+test('release notes exclude cached private repository commits and retain official updates', () => {
+  const markdown = renderMarkdown({ Gladiator: [
+    { source: 'github', title: 'Private internal change', date: '2026-01-02', text: 'Internal details', url: 'https://github.com/private/repository' },
+    { source: 'builtbybit', title: 'Public release', date: '2026-01-01', text: 'New gameplay features', url: 'https://builtbybit.com/resources/gladiator.132519/' },
+  ] })
+  assert.match(markdown, /Public release/)
+  assert.doesNotMatch(markdown, /Private internal change|Internal details|github\.com/)
+})
 
 test('extracts dated BuiltByBit resource updates and their official links', () => {
   const html = `
