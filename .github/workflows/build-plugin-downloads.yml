@@ -38,9 +38,11 @@ jobs:
     name: ${{ matrix.product.name }}
     env:
       PRODUCT_KEY: ${{ matrix.product.product_key }}
-      SOURCE_DIR: ${{ runner.temp }}/plugin-source
-      BUILD_MANIFEST: ${{ runner.temp }}/plugin-build.json
     steps:
+      - name: Configure private temporary paths
+        run: |
+          echo "SOURCE_DIR=$RUNNER_TEMP/plugin-source" >> "$GITHUB_ENV"
+          echo "BUILD_MANIFEST=$RUNNER_TEMP/plugin-build.json" >> "$GITHUB_ENV"
       - name: Checkout build tooling only
         uses: actions/checkout@v4
         with:
