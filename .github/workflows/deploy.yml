@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
   pages: write
   id-token: write
 
@@ -57,6 +58,21 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: docs/.vitepress/dist
+      - name: Wait for Pages artifact metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          for attempt in $(seq 1 12); do
+            if gh api "repos/$REPOSITORY/actions/runs/$RUN_ID/artifacts" \
+              --jq '.artifacts | any(.name == "github-pages" and .expired == false)' | grep -qx true; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::The uploaded Pages artifact is not yet visible to the deployment API."
+          exit 1
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

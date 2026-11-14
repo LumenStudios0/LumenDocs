@@ -22,7 +22,7 @@ npm run docs:preview
 
 ## Publishing
 
-Push changes to `main` or run **Deploy documentation** from the repository’s Actions tab. GitHub Actions builds the site and publishes it to GitHub Pages.
+Push changes to `main` or run **Deploy documentation** from the repository’s Actions tab. GitHub Actions builds the site, waits up to one minute for uploaded artifact metadata to become visible, and publishes it to GitHub Pages.
 
 The VitePress `base` is `/`, matching the custom domain in `docs/public/CNAME`. Keep existing routes and navigation destinations unchanged when updating the design.
 
