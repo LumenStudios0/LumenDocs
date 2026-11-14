@@ -28,7 +28,7 @@ async function tokenFor(id, name) {
 
 function createD1() {
   const sqlite = new DatabaseSync(':memory:')
-  const migrations = Promise.all(['0001_community.sql', '0002_ticket_routing.sql', '0003_community_forum.sql', '0004_website_access.sql'].map(
+  const migrations = Promise.all(['0001_community.sql', '0002_ticket_routing.sql', '0003_community_forum.sql', '0004_website_access.sql', '0005_member_registration.sql'].map(
     name => readFile(new URL(`../worker/migrations/community/${name}`, import.meta.url), 'utf8'),
   ))
   const database = {
@@ -505,6 +505,79 @@ test('manual service overrides persist while automatic checks update independent
     status: 'healthy', message: '',
   }, staff)
   assert.equal(invalidStatus.status, 400)
+})
+
+test('notification unread totals cover all pages and respect preferences, audience and per-user read state', async t => {
+  const { api } = await accessFixture(t)
+  const customer = await tokenFor(customerId, 'Customer')
+  const other = await tokenFor('723456789012345680', 'Other customer')
+  const preferences = { updates: false, announcements: true, ticketReplies: false, products: ['plugin-x'] }
+  for (const token of [customer, other]) assert.equal((await api('/community/preferences', 'PUT', preferences, token)).status, 200)
+  for (let index = 0; index < 53; index++) {
+    assert.equal((await api('/community/staff/notifications', 'POST', {
+      title: `Announcement ${index}`, body: 'Visible to both accounts.', kind: 'announcement', audience: 'all',
+    })).status, 201)
+  }
+  for (const body of [
+    { title: 'Private staff note', kind: 'announcement', audience: 'staff' },
+    { title: 'Other product', kind: 'announcement', audience: 'product', productId: 'plugin-y' },
+    { title: 'Muted release update', kind: 'update', audience: 'all' },
+  ]) assert.equal((await api('/community/staff/notifications', 'POST', { ...body, body: 'Not included in this badge.' })).status, 201)
+  const firstPage = await (await api('/community/notifications?pageSize=5', 'GET', undefined, customer)).json()
+  assert.equal(firstPage.items.length, 5)
+  assert.equal(firstPage.total, 53)
+  assert.equal(firstPage.unreadTotal, 53)
+  const lastPage = await (await api('/community/notifications?page=11&pageSize=5', 'GET', undefined, customer)).json()
+  const id = lastPage.items[0].id
+  for (let repeat = 0; repeat < 2; repeat++) assert.equal((await api(`/community/notifications/${id}/read`, 'POST', {}, customer)).status, 200)
+  const updated = await (await api('/community/notifications?pageSize=5', 'GET', undefined, customer)).json()
+  assert.equal(updated.items.every(item => !item.read), true)
+  assert.equal(updated.unreadTotal, 52)
+  assert.equal((await (await api('/community/notifications?pageSize=5', 'GET', undefined, other)).json()).unreadTotal, 53)
+  await api('/community/preferences', 'PUT', { ...preferences, announcements: false }, customer)
+  const muted = await (await api('/community/notifications', 'GET', undefined, customer)).json()
+  assert.equal(muted.unreadTotal, 0)
+  assert.equal(muted.total, 0)
+})
+
+test('verified Discord signup persists a staff-visible account and repeated sign-ins preserve its registration and role', async t => {
+  const { db, config, api, assign } = await accessFixture(t)
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  const id = '823456789012345680'
+  let username = 'new-customer'
+  globalThis.fetch = async input => {
+    if (String(input).endsWith('/oauth2/token')) return Response.json({ access_token: 'synthetic-only' })
+    if (String(input).endsWith('/api/users/@me')) return Response.json({ id, username, global_name: 'New Customer' })
+    throw new Error('Unexpected signup request')
+  }
+  const signup = () => worker.fetch(new Request('https://worker.example/auth/callback?code=synthetic-code&state=synthetic-state', {
+    headers: { Cookie: 'lumen_discord_oauth_state=synthetic-state' },
+  }), { ...config, DISCORD_CLIENT_ID: 'synthetic-id', DISCORD_CLIENT_SECRET: 'synthetic-secret' })
+  const registered = await signup()
+  assert.equal(registered.status, 302)
+  const first = db.sqlite.prepare('SELECT * FROM website_members WHERE discord_id = ?').get(id)
+  assert.equal(first.username, username)
+  assert.equal(first.display_name, 'New Customer')
+  assert.ok(Date.parse(first.registered_at))
+  assert.equal(first.role_id, null)
+  const directory = await (await api('/admin/website/members?query=new-customer')).json()
+  assert.equal(directory.items[0].registeredAt, first.registered_at)
+  assert.equal(directory.items[0].role, 'guest')
+  await assign(id, 'client')
+  username = 'returning-customer'
+  assert.equal((await signup()).status, 302)
+  const returning = db.sqlite.prepare('SELECT * FROM website_members WHERE discord_id = ?').get(id)
+  assert.equal(returning.username, username)
+  assert.equal(returning.registered_at, first.registered_at)
+  assert.equal(returning.role_id, 'client')
+  assert.equal(returning.revision, 1)
+  assert.equal(db.sqlite.prepare('SELECT COUNT(*) AS n FROM website_members WHERE discord_id = ?').get(id).n, 1)
+  db.sqlite.exec('DROP TABLE website_members')
+  const failed = await signup()
+  assert.equal(failed.status, 503)
+  assert.equal(failed.headers.has('Location'), false)
+  assert.match(await failed.text(), /account could not be saved/)
 })
 
 test('BuiltByBit status distinguishes unavailable and invalid API responses and preserves staff overrides', async t => {

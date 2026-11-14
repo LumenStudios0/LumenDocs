@@ -1,5 +1,18 @@
 # Changelogs
 
+## Website updates
+
+### November 14, 2026
+
+- Shortened the account menu; licenses, purchases and settings remain in My account.
+- Added a notification bell with an unread count across all pages, recent alerts and links to notification preferences. Counts refresh while the site is open and after alerts are read.
+- Added separate Login and Signup tabs using secure Discord verification. Verified accounts are saved to the staff user directory with registration and last-seen dates; repeat sign-ins do not create duplicates.
+- Added hierarchical website roles, configurable permissions and an access/settings audit.
+- Added plugin/product registration, display-name editing, activation and guarded deletion in Staff Dashboard.
+- Added BuiltByBit API availability to service status.
+
+## Plugin release notes
+
 Release notes can change with each plugin update. Use the official BuiltByBit resource pages below to check the latest release, update notes, and version-specific installation guidance. This documentation does not reproduce release history that may be out of date.
 
 [Browse recently collected updates](/changelogs/updates) · The update feed is refreshed every 10 minutes. BuiltByBit may block automated requests; a read-only `LUMEN_SOURCE_READ_TOKEN` Actions secret enables clearly labeled source-repository development updates as a fallback.

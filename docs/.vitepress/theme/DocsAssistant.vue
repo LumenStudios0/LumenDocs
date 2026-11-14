@@ -5,6 +5,7 @@ import { clearDiscordSession, getDiscordSession, storeDiscordSession } from './d
 import { communityRequest } from './community-api'
 import { useCommunityService } from './use-community-service'
 import { CommunityUnavailableError } from './community-errors.mjs'
+import NotificationBell from './NotificationBell.vue'
 
 declare global {
   interface Window {
@@ -110,6 +111,9 @@ const selectedMusicTrack = ref('')
 const discordUser = ref<DiscordUser | null>(null)
 const discordAuthNotice = ref('')
 const accountMenuOpen = ref(false)
+const notificationMenuOpen = ref(false)
+const accessMode = ref<'login' | 'signup'>('login')
+const accountButton = ref<HTMLButtonElement | null>(null)
 const loginModalOpen = ref(false)
 const loginDialog = ref<HTMLElement | null>(null)
 let loginReturnFocus: HTMLElement | null = null
@@ -1210,13 +1214,16 @@ async function initializeDiscordLogin() {
     })
     const result = await response.json() as { user?: DiscordUser; sessionToken?: string; error?: string }
     if (!response.ok || !result.user) {
-      try {
-        clearDiscordSession()
-      } catch (error) {
-        console.error('Unable to clear the expired Discord sign-in session:', error)
+      if (response.status === 401) {
+        try {
+          clearDiscordSession()
+        } catch (error) {
+          console.error('Unable to clear the expired Discord sign-in session:', error)
+        }
       }
       publishDiscordUser(null)
-      if (callbackToken) discordAuthNotice.value = result.error ?? 'Discord sign-in expired. Please sign in again.'
+      discordUser.value = null
+      discordAuthNotice.value = result.error ?? 'Your account could not be verified. Please try again.'
       return
     }
 
@@ -1243,6 +1250,7 @@ async function startDiscordLogin() {
     return
   }
   loginReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  accessMode.value = 'login'
   loginModalOpen.value = true
   await nextTick()
   loginDialog.value?.querySelector<HTMLButtonElement>('.discord-login-button')?.focus()
@@ -1251,6 +1259,13 @@ async function startDiscordLogin() {
 function closeDiscordLogin() {
   loginModalOpen.value = false
   loginReturnFocus?.focus()
+}
+async function switchAccessTab(event: KeyboardEvent) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+  event.preventDefault()
+  accessMode.value = event.key === 'Home' ? 'login' : event.key === 'End' ? 'signup' : accessMode.value === 'login' ? 'signup' : 'login'
+  await nextTick()
+  loginDialog.value?.querySelector<HTMLButtonElement>('.discord-login-tabs [aria-selected="true"]')?.focus()
 }
 
 function handleLoginDialogKeydown(event: KeyboardEvent) {
@@ -1285,6 +1300,7 @@ function confirmDiscordLogin() {
 
 function signOutDiscord() {
   accountMenuOpen.value = false
+  notificationMenuOpen.value = false
   discordUser.value = null
   try {
     clearDiscordSession()
@@ -1303,8 +1319,13 @@ function handleAccountMenuPointerDown(event: PointerEvent) {
 }
 
 function handleAccountMenuKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape') accountMenuOpen.value = false
+  if (event.key === 'Escape' && accountMenuOpen.value) {
+    accountMenuOpen.value = false
+    accountButton.value?.focus()
+  }
 }
+function toggleAccountMenu() { notificationMenuOpen.value = false; accountMenuOpen.value = !accountMenuOpen.value }
+function setNotificationMenu(value: boolean) { notificationMenuOpen.value = value; if (value) accountMenuOpen.value = false }
 
 function getBugReportEndpoint() {
   if (!assistantEndpoint) return ''
@@ -1922,13 +1943,17 @@ onUnmounted(() => {
           v-if="!discordUser"
           class="lumen-auth-button"
           type="button"
-          :title="discordAuthNotice || 'Sign in with Discord'"
+          :title="discordAuthNotice || 'Login or create your Lumen account with Discord'"
+          aria-haspopup="dialog"
           @click="startDiscordLogin"
         >
-          Log in
+          Login / Signup
         </button>
-        <div v-else class="lumen-account-dropdown">
+        <div v-else class="lumen-account-controls">
+          <NotificationBell :key="discordUser.id" :open="notificationMenuOpen" @update:open="setNotificationMenu" />
+          <div class="lumen-account-dropdown">
           <button
+            ref="accountButton"
             class="lumen-auth-button lumen-auth-user"
             type="button"
             :aria-expanded="accountMenuOpen"
@@ -1936,7 +1961,7 @@ onUnmounted(() => {
             aria-haspopup="menu"
             aria-controls="lumen-account-menu"
             title="Open account menu"
-            @click="accountMenuOpen = !accountMenuOpen"
+            @click="toggleAccountMenu"
           >
             <img v-if="discordUser.avatarUrl" :src="discordUser.avatarUrl" alt="">
             <span>{{ discordUser.globalName || discordUser.username }}</span>
@@ -1951,20 +1976,13 @@ onUnmounted(() => {
             aria-label="Account menu"
             role="menu"
           >
-            <div class="lumen-account-menu-heading" role="presentation">
-              <small>SIGNED IN WITH DISCORD</small>
-              <strong>{{ discordUser.globalName || discordUser.username }}</strong>
-              <small v-if="discordAuthNotice" role="status">{{ discordAuthNotice }}</small>
-            </div>
-            <a href="/account/" role="menuitem" @click="accountMenuOpen = false">Dashboard</a>
-            <a href="/account/licenses" role="menuitem" @click="accountMenuOpen = false">My licenses</a>
-            <a href="/account/products" role="menuitem" @click="accountMenuOpen = false">Products purchased</a>
-            <a href="/account/settings" role="menuitem" @click="accountMenuOpen = false">Account settings</a>
+            <p v-if="discordAuthNotice" class="lumen-account-notice" role="status">{{ discordAuthNotice }}</p>
+            <a href="/account/" role="menuitem" @click="accountMenuOpen = false">My account</a>
+            <a href="/account/tickets" role="menuitem" @click="accountMenuOpen = false">Support tickets</a>
             <a v-if="discordUser.permissions?.includes('dashboard.view')" href="/admin/" role="menuitem" @click="accountMenuOpen = false">Staff Dashboard</a>
-            <a href="/account/tickets" role="menuitem" @click="accountMenuOpen = false">My support tickets</a>
-            <a href="/account/notifications" role="menuitem" @click="accountMenuOpen = false">Notifications &amp; preferences</a>
             <button type="button" role="menuitem" @click="signOutDiscord">Sign out</button>
           </nav>
+          </div>
         </div>
       </Teleport>
     </ClientOnly>
@@ -1989,13 +2007,18 @@ onUnmounted(() => {
               <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
             </svg>
           </button>
-          <div class="discord-login-content">
+          <div class="discord-login-tabs" role="tablist" aria-label="Account access" @keydown="switchAccessTab">
+            <button id="lumen-login-tab" type="button" role="tab" :aria-selected="accessMode === 'login'" :tabindex="accessMode === 'login' ? 0 : -1" aria-controls="lumen-access-panel" @click="accessMode = 'login'">Login</button>
+            <button id="lumen-signup-tab" type="button" role="tab" :aria-selected="accessMode === 'signup'" :tabindex="accessMode === 'signup' ? 0 : -1" aria-controls="lumen-access-panel" @click="accessMode = 'signup'">Signup</button>
+          </div>
+          <div id="lumen-access-panel" class="discord-login-content" role="tabpanel" :aria-labelledby="accessMode === 'login' ? 'lumen-login-tab' : 'lumen-signup-tab'">
             <span class="discord-login-eyebrow">YOUR LUMEN WORKSPACE</span>
             <svg class="discord-logo" viewBox="0 0 127 127" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
               <path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0A105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36a77.7,77.7,0,0,0,6.89-11.11A68.42,68.42,0,0,1,28,85.22c.45-.24.9-.48,1.35-.72a77.21,77.21,0,0,0,66.36,0c.45.24.89.48,1.34.72a68.68,68.68,0,0,1-11.77,8.39,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60.55,31,53.88s5-11.81,11.43-11.81S53.89,47.16,53.07,53.88,48.11,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60.55,73.25,53.88s5-11.81,11.44-11.81S95.12,47.16,94.3,53.88,89.36,65.69,84.69,65.69Z"/>
             </svg>
-            <h2 id="discord-login-title" class="discord-login-title">Log in with Discord</h2>
-            <p id="discord-login-description" class="discord-login-description">Your plugins, licenses, and connected servers. All in one place, with your Discord account.</p>
+            <h2 id="discord-login-title" class="discord-login-title">{{ accessMode === 'login' ? 'Welcome back.' : 'Join Lumen Studios.' }}</h2>
+            <p id="discord-login-description" class="discord-login-description">{{ accessMode === 'login' ? 'Use your Discord account to open your licenses, support tickets and updates.' : 'Create your website account with Discord. Your profile is saved securely, with no extra password to remember.' }}</p>
+            <p v-if="discordAuthNotice" class="discord-login-description" role="alert">{{ discordAuthNotice }}</p>
             <button
               class="discord-login-button"
               type="button"
@@ -2004,9 +2027,9 @@ onUnmounted(() => {
               <svg class="discord-login-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.211.375-.444.864-.607 1.25a18.27 18.27 0 0 0-5.487 0c-.163-.386-.395-.875-.607-1.25a.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.042-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.294.075.075 0 0 1 .078-.01c3.928 1.793 8.18 1.793 12.062 0a.075.075 0 0 1 .079.009c.12.098.246.198.373.295a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.076.076 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.030.077.077 0 0 0 .032-.057c.5-4.761-.838-8.898-3.549-12.56a.061.061 0 0 0-.031-.028zM8.02 15.33c-1.183 0-2.157-.965-2.157-2.156 0-1.193.93-2.157 2.157-2.157 1.226 0 2.157.964 2.157 2.157 0 1.19-.93 2.155-2.157 2.155zm7.975 0c-1.183 0-2.157-.965-2.157-2.156 0-1.193.93-2.157 2.157-2.157 1.226 0 2.157.964 2.157 2.157 0 1.19-.931 2.155-2.157 2.155z"/>
               </svg>
-              Continue with Discord
+              {{ accessMode === 'login' ? 'Login with Discord' : 'Create account with Discord' }}
             </button>
-            <small class="discord-login-note">You will continue securely on Discord.</small>
+            <small class="discord-login-note">{{ accessMode === 'login' ? 'New here? Choose Signup. Both options continue securely on Discord.' : 'Your first verified sign-in saves one account per Discord user. Existing accounts sign in without creating duplicates. Signing up does not grant licenses or staff access.' }}</small>
           </div>
         </div>
       </div>

@@ -75,6 +75,7 @@ export interface Service {
   checkedAt: string | null
 }
 export interface CommunityPage<T> { items: T[]; total: number; page: number; pageSize: number }
+export interface NotificationPage extends CommunityPage<Notification> { unreadTotal: number }
 
 export async function communityRequest<T>(path: string, init: RequestInit = {}, authenticated = true): Promise<T> {
   const configured = import.meta.env.VITE_DOCS_ASSISTANT_ENDPOINT

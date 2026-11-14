@@ -4,7 +4,7 @@ import { ROLES } from '../../../shared/permissions.mjs'
 
 interface Access { role: string; rank: number; permissions: string[] }
 interface Role { id: string; name: string; rank: number; permissions: string[]; revision: number }
-interface Member { discordId: string; username: string; displayName: string; role: string; rank: number; revision: number; protected: boolean }
+interface Member { discordId: string; username: string; displayName: string; role: string; rank: number; revision: number; protected: boolean; registeredAt: string | null; lastSeenAt: string | null }
 interface SiteSettings { supportOpen: boolean; supportClosedMessage: string; forumOpen: boolean; forumClosedMessage: string }
 interface Audit { id: string; actor_id: string; actor_role: string; action: string; target: string; details: Record<string, unknown>; created_at: string }
 interface Page<T> { items: T[]; total: number; page: number; pageSize: number }
@@ -133,7 +133,7 @@ onMounted(() => { void refresh() })
         <form class="website-actions" @submit.prevent="searchMembers"><label class="access-search">Find website users<input v-model="query" type="search" placeholder="Discord ID, username or display name"></label><button type="submit" :disabled="busy">Search users</button></form>
         <p class="website-note">Users appear after their next verified website sign-in. Unassigned signed-in users are Guests; Client is an explicit role, not a proof of purchase.</p>
         <div class="website-list">
-          <article v-for="member in members" :key="member.discordId"><div><strong>{{ member.displayName || member.username || 'Not signed in yet' }}</strong><p class="website-meta">{{ member.username }} / {{ member.discordId }}</p><span class="website-badge">{{ roles.find(role => role.id === member.role)?.name }}</span></div><button type="button" :disabled="busy || !mayManage(member)" @click="chooseMember(member)">Manage role</button></article>
+          <article v-for="member in members" :key="member.discordId"><div><strong>{{ member.displayName || member.username || 'Not signed in yet' }}</strong><p class="website-meta">{{ member.username }} / {{ member.discordId }}</p><p v-if="member.registeredAt" class="website-meta">Joined {{ new Date(member.registeredAt).toLocaleString() }}</p><p v-if="member.lastSeenAt" class="website-meta">Last seen {{ new Date(member.lastSeenAt).toLocaleString() }}</p><span class="website-badge">{{ roles.find(role => role.id === member.role)?.name }}</span></div><button type="button" :disabled="busy || !mayManage(member)" @click="chooseMember(member)">Manage role</button></article>
         </div>
         <p v-if="!loading && !members.length" class="website-note">No matching website users.</p>
         <div class="website-pagination"><button type="button" :disabled="busy || page <= 1" @click="movePage('members', page - 1)">Previous</button><span>Page {{ page }} / {{ Math.max(1, Math.ceil(total / 50)) }} · {{ total }} users</span><button type="button" :disabled="busy || page * 50 >= total" @click="movePage('members', page + 1)">Next</button></div>

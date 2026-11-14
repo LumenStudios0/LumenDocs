@@ -361,6 +361,12 @@ async function notifications(request, env, url, user, deps, staff) {
     values,
     page,
   )
+  const unread = await env.COMMUNITY_DB.prepare(
+    `SELECT COUNT(*) AS total FROM community_notifications
+     WHERE ${where ? `(${where.slice('WHERE'.length)}) AND` : ''}
+       NOT EXISTS (SELECT 1 FROM community_notification_reads
+         WHERE user_id = ? AND notification_id = community_notifications.id)`,
+  ).bind(...values, user.id).first()
   const selected = result.items
   const readRows = selected.length
     ? await env.COMMUNITY_DB.prepare(
@@ -370,7 +376,7 @@ async function notifications(request, env, url, user, deps, staff) {
   const readIds = new Set((readRows.results ?? []).map(row => row.notification_id))
   return json(request, {
     items: selected.map(row => notificationView(row, readIds.has(row.id), staff)),
-    total: result.total, page: page.page, pageSize: page.pageSize,
+    total: result.total, page: page.page, pageSize: page.pageSize, unreadTotal: unread.total,
   }, 200, deps.respond)
 }
 

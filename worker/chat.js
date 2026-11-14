@@ -324,6 +324,15 @@ async function completeDiscordLogin(request, env) {
     })
   }
 
+  try {
+    await rememberMember({ id: user.id, username: user.username, globalName: user.global_name }, env)
+  } catch (error) {
+    console.error('Unable to save verified Discord account:', error)
+    return new Response('Your website account could not be saved. Please try signing in again later.', {
+      status: 503,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'Set-Cookie': clearStateCookie },
+    })
+  }
   const token = await createLoginToken(user, env)
   return new Response(null, {
     status: 302,

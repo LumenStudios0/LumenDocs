@@ -60,10 +60,12 @@ export async function getAdminRole(id, env) {
 
 export async function rememberMember(user, env) {
   if (!env.COMMUNITY_DB) return
+  const now = new Date().toISOString()
   await env.COMMUNITY_DB.prepare(
-    `INSERT INTO website_members(discord_id, username, display_name, last_seen_at) VALUES (?, ?, ?, ?)
-     ON CONFLICT(discord_id) DO UPDATE SET username=excluded.username, display_name=excluded.display_name, last_seen_at=excluded.last_seen_at`,
-  ).bind(user.id, user.username, user.globalName || user.username, new Date().toISOString()).run()
+    `INSERT INTO website_members(discord_id, username, display_name, last_seen_at, registered_at) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(discord_id) DO UPDATE SET username=excluded.username, display_name=excluded.display_name,
+       last_seen_at=excluded.last_seen_at, registered_at=COALESCE(website_members.registered_at, excluded.registered_at)`,
+  ).bind(user.id, user.username, user.globalName || user.username, now, now).run()
 }
 
 export async function getStaffMembers(env) {
@@ -134,7 +136,7 @@ export async function websiteAdminApi(request, env, path, user, access, respond,
     return send({ items: (rows.results || []).map(row => members ? {
       discordId: row.discord_id, username: row.username, displayName: row.display_name,
       role: row.discord_id === OWNER_DISCORD_ID ? 'owner' : row.role_id || bootstrapRole(row.discord_id, env),
-      revision: row.revision, lastSeenAt: row.last_seen_at,
+      revision: row.revision, lastSeenAt: row.last_seen_at, registeredAt: row.registered_at,
       protected: row.discord_id === OWNER_DISCORD_ID,
       rank: policies.find(role => role.id === (row.discord_id === OWNER_DISCORD_ID ? 'owner' : row.role_id || bootstrapRole(row.discord_id, env))).rank,
     } : { ...row, details: JSON.parse(row.details) }), page, pageSize: 50, total: count.total })

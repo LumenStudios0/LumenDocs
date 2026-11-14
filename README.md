@@ -50,6 +50,8 @@ Website roles are **Guest, Client, Support team, Developer, Studio Lead, Owner**
 
 **Plugins & products** also edits existing display names without changing IDs. The archive-based VPS needs the small plugin-editing updater documented in `worker/README.md` for plugin names; product names already work. Service status includes automatic BuiltByBit API availability and independent staff overrides.
 
+The header keeps account navigation compact and has a separate notification bell with the full unread count. **Login / Signup** offers two Discord-backed entry tabs; verified signups persist in D1 and appear under **Users & roles** with registration and last-seen dates. The website changelog is at `/changelogs/`; automatically collected plugin release notes remain separate.
+
 Tickets belong automatically to the verified Discord account, without a username field. Customers can edit the title and original details of their open tickets. Staff can rename tickets, assign authorized staff, add up to eight labels, and filter by assignment/status/label. Discord ticket links open the matching conversation in **Staff Dashboard**. Alerts are queued atomically with tickets, retried by the five-minute job up to five attempts, and show delivery status/retry controls to staff. Delivery is at-least-once: after an ambiguous timeout, verify Discord before manually retrying.
 
 Run `npm run test:licensing` for expiry-boundary, allowlist, CSV, and audit-redaction checks. The Pages workflow runs these alongside the Worker tests.

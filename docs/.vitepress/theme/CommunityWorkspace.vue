@@ -218,6 +218,7 @@ async function savePreferences() {
     })
     if (captured !== getDiscordSession()) return
     preferences.value = result.preferences
+    window.dispatchEvent(new Event('lumen-notifications-changed'))
     await load(1)
     notice.value = 'Notification preferences saved.'
   } catch (requestError) {
@@ -233,7 +234,10 @@ async function markRead(notification: Notification) {
   error.value = ''
   try {
     await communityRequest(`/notifications/${notification.id}/read`, { method: 'POST' })
-    if (captured === getDiscordSession()) notification.read = true
+    if (captured === getDiscordSession()) {
+      notification.read = true
+      window.dispatchEvent(new Event('lumen-notifications-changed'))
+    }
   } catch (requestError) {
     if (captured === getDiscordSession()) {
       error.value = requestError instanceof Error ? requestError.message : 'Could not mark notification read.'
