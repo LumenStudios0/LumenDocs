@@ -7,6 +7,11 @@ on:
         description: "Hostname that should point at the licensing VPS"
         default: "license.lumenstudio.fyi"
         required: true
+      action:
+        description: "diagnose only, or also apply a connection fix"
+        type: choice
+        default: diagnose
+        options: [diagnose, create-dns, set-worker-url]
 
 permissions:
   contents: read
@@ -47,3 +52,40 @@ jobs:
           curl -s -m 15 -H "Origin: https://lumenstudio.fyi" \
             https://lumen-docs-assistant.lumennetwork0.workers.dev/community/status \
             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{for(const x of JSON.parse(s).services)console.log(x.id, x.automaticStatus, x.checkedAt)})'
+      - name: Create DNS-only A record for the licensing API
+        if: inputs.action == 'create-dns'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          HOST: ${{ inputs.api_hostname }}
+        run: |
+          node --input-type=module <<'NODE'
+          const headers = { Authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN}`, 'Content-Type': 'application/json' }
+          const api = 'https://api.cloudflare.com/client/v4'
+          const zones = await (await fetch(`${api}/zones?name=lumenstudio.fyi`, { headers })).json()
+          const zone = zones.result?.[0]?.id
+          if (!zone) throw new Error('lumenstudio.fyi zone is not readable with this token')
+          const existing = await (await fetch(`${api}/zones/${zone}/dns_records?type=A&name=${process.env.HOST}`, { headers })).json()
+          if (existing.result?.length) { console.log('A record already exists:', existing.result.map(r => `${r.content} proxied=${r.proxied}`).join(', ')); process.exit(0) }
+          const created = await (await fetch(`${api}/zones/${zone}/dns_records`, {
+            method: 'POST', headers,
+            body: JSON.stringify({ type: 'A', name: process.env.HOST, content: '178.238.238.15', proxied: false, ttl: 1, comment: 'Lumen licensing API (Caddy on VPS)' }),
+          })).json()
+          if (!created.success) {
+            console.log(`::error::Could not create the DNS record: ${created.errors?.map(e => `${e.code} ${e.message}`).join('; ')}. Give the Cloudflare token Zone > DNS > Edit for lumenstudio.fyi, or add the record manually.`)
+            process.exit(1)
+          }
+          console.log(`Created ${process.env.HOST} -> 178.238.238.15 (DNS only)`)
+          NODE
+      - name: Point the Worker at the licensing hostname
+        if: inputs.action == 'set-worker-url'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          HOST: ${{ inputs.api_hostname }}
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' -m 15 "https://$HOST/healthz" || true)
+          if [ "$code" != "200" ]; then
+            echo "::error::https://$HOST/healthz returned HTTP $code. Update Caddy on the VPS first (git pull && docker compose up -d) so it serves this hostname."
+            exit 1
+          fi
+          printf 'https://%s' "$HOST" | npx --yes wrangler@4.160.0 secret put LICENSE_API_URL --name lumen-docs-assistant
