@@ -14,7 +14,7 @@ type Product = {
 const products: Product[] = [
   { name: 'Gladiator', price: '$19.99', url: 'https://builtbybit.com/resources/gladiator.132519/', docs: '/products/gladiator', category: 'Combat' },
   { name: 'LumenAuction', price: 'See current listing', url: 'https://builtbybit.com/resources/lumenauction.132967/', docs: '/products/lumen-auction', category: 'Economy' },
-  { name: 'LumenBounty', price: 'See current listing', url: 'https://builtbybit.com/resources/lumenbounty.132973/', docs: '/products/lumen-bounty', category: 'Gameplay' },
+  { name: 'LumenBounty', price: 'Coming soon', url: '/products/lumen-bounty', docs: '/products/lumen-bounty', category: 'Coming soon' },
   { name: 'LumenDuels', price: '$12.99', url: 'https://builtbybit.com/resources/lumenduels.119760/', docs: '/products/lumen-duels', category: 'Combat' },
   { name: 'LumenDuels Premium', price: '$18.99', url: 'https://builtbybit.com/resources/lumenduels-premium.132188/', docs: '/products/lumen-duels-premium', category: 'Combat' },
   { name: 'LumenEconomy', price: '$5.99', url: 'https://builtbybit.com/resources/lumeneconomy.132341/', docs: '/products/lumen-economy', category: 'Economy' },

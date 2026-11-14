@@ -6,6 +6,9 @@ const destinations = [
   { mark: '01', title: 'Licenses & purchases', text: 'Reveal your shared key, refresh purchases, and manage server IPs.', href: '/account/licenses', action: 'Open license center' },
   { mark: '02', title: 'Plugin catalog', text: 'Explore the Lumen collection and jump straight into installation guides.', href: '/account/products', action: 'Explore plugins' },
   { mark: '03', title: 'Account settings', text: 'Sync your Discord identity and manage your account data.', href: '/account/settings', action: 'Manage account' },
+  { mark: '04', title: 'Website support', text: 'Create private tickets and follow staff replies on the website.', href: '/account/tickets', action: 'Open my tickets' },
+  { mark: '05', title: 'Notifications', text: 'Choose plugin update topics, announcements, and ticket alerts.', href: '/account/notifications', action: 'Read updates' },
+  { mark: '06', title: 'Server health tools', text: 'Check plugin requirements and view studio service status.', href: '/getting-started/compatibility', action: 'Check compatibility' },
 ]
 </script>
 

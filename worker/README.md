@@ -12,9 +12,7 @@ Browser API requests use the same-origin `https://lumenstudio.fyi/api/` route so
 
 ## Bug, compatibility, and feature reports
 
-The `/reports` endpoint sends bug reports, compatibility results, and feature requests to the same Discord reports inbox. Configure its private webhook with `npx wrangler secret put DISCORD_BUG_REPORT_WEBHOOK`, then deploy the Worker with `npx wrangler deploy`. The GitHub Pages build only deploys the documentation site; changes to `worker/chat.js` require a separate Worker deployment.
-
-Compatibility reports require a plugin, server software, Minecraft version, one of `untested`, `broken`, `partial`, or `working`, and test details. Feature requests require a title and description. The legacy `/bug-report` endpoint remains available for the assistant's existing bug form.
+`POST /bug-report` and `POST /reports` are compatibility aliases for signed-in community ticket creation, not anonymous Discord webhook APIs. They accept the older report payloads, require a valid Discord session, use the community D1 store and its rate limiter, and return the normal `{ "ticket": ... }` response. `/bug-report` creates a bug ticket; `/reports` accepts bug, compatibility, or feature reports. Compatibility submissions still require a recognized test result. The supplied Discord username is ignored in favor of the verified account, and any supplied product/license key is discarded and never stored. Existing callers must now send `Authorization: Bearer <session>`.
 
 ## Discord sign-in
 
@@ -98,10 +96,24 @@ Customer routes require a valid `Authorization: Bearer <session>` header and are
 
 The GitHub Pages workflow does not deploy `worker/chat.js`. The separate **Deploy Cloudflare Worker** workflow deploys Worker changes when `worker/**` or `wrangler.toml` changes. To authorize it, add these values under the LumenDocs repository's **Settings → Secrets and variables → Actions**:
 
-- Repository secret `CLOUDFLARE_API_TOKEN`: create a Cloudflare API token with the **Edit Cloudflare Workers** permission for the account that owns this Worker. Do not paste the token into chat or commit it.
+- Repository secret `CLOUDFLARE_API_TOKEN`: create a Cloudflare API token with **Workers Scripts: Edit** and **D1: Edit** permissions for the account that owns this Worker. Do not paste the token into chat or commit it.
 - Repository variable `CLOUDFLARE_ACCOUNT_ID`: copy the account ID from the Cloudflare dashboard's account overview.
 
-After saving both, open **Actions → Deploy Cloudflare Worker → Run workflow** and run it on `main`. Confirm the run succeeds before testing admin requests again. Subsequent Worker code changes deploy automatically on pushes to `main`.
+The workflow finds or creates the `lumen-community` D1 database, fills the generated database ID into the runner's Wrangler configuration, applies remote migrations, and only then deploys. Provisioning and migration failures stop deployment. The committed Wrangler config intentionally has a placeholder database ID; deploy through this workflow rather than running Wrangler directly from a clean checkout. After saving both settings, open **Actions → Deploy Cloudflare Worker → Run workflow** on `main`. Subsequent Worker code changes deploy automatically on pushes to `main`.
+
+## Community support, issues, notifications, and status
+
+The Worker community API is backed by the independent `COMMUNITY_DB` D1 database; it does not depend on the licensing service. If the binding is missing, community requests return `COMMUNITY_SERVICE_UNAVAILABLE` rather than using in-memory or mock storage. Discord sign-in sessions and the existing origin checks authorize customer and staff routes. Customer tickets and submitted issues remain private until staff publish an issue. Ticket replies, moderation, notification preferences/reads, and manual status overrides persist in D1.
+
+- Public: `GET /community/issues?page=1&pageSize=20`, `GET /community/status`.
+- Signed-in customer: `GET|POST /community/tickets`, `GET /community/tickets/{uuid}`, `POST /community/tickets/{uuid}/replies`, `POST /community/issues`, `GET|PUT /community/preferences`, `GET /community/notifications`, and `POST /community/notifications/{uuid}/read`.
+- Staff: `GET /community/staff/tickets`, `PUT /community/staff/tickets/{uuid}`, `GET|POST /community/staff/issues`, `PUT /community/staff/issues/{uuid}`, `GET|POST /community/staff/notifications`, `PUT /community/staff/status/{website|discord|licensing}`, and `POST /community/staff/status/check`.
+
+Page sizes are capped at 50. Mutations and signed-in reads are rate limited; public status/issues polling is not. Ticket closures block further replies. Staff status overrides are stored separately from health-check results and remain in effect until changed to `auto`. The five-minute cron checks the public website and Discord OAuth redirect; it checks licensing with an authenticated, bounded `GET /v1/admin/products?limit=1` only when both licensing settings are configured. Health results expose only service status and timestamps, never the licensing URL or credential. Notifications are in-app only; no bot or email delivery is configured.
+
+The cron runs every five minutes. A staff member can request an immediate health check. Set the Worker `LICENSE_API_URL` and `LICENSE_ADMIN_API_TOKEN` only if the optional licensing check should run; those values are never returned by community endpoints.
+
+Response details: ticket creation and `GET /community/tickets/{uuid}` use `{ "ticket": { "id", "type", "title", "body", "productId", "status", "createdAt", "updatedAt" } }`; compatibility metadata is accepted and retained internally, but does not add fields to this response shape. Staff ticket objects additionally include `customerDiscordId`. Issue submissions atomically create an unpublished issue and a matching bug ticket with the same ID; `{ "submissionId", "message" }` returns that ticket ID, so the submission also appears in the customer's tickets. Preference GET/PUT return `{ "preferences": { "updates", "announcements", "ticketReplies", "products" } }`. Customer notifications include `read`; staff notification lists and staff-created notification responses additionally include `audience`. Product-targeted announcements and updates honor product filters when configured; an empty product list receives all product-targeted topics, subject to the update/announcement preference. Ticket reply notifications link to `/account/tickets?ticket={id}` and published notifications link to `/account/notifications`. Status returns `{ "services": [...], "intervalMinutes": 5 }`; each service has `id`, `name`, `status`, `automaticStatus`, `overrideStatus`, `message`, and `checkedAt`. The fixed service IDs are `website`, `discord`, and `licensing`. There is no community audit endpoint or audit-feed response; licensing admin audit remains separate.
 
 ## Optional anonymous dinosaur discoverer total
 

@@ -4,6 +4,6 @@ import ReportsForm from '../.vitepress/theme/ReportsForm.vue'
 
 # Reports
 
-Send bug reports, compatibility results, or feature ideas to the Lumen Studios team. Choose a report type below; all submissions are delivered to the same reports inbox.
+Connect your Discord account, then submit a private website ticket for bugs, compatibility results, or feature ideas. Staff reply on the website; follow your conversation in [My tickets](/account/tickets). Never include license keys or credentials.
 
 <ReportsForm />

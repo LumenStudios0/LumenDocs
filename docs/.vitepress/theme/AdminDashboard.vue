@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { getDiscordSession } from './discord-session'
 import { effectiveLicenseStatus, licenseNeedsAttention, normalizeIpAddress, redactAuditDetails, toSafeCsv } from './licensing-utils.mjs'
 import { clearAdminTestData, createAdminTestStore, TEST_OWNER_ID } from './admin-test-store.mjs'
+import StaffCommunity from './StaffCommunity.vue'
 
 interface AdminLicense {
   licenseId: string
@@ -49,6 +50,7 @@ const views: { id: View; label: string; number: string }[] = [
 ]
 const pageSize = 50
 const view = ref<View>('customers')
+const websiteOperations = ref(false)
 const pages = reactive<Record<View, number>>({ customers: 1, licenses: 1, audit: 1, products: 1 })
 const totals = reactive<Record<View, number>>({ customers: 0, licenses: 0, audit: 0, products: 0 })
 const customers = ref<Customer[]>([])
@@ -284,6 +286,7 @@ async function loadView(page = pages[view.value]) {
 
 function switchView(target: View) {
   if (submitting.value) return
+  websiteOperations.value = false
   user.value = null
   selectedLicenseId.value = ''
   clearKey()
@@ -533,9 +536,12 @@ onUnmounted(() => {
 <template>
   <main id="admin-dashboard" class="admin-workspace">
     <header class="staff-hero">
-      <div><p class="staff-eyebrow">LUMEN STUDIOS / STAFF OPERATIONS</p><h1>Studio control center<span>.</span></h1><p>Customer access, license health, and an accountable history of every change.</p></div>
+      <div><p class="staff-eyebrow">LUMEN STUDIOS / STAFF OPERATIONS</p><h1>Staff Dashboard<span>.</span></h1><p>Website tickets, updates, service health, and customer access.</p></div>
       <span class="staff-access">Authorized staff only</span>
     </header>
+    <nav class="staff-navigation" aria-label="Staff dashboard areas"><button type="button" :aria-pressed="!websiteOperations" @click="websiteOperations = false">Licenses &amp; accounts</button><button type="button" :aria-pressed="websiteOperations" :disabled="submitting" @click="websiteOperations = true">Tickets, updates &amp; status</button></nav>
+    <StaffCommunity v-if="websiteOperations" />
+    <template v-else>
     <aside class="staff-test-mode" :class="{ 'is-testing': testMode }" aria-label="Owner local test mode">
       <div><strong>{{ testMode ? 'LOCAL TEST MODE — NOT LIVE DATA' : 'Licensing API offline? Try the controls safely.' }}</strong><p>{{ testMode ? 'Editing your owner test account only. Changes stay in this browser; test keys never validate plugins. Nothing here changes real licenses.' : 'The owner account can practice grants, bans, holds, verification, IP edits, and deletion without the licensing backend. Discord sign-in must still work.' }}</p></div>
       <div class="staff-actions">
@@ -667,6 +673,7 @@ onUnmounted(() => {
     </section>
     <div v-if="loaded && !user && view !== 'audit'" class="staff-pagination"><button type="button" :disabled="busy || pages[view] <= 1" @click="loadView(pages[view] - 1)">Previous page</button><span>Page {{ pages[view] }} / {{ maxPage }} · {{ totals[view] }} total</span><button type="button" :disabled="busy || pages[view] >= maxPage" @click="loadView(pages[view] + 1)">Next page</button></div>
     <footer class="staff-footer">{{ testMode ? 'Local simulation only. Reset to undo all test edits; exit to return to the real API.' : 'Access is checked by the Worker on every live request. Administrator credentials never reach this page.' }}</footer>
+    </template>
   </main>
 </template>
 

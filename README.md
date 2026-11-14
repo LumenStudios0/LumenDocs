@@ -54,3 +54,13 @@ If the licensing backend is unavailable, the signed-in studio owner can select *
 ## Keeping guides accurate
 
 Commands and supported versions can vary by release, so check the notes that came with your jar. Need a license? Follow the [Discord license guide](https://lumenstudios0.github.io/LumenDocs/getting-started/licensing). Never add license keys, plugin tokens, database passwords, Discord webhooks, or other private credentials here.
+
+## Website support and operations
+
+The **Staff Dashboard** retains `/admin/` and adds **Tickets, updates & status**, independently of the licensing backend. Customers create private website tickets at `/reports/` or `/account/tickets`; both submissions and replies require a verified Discord session. Staff can reply using reviewed presets, change ticket status, publish sanitized issues at `/known-issues`, and send in-app updates or announcements to all subscribers, a selected plugin topic, or staff. Customers choose notification topics and preferences at `/account/notifications`. Notification delivery is on the website, not email or Discord.
+
+Persistent tickets, replies, preferences, announcements, and service status use the Worker's `COMMUNITY_DB` D1 binding. The Worker workflow provisions the `lumen-community` database and applies migrations before deployment; the Cloudflare deployment token needs D1 edit permission in addition to Worker edit permission. Missing storage or denied access is reported explicitly rather than shown as an empty successful result. Public known-issue posts require staff moderation, and public views do not expose customer identities or private tickets.
+
+`/status` shows reachability probes and staff maintenance overrides. Automatic checks run every five minutes, within the requested 1–10-minute window; the status page refreshes every five minutes while visible. Manual overrides remain until staff switch back to Automatic. Probes check website reachability, the Discord OAuth redirect, and licensing availability—not every plugin or customer's Minecraft server.
+
+The compatibility checker at `/getting-started/compatibility` covers identified studio plugins and upcoming/unverified projects using pinned repository manifest evidence. It distinguishes declared Java/API/dependency requirements from actual runtime testing. `/error-guides` searches known messages locally, without uploading logs. Documentation bookmarks at `/bookmarks` also remain in local browser storage and need no sign-in. Run `npm run test:website`, `npm run test:licensing`, and `npm run test:worker` before publishing.

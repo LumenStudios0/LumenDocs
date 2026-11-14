@@ -17,3 +17,12 @@ ADMIN_DISCORD_IDS = ""
 name = "ASSISTANT_LIMITER"
 namespace_id = "1001"
 simple = { limit = 10, period = 60 }
+
+[[d1_databases]]
+binding = "COMMUNITY_DB"
+database_name = "lumen-community"
+database_id = "REPLACE_WITH_PROVISIONED_D1_DATABASE_ID"
+migrations_dir = "worker/migrations/community"
+
+[triggers]
+crons = ["*/5 * * * *"]

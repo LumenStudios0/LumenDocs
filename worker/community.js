@@ -1,0 +1,653 @@
+const STATUS_VALUES = new Set(['operational', 'degraded', 'outage', 'maintenance'])
+const SERVICES = [
+  { id: 'website', name: 'Website' },
+  { id: 'discord', name: 'Discord sign-in' },
+  { id: 'licensing', name: 'Licensing service' },
+]
+const DEFAULT_PREFERENCES = { updates: true, announcements: true, ticketReplies: true, products: [] }
+
+function json(request, payload, status, respond) {
+  const origin = request.headers.get('Origin') ?? new URL(request.url).origin
+  return respond(payload, status, origin)
+}
+
+function parsePage(url) {
+  const page = Math.max(1, Math.min(100000, Number.parseInt(url.searchParams.get('page') ?? '1', 10) || 1))
+  const pageSize = Math.max(1, Math.min(50, Number.parseInt(url.searchParams.get('pageSize') ?? '20', 10) || 20))
+  return { page, pageSize, offset: (page - 1) * pageSize }
+}
+
+function validText(value, min, max) {
+  return typeof value === 'string' && value.trim().length >= min && value.trim().length <= max
+}
+
+function cleanText(value) {
+  return value.trim()
+}
+
+function ticketView(row, staff = false) {
+  return {
+    id: row.id,
+    type: row.type,
+    title: row.title,
+    body: row.body,
+    productId: row.product_id,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    ...(staff ? { customerDiscordId: row.owner_id } : {}),
+  }
+}
+
+function issueView(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    body: row.body,
+    productId: row.product_id,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+function notificationView(row, read = false, includeAudience = false) {
+  return {
+    id: row.id,
+    title: row.title,
+    body: row.body,
+    kind: row.kind,
+    productId: row.product_id,
+    createdAt: row.created_at,
+    read: Boolean(read),
+    link: row.link,
+    ...(includeAudience ? { audience: row.audience } : {}),
+  }
+}
+
+async function bodyJson(request, maxBytes = 12000) {
+  const text = await request.text()
+  if (text.length > maxBytes) return { error: 'Request is too large', status: 413 }
+  try {
+    return { value: JSON.parse(text) }
+  } catch {
+    return { error: 'Expected a JSON request', status: 400 }
+  }
+}
+
+async function session(request, env, deps, staffRequired = false) {
+  const authorization = request.headers.get('Authorization') ?? ''
+  const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : ''
+  const user = await deps.verifyLoginToken(token, env)
+  if (!user) return { response: json(request, { error: 'Sign in to access the community' }, 401, deps.respond) }
+  const role = deps.getAdminRole(user.id, env)
+  if (staffRequired && !role) {
+    return { response: json(request, { error: 'Staff access is required' }, 403, deps.respond) }
+  }
+  return { user, role }
+}
+
+async function limit(request, env, user, deps, key = 'community') {
+  if (!env.ASSISTANT_LIMITER) {
+    return json(request, { error: 'The community service is not configured' }, 503, deps.respond)
+  }
+  const result = await env.ASSISTANT_LIMITER.limit({ key: `${key}:${user.id}` })
+  return result.success
+    ? null
+    : json(request, { error: 'Please wait before using the community service again' }, 429, deps.respond)
+}
+
+function unavailable(request, deps) {
+  return json(request, {
+    error: 'The community database is not configured. Provision COMMUNITY_DB and apply the community migrations.',
+    code: 'COMMUNITY_SERVICE_UNAVAILABLE',
+  }, 503, deps.respond)
+}
+
+async function requireDb(request, env, deps) {
+  return env.COMMUNITY_DB ? null : unavailable(request, deps)
+}
+
+async function paginate(db, countSql, listSql, values, page) {
+  const count = await db.prepare(countSql).bind(...values).first()
+  const items = await db.prepare(listSql).bind(...values, page.pageSize, page.offset).all()
+  return { items: items.results ?? [], total: Number(count?.total ?? 0), page: page.page, pageSize: page.pageSize }
+}
+
+async function issueList(request, env, url, deps) {
+  const page = parsePage(url)
+  const result = await paginate(
+    env.COMMUNITY_DB,
+    'SELECT COUNT(*) AS total FROM community_issues WHERE published = 1',
+    `SELECT * FROM community_issues WHERE published = 1 ORDER BY updated_at DESC LIMIT ? OFFSET ?`,
+    [],
+    page,
+  )
+  return json(request, { ...result, items: result.items.map(issueView) }, 200, deps.respond)
+}
+
+async function createTicket(request, env, user, deps, body, typeOverride) {
+  const type = typeOverride ?? body.type
+  const types = new Set(['support', 'bug', 'compatibility', 'feature'])
+  if (!types.has(type)) return json(request, { error: 'Choose a valid ticket type' }, 400, deps.respond)
+  if (!validText(body.title, 3, 160) || !validText(body.body, 5, 8000)) {
+    return json(request, { error: 'Title must be 3–160 characters and body 5–8000 characters' }, 400, deps.respond)
+  }
+  const optional = (key, max) => body[key] == null ? null : validText(body[key], 1, max) ? cleanText(body[key]) : false
+  const productId = optional('productId', 100)
+  const serverSoftware = optional('serverSoftware', 100)
+  const minecraftVersion = optional('minecraftVersion', 50)
+  if ([productId, serverSoftware, minecraftVersion].includes(false)) {
+    return json(request, { error: 'One or more ticket fields are invalid' }, 400, deps.respond)
+  }
+  if (type === 'compatibility' && (!serverSoftware || !minecraftVersion)) {
+    return json(request, { error: 'Compatibility tickets require server software and Minecraft version' }, 400, deps.respond)
+  }
+
+  const now = new Date().toISOString()
+  const id = crypto.randomUUID()
+  await env.COMMUNITY_DB.prepare(
+    `INSERT INTO community_tickets
+      (id, owner_id, owner_name, type, title, body, product_id, server_software, minecraft_version, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)`,
+  ).bind(id, user.id, user.globalName || user.username, type, cleanText(body.title), cleanText(body.body), productId, serverSoftware, minecraftVersion, now, now).run()
+  const record = {
+    id, type, title: cleanText(body.title), body: cleanText(body.body), product_id: productId,
+    server_software: serverSoftware, minecraft_version: minecraftVersion, status: 'open',
+    created_at: now, updated_at: now,
+  }
+  return ticketView(record)
+}
+
+async function tickets(request, env, url, user, deps) {
+  const page = parsePage(url)
+  const result = await paginate(
+    env.COMMUNITY_DB,
+    'SELECT COUNT(*) AS total FROM community_tickets WHERE owner_id = ?',
+    `SELECT * FROM community_tickets WHERE owner_id = ? ORDER BY updated_at DESC LIMIT ? OFFSET ?`,
+    [user.id],
+    page,
+  )
+  return json(request, { ...result, items: result.items.map(row => ticketView(row)) }, 200, deps.respond)
+}
+
+async function ticketDetail(request, env, user, deps, id, isStaff) {
+  const row = await env.COMMUNITY_DB.prepare('SELECT * FROM community_tickets WHERE id = ?').bind(id).first()
+  if (!row) return json(request, { error: 'Ticket not found' }, 404, deps.respond)
+  if (!isStaff && row.owner_id !== user.id) return json(request, { error: 'Ticket not found' }, 404, deps.respond)
+  const replies = await env.COMMUNITY_DB.prepare(
+    'SELECT id, body, author_name, staff, created_at FROM community_replies WHERE ticket_id = ? ORDER BY created_at',
+  ).bind(id).all()
+  return json(request, {
+    ticket: ticketView(row, isStaff),
+    replies: (replies.results ?? []).map(reply => ({
+      id: reply.id, body: reply.body, authorName: reply.author_name,
+      staff: Boolean(reply.staff), createdAt: reply.created_at,
+    })),
+  }, 200, deps.respond)
+}
+
+async function addReply(request, env, user, deps, id, isStaff) {
+  const parsed = await bodyJson(request)
+  if (parsed.error) return json(request, { error: parsed.error }, parsed.status, deps.respond)
+  if (!validText(parsed.value?.body, 1, 6000)) return json(request, { error: 'Reply must be 1–6000 characters' }, 400, deps.respond)
+  const ticket = await env.COMMUNITY_DB.prepare('SELECT * FROM community_tickets WHERE id = ?').bind(id).first()
+  if (!ticket || (!isStaff && ticket.owner_id !== user.id)) return json(request, { error: 'Ticket not found' }, 404, deps.respond)
+  if (ticket.status === 'closed') return json(request, { error: 'This ticket is closed' }, 409, deps.respond)
+  const now = new Date().toISOString()
+  const statements = [env.COMMUNITY_DB.prepare(
+    'INSERT INTO community_replies (id, ticket_id, author_id, author_name, staff, body, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+  ).bind(crypto.randomUUID(), id, user.id, user.globalName || user.username, isStaff ? 1 : 0, cleanText(parsed.value.body), now),
+  env.COMMUNITY_DB.prepare('UPDATE community_tickets SET status = ?, updated_at = ? WHERE id = ?').bind(
+    isStaff ? 'waiting' : 'open', now, id,
+  )]
+  if (isStaff) {
+    statements.push(env.COMMUNITY_DB.prepare(
+      `INSERT INTO community_notifications (id, recipient_id, title, body, kind, product_id, audience, link, created_at)
+       VALUES (?, ?, ?, ?, 'ticket', ?, 'user', ?, ?)`,
+    ).bind(crypto.randomUUID(), ticket.owner_id, `Reply to ${ticket.title}`, cleanText(parsed.value.body).slice(0, 500), ticket.product_id, `/account/tickets?ticket=${id}`, now))
+  }
+  await env.COMMUNITY_DB.batch(statements)
+  return json(request, { ok: true }, 200, deps.respond)
+}
+
+async function preferences(request, env, user, deps) {
+  if (request.method === 'GET') {
+    const row = await env.COMMUNITY_DB.prepare('SELECT * FROM community_preferences WHERE user_id = ?').bind(user.id).first()
+    let products = []
+    try { products = row ? JSON.parse(row.products) : [] } catch { products = [] }
+    return json(request, { preferences: row ? {
+      updates: Boolean(row.updates), announcements: Boolean(row.announcements),
+      ticketReplies: Boolean(row.ticket_replies), products,
+    } : DEFAULT_PREFERENCES }, 200, deps.respond)
+  }
+  const parsed = await bodyJson(request, 3000)
+  if (parsed.error) return json(request, { error: parsed.error }, parsed.status, deps.respond)
+  const value = parsed.value
+  if (!value || typeof value.updates !== 'boolean' || typeof value.announcements !== 'boolean' ||
+      typeof value.ticketReplies !== 'boolean' || !Array.isArray(value.products) ||
+      value.products.length > 50 || value.products.some(product => typeof product !== 'string' || product.length > 100)) {
+    return json(request, { error: 'Invalid notification preferences' }, 400, deps.respond)
+  }
+  const normalized = {
+    updates: value.updates, announcements: value.announcements, ticketReplies: value.ticketReplies,
+    products: [...new Set(value.products)],
+  }
+  await env.COMMUNITY_DB.prepare(
+    `INSERT INTO community_preferences (user_id, updates, announcements, ticket_replies, products)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET updates=excluded.updates, announcements=excluded.announcements,
+       ticket_replies=excluded.ticket_replies, products=excluded.products`,
+  ).bind(user.id, +normalized.updates, +normalized.announcements, +normalized.ticketReplies, JSON.stringify(normalized.products)).run()
+  return json(request, { preferences: normalized }, 200, deps.respond)
+}
+
+async function notifications(request, env, url, user, deps, staff) {
+  const page = parsePage(url)
+  let where = ''
+  let values = []
+  if (!staff) {
+    const saved = await env.COMMUNITY_DB.prepare('SELECT * FROM community_preferences WHERE user_id = ?').bind(user.id).first()
+    let prefs = DEFAULT_PREFERENCES
+    if (saved) {
+      let products = []
+      try { products = JSON.parse(saved.products) } catch { products = [] }
+      prefs = { updates: Boolean(saved.updates), announcements: Boolean(saved.announcements), ticketReplies: Boolean(saved.ticket_replies), products }
+    }
+    const productSlots = prefs.products.length ? prefs.products.map(() => '?').join(',') : ''
+    const productParams = prefs.products
+    const allProductFilter = productSlots
+      ? `(product_id IS NULL OR product_id IN (${productSlots}))`
+      : '1 = 1'
+    const targetedProductFilter = productSlots
+      ? `product_id IN (${productSlots})`
+      : 'product_id IS NOT NULL'
+    where = `WHERE
+      (audience = 'user' AND recipient_id = ? AND ? = 1) OR
+      (audience = 'all' AND ((kind = 'update' AND ? = 1) OR (kind = 'announcement' AND ? = 1)) AND
+        ${allProductFilter}) OR
+      (audience = 'product' AND ((kind = 'update' AND ? = 1) OR (kind = 'announcement' AND ? = 1)) AND
+        ${targetedProductFilter}) OR
+      (audience = 'staff' AND ? = 1)`
+    const isStaff = Boolean(deps.getAdminRole(user.id, env))
+    values = [
+      user.id, +prefs.ticketReplies,
+      +prefs.updates, +prefs.announcements, ...productParams,
+      +prefs.updates, +prefs.announcements, ...productParams,
+      +isStaff,
+    ]
+  }
+  const result = await paginate(
+    env.COMMUNITY_DB,
+    `SELECT COUNT(*) AS total FROM community_notifications ${where}`,
+    `SELECT * FROM community_notifications ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+    values,
+    page,
+  )
+  const selected = result.items
+  const readRows = selected.length
+    ? await env.COMMUNITY_DB.prepare(
+      `SELECT notification_id FROM community_notification_reads WHERE user_id = ? AND notification_id IN (${selected.map(() => '?').join(',')})`,
+    ).bind(user.id, ...selected.map(row => row.id)).all()
+    : { results: [] }
+  const readIds = new Set((readRows.results ?? []).map(row => row.notification_id))
+  return json(request, {
+    items: selected.map(row => notificationView(row, readIds.has(row.id), staff)),
+    total: result.total, page: page.page, pageSize: page.pageSize,
+  }, 200, deps.respond)
+}
+
+async function createNotification(request, env, user, deps) {
+  const parsed = await bodyJson(request)
+  if (parsed.error) return json(request, { error: parsed.error }, parsed.status, deps.respond)
+  const body = parsed.value ?? {}
+  if (!validText(body.title, 3, 160) || !validText(body.body, 1, 6000) ||
+      !['update', 'announcement'].includes(body.kind) || !['all', 'product', 'staff'].includes(body.audience) ||
+      (body.audience === 'product' && !validText(body.productId, 1, 100)) ||
+      (body.productId != null && !validText(body.productId, 1, 100))) {
+    return json(request, { error: 'Invalid notification' }, 400, deps.respond)
+  }
+  const now = new Date().toISOString()
+  const notification = {
+    id: crypto.randomUUID(), title: cleanText(body.title), body: cleanText(body.body),
+    kind: body.kind, product_id: body.productId ? cleanText(body.productId) : null,
+    audience: body.audience, link: '/account/notifications', created_at: now,
+  }
+  await env.COMMUNITY_DB.prepare(
+    `INSERT INTO community_notifications (id, title, body, kind, product_id, audience, link, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(notification.id, notification.title, notification.body, notification.kind, notification.product_id, notification.audience, notification.link, now).run()
+  return json(request, { notification: notificationView(notification, false, true) }, 201, deps.respond)
+}
+
+async function markRead(request, env, user, deps, id) {
+  const row = await env.COMMUNITY_DB.prepare('SELECT * FROM community_notifications WHERE id = ?').bind(id).first()
+  if (!row || (row.audience === 'user' && row.recipient_id !== user.id) ||
+      (row.audience === 'staff' && !deps.getAdminRole(user.id, env))) {
+    return json(request, { error: 'Notification not found' }, 404, deps.respond)
+  }
+  await env.COMMUNITY_DB.prepare(
+    'INSERT OR IGNORE INTO community_notification_reads (notification_id, user_id, read_at) VALUES (?, ?, ?)',
+  ).bind(id, user.id, new Date().toISOString()).run()
+  return json(request, { ok: true }, 200, deps.respond)
+}
+
+async function staffTickets(request, env, url, deps) {
+  const page = parsePage(url)
+  const status = url.searchParams.get('status') ?? 'all'
+  if (!['all', 'open', 'waiting', 'closed'].includes(status)) return json(request, { error: 'Invalid ticket status' }, 400, deps.respond)
+  const filter = status === 'all' ? '' : ' WHERE status = ?'
+  const values = status === 'all' ? [] : [status]
+  const result = await paginate(
+    env.COMMUNITY_DB,
+    `SELECT COUNT(*) AS total FROM community_tickets${filter}`,
+    `SELECT * FROM community_tickets${filter} ORDER BY updated_at DESC LIMIT ? OFFSET ?`,
+    values, page,
+  )
+  return json(request, { ...result, items: result.items.map(row => ticketView(row, true)) }, 200, deps.respond)
+}
+
+async function updateStaffTicket(request, env, deps, id) {
+  const parsed = await bodyJson(request, 2000)
+  if (parsed.error) return json(request, { error: parsed.error }, parsed.status, deps.respond)
+  if (!['open', 'waiting', 'closed'].includes(parsed.value?.status)) return json(request, { error: 'Invalid ticket status' }, 400, deps.respond)
+  const result = await env.COMMUNITY_DB.prepare('UPDATE community_tickets SET status = ?, updated_at = ? WHERE id = ?')
+    .bind(parsed.value.status, new Date().toISOString(), id).run()
+  return result.meta?.changes === 0 ? json(request, { error: 'Ticket not found' }, 404, deps.respond) : json(request, { ok: true }, 200, deps.respond)
+}
+
+async function staffIssues(request, env, url, deps) {
+  const page = parsePage(url)
+  const result = await paginate(
+    env.COMMUNITY_DB,
+    'SELECT COUNT(*) AS total FROM community_issues',
+    'SELECT * FROM community_issues ORDER BY updated_at DESC LIMIT ? OFFSET ?',
+    [], page,
+  )
+  return json(request, { ...result, items: result.items.map(issueView) }, 200, deps.respond)
+}
+
+async function saveIssue(request, env, deps, id = crypto.randomUUID()) {
+  const parsed = await bodyJson(request)
+  if (parsed.error) return json(request, { error: parsed.error }, parsed.status, deps.respond)
+  const body = parsed.value ?? {}
+  if (!validText(body.title, 3, 160) || !validText(body.body, 5, 8000) ||
+      !['open', 'investigating', 'resolved'].includes(body.status) || typeof body.published !== 'boolean' ||
+      (body.productId != null && !validText(body.productId, 1, 100))) {
+    return json(request, { error: 'Invalid issue' }, 400, deps.respond)
+  }
+  const now = new Date().toISOString()
+  const productId = body.productId ? cleanText(body.productId) : null
+  if (request.method === 'POST') {
+    await env.COMMUNITY_DB.prepare(
+      `INSERT INTO community_issues (id, owner_id, title, body, product_id, status, published, created_at, updated_at)
+       VALUES (?, '', ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(id, cleanText(body.title), cleanText(body.body), productId, body.status, +body.published, now, now).run()
+  } else {
+    const result = await env.COMMUNITY_DB.prepare(
+      'UPDATE community_issues SET title = ?, body = ?, product_id = ?, status = ?, published = ?, updated_at = ? WHERE id = ?',
+    ).bind(cleanText(body.title), cleanText(body.body), productId, body.status, +body.published, now, id).run()
+    if (result.meta?.changes === 0) return json(request, { error: 'Issue not found' }, 404, deps.respond)
+  }
+  const issue = { id, title: cleanText(body.title), body: cleanText(body.body), product_id: productId, status: body.status, created_at: now, updated_at: now }
+  return request.method === 'POST'
+    ? json(request, { issue: issueView(issue) }, 201, deps.respond)
+    : json(request, { ok: true }, 200, deps.respond)
+}
+
+async function statusResponse(request, env, deps) {
+  const statuses = await env.COMMUNITY_DB.prepare('SELECT * FROM community_service_status').all()
+  const rows = new Map((statuses.results ?? []).map(row => [row.service_id, row]))
+  const services = SERVICES.map(service => {
+    const row = rows.get(service.id)
+    const automaticStatus = row?.automatic_status ?? 'unknown'
+    return {
+      ...service,
+      status: row?.override_status ?? automaticStatus,
+      automaticStatus,
+      overrideStatus: row?.override_status ?? null,
+      message: row?.override_status ? row.override_message : '',
+      checkedAt: row?.checked_at ?? null,
+    }
+  })
+  return json(request, { services, intervalMinutes: 5 }, 200, deps.respond)
+}
+
+async function updateStatus(request, env, deps, id) {
+  if (!SERVICES.some(service => service.id === id)) return json(request, { error: 'Unknown service' }, 404, deps.respond)
+  const parsed = await bodyJson(request, 2000)
+  if (parsed.error) return json(request, { error: parsed.error }, parsed.status, deps.respond)
+  const { status, message = '' } = parsed.value ?? {}
+  if (status !== 'auto' && !STATUS_VALUES.has(status)) return json(request, { error: 'Invalid service status' }, 400, deps.respond)
+  if (!validText(message, 0, 500)) return json(request, { error: 'Status message must be at most 500 characters' }, 400, deps.respond)
+  await env.COMMUNITY_DB.prepare(
+    `INSERT INTO community_service_status (service_id, automatic_status, override_status, override_message, checked_at)
+     VALUES (?, 'unknown', ?, ?, NULL)
+     ON CONFLICT(service_id) DO UPDATE SET override_status = excluded.override_status, override_message = excluded.override_message`,
+  ).bind(id, status === 'auto' ? null : status, status === 'auto' ? '' : cleanText(message)).run()
+  return json(request, { ok: true }, 200, deps.respond)
+}
+
+async function checkedStatus(url, options = {}) {
+  const response = await fetch(url, { redirect: options.redirect ?? 'follow', signal: AbortSignal.timeout(6000), ...options })
+  if (response.status < 200 || response.status >= 400) return 'outage'
+  if (options.discord) {
+    const location = response.headers.get('location')
+    if (response.status !== 302 || !location) return 'degraded'
+    try {
+      const target = new URL(location)
+      return target.origin === 'https://discord.com' && target.pathname === '/oauth2/authorize' ? 'operational' : 'degraded'
+    } catch { return 'degraded' }
+  }
+  const reader = response.body?.getReader()
+  if (!reader) return 'degraded'
+  let bytes = 0
+  const chunks = []
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    bytes += value.byteLength
+    if (bytes > 16000) {
+      await reader.cancel()
+      return 'degraded'
+    }
+    chunks.push(value)
+  }
+  const pathname = new URL(url).pathname
+  const contentType = (response.headers.get('content-type') ?? '').toLowerCase()
+  if (pathname === '/v1/admin/products') {
+    if (!contentType.includes('json')) return 'degraded'
+    try {
+      const length = chunks.reduce((total, chunk) => total + chunk.length, 0)
+      const body = new Uint8Array(length)
+      let offset = 0
+      for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.length }
+      const payload = JSON.parse(new TextDecoder().decode(body))
+      if (!payload || typeof payload !== 'object') return 'degraded'
+    } catch { return 'degraded' }
+  } else if (pathname === '/') {
+    const length = chunks.reduce((total, chunk) => total + chunk.length, 0)
+    if (!contentType.includes('text/html') || length === 0) return 'degraded'
+  }
+  return 'operational'
+}
+
+export async function runCommunityChecks(env) {
+  if (!env.COMMUNITY_DB) throw new Error('COMMUNITY_DB is not configured')
+  const results = {}
+  try { results.website = await checkedStatus('https://lumenstudio.fyi/', { headers: { Accept: 'text/html' } }) }
+  catch { results.website = 'outage' }
+  try {
+    results.discord = await checkedStatus('https://lumen-docs-assistant.lumennetwork0.workers.dev/auth/login', {
+      redirect: 'manual', discord: true,
+    })
+  } catch { results.discord = 'outage' }
+  if (!env.LICENSE_API_URL || !env.LICENSE_ADMIN_API_TOKEN) {
+    results.licensing = 'unknown'
+  } else {
+    try {
+      const base = new URL(env.LICENSE_API_URL)
+      if (base.protocol !== 'https:' || base.username || base.password) throw new Error('invalid')
+      results.licensing = await checkedStatus(new URL('/v1/admin/products?limit=1', base), {
+        headers: { Authorization: `Bearer ${env.LICENSE_ADMIN_API_TOKEN}`, Accept: 'application/json' },
+      })
+    } catch { results.licensing = 'outage' }
+  }
+  const checkedAt = new Date().toISOString()
+  for (const service of SERVICES) {
+    await env.COMMUNITY_DB.prepare(
+      `INSERT INTO community_service_status (service_id, automatic_status, checked_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT(service_id) DO UPDATE SET automatic_status = excluded.automatic_status, checked_at = excluded.checked_at`,
+    ).bind(service.id, results[service.id], checkedAt).run()
+  }
+  return { services: results, checkedAt }
+}
+
+export async function handleCommunity(request, env, origin, path, deps) {
+  const legacyAlias = path === '/bug-report' || path === '/reports'
+  if (!path.startsWith('/community') && !legacyAlias) return null
+  if (legacyAlias && request.method !== 'POST') {
+    return json(request, { error: 'Method not allowed' }, 405, deps.respond)
+  }
+  const url = new URL(request.url)
+  const suffix = legacyAlias ? path : path.slice('/community'.length) || '/'
+  const isPublic = !legacyAlias && request.method === 'GET' && (suffix === '/status' || suffix === '/issues')
+  if (isPublic) {
+    const dbFailure = await requireDb(request, env, deps)
+    if (dbFailure) return dbFailure
+    try {
+      return suffix === '/status' ? await statusResponse(request, env, deps) : await issueList(request, env, url, deps)
+    } catch {
+      return json(request, { error: 'The community database is temporarily unavailable' }, 503, deps.respond)
+    }
+  }
+
+  const staffPath = suffix.startsWith('/staff/')
+  const auth = await session(request, env, deps, staffPath)
+  if (auth.response) return auth.response
+  const { user, role } = auth
+  const dbFailure = await requireDb(request, env, deps)
+  if (dbFailure) return dbFailure
+  const privateResponse = await limit(request, env, user, deps)
+  if (privateResponse) return privateResponse
+
+  try {
+    if (legacyAlias) {
+      const parsed = await bodyJson(request, 8000)
+      if (parsed.error) return json(request, { error: parsed.error }, parsed.status, deps.respond)
+      const legacy = parsed.value ?? {}
+      const type = legacyAlias && path === '/bug-report' ? 'bug' : legacy.type ?? 'bug'
+      if (!['bug', 'compatibility', 'feature'].includes(type)) {
+        return json(request, { error: 'Choose a valid report type' }, 400, deps.respond)
+      }
+      const plugin = typeof legacy.plugin === 'string' ? legacy.plugin.trim() : ''
+      const serverSoftware = typeof legacy.serverSoftware === 'string' ? legacy.serverSoftware.trim() : ''
+      const minecraftVersion = typeof legacy.version === 'string'
+        ? legacy.version.trim()
+        : typeof legacy.minecraftVersion === 'string' ? legacy.minecraftVersion.trim() : ''
+      const description = typeof legacy.description === 'string'
+        ? legacy.description.trim()
+        : typeof legacy.body === 'string' ? legacy.body.trim() : ''
+      const title = type === 'feature'
+        ? (typeof legacy.title === 'string' ? legacy.title.trim() : '')
+        : (typeof legacy.title === 'string' && legacy.title.trim()
+          ? legacy.title.trim()
+          : `${type === 'compatibility' ? 'Compatibility report' : 'Bug report'}${plugin ? `: ${plugin}` : ''}`)
+      const status = typeof legacy.status === 'string' ? legacy.status.trim() : ''
+      const suppliedProductId = typeof legacy.productId === 'string' ? legacy.productId.trim() : ''
+      if (type !== 'feature' && !plugin) {
+        return json(request, { error: 'A plugin is required' }, 400, deps.respond)
+      }
+      if (type !== 'feature' && (!serverSoftware || !minecraftVersion)) {
+        return json(request, { error: 'Server software and Minecraft version are required' }, 400, deps.respond)
+      }
+      if (type === 'compatibility' && !['untested', 'broken', 'partial', 'working'].includes(status)) {
+        return json(request, { error: 'Choose a valid compatibility status' }, 400, deps.respond)
+      }
+      if (!description || (type === 'feature' && !title)) {
+        return json(request, { error: 'A title and description are required' }, 400, deps.respond)
+      }
+      const details = [
+        `Product: ${plugin || suppliedProductId || 'Not specified'}`,
+        serverSoftware ? `Server software: ${serverSoftware}` : '',
+        minecraftVersion ? `Minecraft version: ${minecraftVersion}` : '',
+        status ? `Compatibility result: ${status}` : '',
+        typeof legacy.consoleLog === 'string' && legacy.consoleLog.trim()
+          ? `Console log:\n${legacy.consoleLog.trim().slice(0, 2000)}` : '',
+        `Details:\n${description}`,
+      ].filter(Boolean).join('\n\n')
+      const ticket = await createTicket(request, env, user, deps, {
+        type,
+        title,
+        body: details.slice(0, 8000),
+        productId: suppliedProductId || plugin || undefined,
+        serverSoftware: serverSoftware || undefined,
+        minecraftVersion: minecraftVersion || undefined,
+      })
+      return ticket instanceof Response ? ticket : json(request, { ticket }, 201, deps.respond)
+    }
+
+    if (suffix === '/tickets' && request.method === 'GET') return await tickets(request, env, url, user, deps)
+    if (suffix === '/tickets' && request.method === 'POST') {
+      const parsed = await bodyJson(request)
+      if (parsed.error) return json(request, { error: parsed.error }, parsed.status, deps.respond)
+      const ticket = await createTicket(request, env, user, deps, parsed.value)
+      return ticket instanceof Response ? ticket : json(request, { ticket }, 201, deps.respond)
+    }
+    if (suffix === '/issues' && request.method === 'POST') {
+      const parsed = await bodyJson(request)
+      if (parsed.error) return json(request, { error: parsed.error }, parsed.status, deps.respond)
+      const issue = parsed.value ?? {}
+      if (!validText(issue.title, 3, 160) || !validText(issue.body, 5, 8000) ||
+          (issue.productId != null && !validText(issue.productId, 1, 100))) {
+        return json(request, { error: 'Invalid issue submission' }, 400, deps.respond)
+      }
+      const now = new Date().toISOString()
+      const submissionId = crypto.randomUUID()
+      const productId = issue.productId ? cleanText(issue.productId) : null
+      await env.COMMUNITY_DB.batch([
+        env.COMMUNITY_DB.prepare(
+          `INSERT INTO community_tickets
+            (id, owner_id, owner_name, type, title, body, product_id, status, created_at, updated_at)
+           VALUES (?, ?, ?, 'bug', ?, ?, ?, 'open', ?, ?)`,
+        ).bind(
+          submissionId, user.id, user.globalName || user.username, cleanText(issue.title),
+          cleanText(issue.body), productId, now, now,
+        ),
+        env.COMMUNITY_DB.prepare(
+        `INSERT INTO community_issues (id, owner_id, title, body, product_id, status, published, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 'open', 0, ?, ?)`,
+        ).bind(submissionId, user.id, cleanText(issue.title), cleanText(issue.body), productId, now, now),
+      ])
+      return json(request, { submissionId, message: 'Your report was submitted for staff review.' }, 201, deps.respond)
+    }
+    let match = suffix.match(/^\/tickets\/([0-9a-f-]{36})(?:\/(replies))?$/i)
+    if (match) {
+      if (request.method === 'GET' && !match[2]) return ticketDetail(request, env, user, deps, match[1], Boolean(role))
+      if (request.method === 'POST' && match[2]) return addReply(request, env, user, deps, match[1], Boolean(role))
+    }
+    if (suffix === '/preferences' && ['GET', 'PUT'].includes(request.method)) return preferences(request, env, user, deps)
+    if (suffix === '/notifications' && request.method === 'GET') return notifications(request, env, url, user, deps, false)
+    match = suffix.match(/^\/notifications\/([0-9a-f-]{36})\/read$/i)
+    if (match && request.method === 'POST') return markRead(request, env, user, deps, match[1])
+    if (suffix === '/staff/tickets' && request.method === 'GET') return staffTickets(request, env, url, deps)
+    match = suffix.match(/^\/staff\/tickets\/([0-9a-f-]{36})$/i)
+    if (match && request.method === 'PUT') return updateStaffTicket(request, env, deps, match[1])
+    if (suffix === '/staff/issues' && request.method === 'GET') return staffIssues(request, env, url, deps)
+    if (suffix === '/staff/issues' && request.method === 'POST') return saveIssue(request, env, deps)
+    match = suffix.match(/^\/staff\/issues\/([0-9a-f-]{36})$/i)
+    if (match && request.method === 'PUT') return saveIssue(request, env, deps, match[1])
+    if (suffix === '/staff/notifications' && request.method === 'GET') return notifications(request, env, url, user, deps, true)
+    if (suffix === '/staff/notifications' && request.method === 'POST') return createNotification(request, env, user, deps)
+    match = suffix.match(/^\/staff\/status\/([a-z]+)$/)
+    if (match && request.method === 'PUT') return updateStatus(request, env, deps, match[1])
+    if (suffix === '/staff/status/check' && request.method === 'POST') {
+      const result = await runCommunityChecks(env)
+      return json(request, { ok: true, checkedAt: result.checkedAt }, 200, deps.respond)
+    }
+    return json(request, { error: 'Community route or method not found' }, 404, deps.respond)
+  } catch {
+    return json(request, { error: 'The community service is temporarily unavailable' }, 503, deps.respond)
+  }
+}

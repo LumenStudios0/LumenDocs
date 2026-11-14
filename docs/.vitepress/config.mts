@@ -55,7 +55,7 @@ export default defineConfig({
         {
           text: 'Studio tools',
           items: [
-            { text: 'Admin dashboard', link: '/admin/' },
+            { text: 'Staff Dashboard', link: '/admin/' },
             { text: 'Customer portal', link: '/account/' },
           ],
         },
@@ -68,6 +68,8 @@ export default defineConfig({
             { text: 'My licenses', link: '/account/licenses' },
             { text: 'Products purchased', link: '/account/products' },
             { text: 'Account settings', link: '/account/settings' },
+            { text: 'My tickets', link: '/account/tickets' },
+            { text: 'Notifications & preferences', link: '/account/notifications' },
           ],
         },
         {
@@ -87,6 +89,8 @@ export default defineConfig({
             { text: 'Getting started', link: '/getting-started/' },
             { text: 'Plugin catalog', link: '/plugins/' },
             { text: 'Troubleshooting', link: '/troubleshooting' },
+            { text: 'Searchable error guides', link: '/error-guides' },
+            { text: 'My bookmarks', link: '/bookmarks' },
           ],
         },
         {
@@ -102,6 +106,8 @@ export default defineConfig({
           items: [
             { text: 'Release notes', link: '/changelogs/' },
             { text: 'Support & requests', link: '/reports/' },
+            { text: 'Known issues', link: '/known-issues' },
+            { text: 'Service status', link: '/status' },
           ],
         },
       ],

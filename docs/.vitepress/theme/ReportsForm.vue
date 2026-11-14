@@ -1,16 +1,15 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { getDiscordSession } from './discord-session'
+import { communityRequest } from './community-api'
 
 type ReportType = 'bug' | 'compatibility' | 'feature'
 
-const assistantEndpoint = import.meta.env.VITE_DOCS_ASSISTANT_ENDPOINT
 const reportType = ref<ReportType>('bug')
 const plugin = ref('')
 const serverSoftware = ref('')
 const version = ref('')
 const status = ref<'untested' | 'broken' | 'partial' | 'working'>('untested')
-const discordUsername = ref('')
-const productKey = ref('')
 const consoleLog = ref('')
 const title = ref('')
 const description = ref('')
@@ -18,6 +17,14 @@ const submitting = ref(false)
 const error = ref('')
 const submitted = ref(false)
 const reportTypeRail = ref<HTMLElement | null>(null)
+const signedIn = ref(false)
+const ticketId = ref('')
+function syncSession() {
+  try { signedIn.value = !!getDiscordSession() }
+  catch (sessionError) { console.error('Unable to read report session:', sessionError); error.value = 'This browser could not access your Discord session.'; signedIn.value = false }
+}
+onMounted(() => { syncSession(); window.addEventListener('lumen-discord-user', syncSession) })
+onUnmounted(() => window.removeEventListener('lumen-discord-user', syncSession))
 
 const reportTypes: { value: ReportType; label: string }[] = [
   { value: 'bug', label: 'Bug report' },
@@ -41,64 +48,36 @@ function scrollReportTypes(direction: -1 | 1) {
   reportTypeRail.value?.scrollBy({ left: direction * 180, behavior: 'smooth' })
 }
 
-function getReportsEndpoint() {
-  if (!assistantEndpoint) return ''
-
-  const endpoint = new URL(assistantEndpoint, window.location.origin)
-  endpoint.pathname = endpoint.pathname.replace(/\/chat\/?$/, '').replace(/\/$/, '') + '/reports'
-  endpoint.search = ''
-  return endpoint.toString()
-}
-
 async function submitReport() {
   if (submitting.value) return
-  const endpoint = getReportsEndpoint()
-  if (!endpoint) {
-    error.value = 'Reports are temporarily unavailable. Please contact us on Discord.'
+  if (!getDiscordSession()) {
+    error.value = 'Connect your Discord account with Log in before submitting a ticket.'
     return
   }
-
-  const payload = reportType.value === 'bug'
-    ? {
-        type: reportType.value,
-        plugin: plugin.value,
-        serverSoftware: serverSoftware.value,
-        version: version.value,
-        discordUsername: discordUsername.value,
-        productKey: productKey.value,
-        consoleLog: consoleLog.value,
-        description: description.value,
-      }
-    : reportType.value === 'compatibility'
-      ? {
-          type: reportType.value,
-          plugin: plugin.value,
-          serverSoftware: serverSoftware.value,
-          version: version.value,
-          status: status.value,
-          description: description.value,
-        }
-      : {
-          type: reportType.value,
-          plugin: plugin.value,
-          discordUsername: discordUsername.value,
-          title: title.value,
-          description: description.value,
-        }
+  const captured = getDiscordSession()
+  const payload = {
+    type: reportType.value,
+    title: title.value || `${reportTypeLabel.value}: ${plugin.value}`.slice(0, 120),
+    productId: plugin.value || undefined,
+    serverSoftware: serverSoftware.value || undefined,
+    minecraftVersion: version.value || undefined,
+    body: [
+      description.value,
+      reportType.value === 'compatibility' ? `Reported compatibility: ${status.value}` : '',
+      consoleLog.value ? `Sanitized console excerpt:\n${consoleLog.value}` : '',
+    ].filter(Boolean).join('\n\n'),
+  }
+  if (payload.body.length > 4000) {
+    error.value = 'Please shorten the combined description and console excerpt to 4,000 characters.'
+    return
+  }
 
   submitting.value = true
   error.value = ''
   try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    const result = await response.json().catch(() => ({})) as { error?: string; ok?: boolean }
-    if (!response.ok || !result.ok) {
-      throw new Error(result.error || 'Could not deliver the report. Please try again later.')
-    }
-
+    const result = await communityRequest<{ ticket: { id: string } }>('/tickets', { method: 'POST', body: JSON.stringify(payload) })
+    if (captured !== getDiscordSession()) return
+    ticketId.value = result.ticket.id
     submitted.value = true
   } catch (caught) {
     error.value = caught instanceof Error
@@ -115,7 +94,7 @@ async function submitReport() {
     <div class="reports-intro">
       <span class="reports-eyebrow">LUMEN STUDIOS SUPPORT</span>
       <h2>What would you like to share?</h2>
-      <p>Choose a report type. Every submission goes to the same Lumen Studios reports inbox.</p>
+      <p>Choose a report type. Your ticket is saved privately on the website, where staff can reply.</p>
     </div>
 
     <form class="reports-form" @submit.prevent="submitReport">
@@ -209,22 +188,16 @@ async function submitReport() {
           <span>Console message</span>
           <textarea v-model="consoleLog" maxlength="2000" rows="3" placeholder="Paste the relevant error or warning" />
         </label>
-        <label>
-          <span>Product key <small>Only if relevant</small></span>
-          <input v-model="productKey" maxlength="200" autocomplete="off" placeholder="Never include a password">
-        </label>
       </details>
 
-      <label>
-        <span>Discord username <small>Optional</small></span>
-        <input v-model="discordUsername" maxlength="100" autocomplete="off" placeholder="If you’d like us to follow up">
-      </label>
+      <p v-if="!signedIn" class="reports-message" role="status">Connect your Discord account using Log in before submitting. Your identity is verified by the website.</p>
+      <p class="reports-message">Remove license keys, passwords, tokens, and webhook URLs from all logs.</p>
 
       <p v-if="error" class="reports-message reports-error" role="alert">{{ error }}</p>
       <p v-if="submitted" class="reports-message reports-success" role="status">
-        Your {{ reportTypeLabel.toLowerCase() }} has been sent to the Lumen Studios reports inbox.
+        Your {{ reportTypeLabel.toLowerCase() }} is saved. <a :href="`/account/tickets?ticket=${ticketId}`">Open your website ticket →</a>
       </p>
-      <button class="reports-submit" type="submit" :disabled="submitting || submitted">
+      <button class="reports-submit" type="submit" :disabled="submitting || submitted || !signedIn">
         {{ submitting ? 'Sending…' : submitted ? 'Submitted' : `Send ${reportTypeLabel.toLowerCase()}` }}
       </button>
     </form>

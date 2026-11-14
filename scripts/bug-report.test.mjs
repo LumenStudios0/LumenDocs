@@ -1,167 +1,162 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
+import { DatabaseSync } from 'node:sqlite'
 import worker from '../worker/chat.js'
 
 const origin = 'https://lumenstudio.fyi'
+const customerId = '123456789012345678'
+const secret = 'legacy-community-test-secret-long-enough'
 
-function makeRequest(payload, options = {}) {
-  return new Request(`https://worker.example${options.path ?? '/bug-report'}`, {
-    method: options.method ?? 'POST',
-    headers: {
-      Origin: options.origin ?? origin,
-      'CF-Connecting-IP': '203.0.113.10',
-      ...(payload ? { 'Content-Type': 'application/json' } : {}),
-    },
-    body: payload ? JSON.stringify(payload) : undefined,
-  })
+function encode(value) {
+  return Buffer.from(JSON.stringify(value)).toString('base64url')
 }
 
-function makeEnv(overrides = {}) {
+async function tokenFor(id = customerId) {
+  const now = Math.floor(Date.now() / 1000)
+  const unsigned = `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode({
+    iss: 'lumen-studios', aud: 'lumen-docs', sub: id, username: 'Customer',
+    globalName: 'Customer', iat: now, exp: now + 3600,
+  })}`
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(unsigned))
+  return `${unsigned}.${Buffer.from(signature).toString('base64url')}`
+}
+
+function createD1() {
+  const sqlite = new DatabaseSync(':memory:')
+  const ready = readFile(new URL('../worker/migrations/community/0001_community.sql', import.meta.url), 'utf8')
+    .then(sql => sqlite.exec(sql))
   return {
-    ALLOWED_ORIGIN: origin,
-    DISCORD_BUG_REPORT_WEBHOOK: 'https://discord.example/webhook',
-    ASSISTANT_LIMITER: { limit: async () => ({ success: true }) },
-    ...overrides,
+    sqlite,
+    ready,
+    prepare(query) {
+      let params = []
+      const statement = {
+        bind(...values) { params = values; return statement },
+        async first() { await ready; return sqlite.prepare(query).get(...params) ?? null },
+        async all() { await ready; return { results: sqlite.prepare(query).all(...params) } },
+        async run() {
+          await ready
+          const result = sqlite.prepare(query).run(...params)
+          return { meta: { changes: Number(result.changes) } }
+        },
+      }
+      return statement
+    },
   }
 }
 
-test('bug report rejects requests from unapproved origins', async () => {
-  const response = await worker.fetch(makeRequest({}, { origin: 'https://untrusted.example' }), makeEnv())
-  assert.equal(response.status, 403)
-})
+const database = createD1()
+const calls = []
+const env = {
+  ALLOWED_ORIGIN: origin,
+  AUTH_SIGNING_SECRET: secret,
+  COMMUNITY_DB: database,
+  ASSISTANT_LIMITER: {
+    limit: async ({ key }) => { calls.push(key); return { success: true } },
+  },
+  DISCORD_BUG_REPORT_WEBHOOK: 'https://example.invalid/webhook',
+}
 
-test('bug report requires all required fields', async () => {
-  const response = await worker.fetch(makeRequest({ plugin: 'LumenShards' }), makeEnv())
-  assert.equal(response.status, 400)
-})
-
-test('bug report sends a formatted, mention-safe Discord embed', async t => {
-  const originalFetch = globalThis.fetch
-  let sent
-  globalThis.fetch = async (url, options) => {
-    sent = { url, body: JSON.parse(options.body) }
-    return new Response(null, { status: 204 })
-  }
-  t.after(() => {
-    globalThis.fetch = originalFetch
+function request(path, payload, { authorization, requestOrigin = origin } = {}) {
+  return new Request(`https://worker.example${path}`, {
+    method: 'POST',
+    headers: {
+      Origin: requestOrigin,
+      'CF-Connecting-IP': '203.0.113.10',
+      'Content-Type': 'application/json',
+      ...(authorization ? { Authorization: `Bearer ${authorization}` } : {}),
+    },
+    body: JSON.stringify(payload),
   })
+}
 
-  const response = await worker.fetch(makeRequest({
+test('legacy report aliases are signed-in community ticket routes, not webhook calls', async t => {
+  await database.ready
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => { throw new Error('Legacy alias must not call a webhook') }
+  t.after(() => { globalThis.fetch = originalFetch })
+
+  const unauthorized = await worker.fetch(request('/bug-report', {
+    plugin: 'LumenShards', serverSoftware: 'Paper', version: '1.21.4', description: 'It failed.',
+  }), env)
+  assert.equal(unauthorized.status, 401)
+
+  const token = await tokenFor()
+  const response = await worker.fetch(request('/bug-report', {
     plugin: 'LumenShards',
-    discordUsername: 'LumenPlayer',
+    discordUsername: 'unverified-browser-name',
     serverSoftware: 'Paper',
     version: '1.21.4',
-    productKey: '',
+    productKey: 'must-never-be-stored',
+    licenseKey: 'also-must-never-be-stored',
     consoleLog: 'Error: test',
-    description: 'It broke @everyone *check*',
-  }), makeEnv())
+    description: 'It broke during startup.',
+  }, { authorization: token }), env)
 
-  assert.equal(response.status, 200)
-  assert.deepEqual(await response.json(), { ok: true })
-  assert.equal(sent.url, 'https://discord.example/webhook')
-  assert.deepEqual(sent.body.allowed_mentions, { parse: [] })
-  assert.equal(sent.body.embeds[0].color, 0x7B3FF2)
-  assert.equal(sent.body.embeds[0].fields[0].value, 'LumenShards')
-  assert.equal(sent.body.embeds[0].fields[1].value, 'LumenPlayer')
-  assert.match(sent.body.embeds[0].fields[6].value, /@\u200beveryone/)
+  assert.equal(response.status, 201)
+  const payload = await response.json()
+  assert.deepEqual(Object.keys(payload), ['ticket'])
+  assert.equal(payload.ticket.type, 'bug')
+  assert.equal(payload.ticket.productId, 'LumenShards')
+  assert.match(payload.ticket.body, /Minecraft version: 1\.21\.4/)
+  assert.doesNotMatch(JSON.stringify(payload), /must-never-be-stored|unverified-browser-name/)
+  const saved = database.sqlite.prepare('SELECT * FROM community_tickets WHERE id = ?').get(payload.ticket.id)
+  assert.doesNotMatch(JSON.stringify(saved), /must-never-be-stored|also-must-never-be-stored/)
+  assert.equal(calls.at(-1), `community:${customerId}`)
 })
 
-test('bug report returns an error when Discord rejects delivery', async t => {
-  const originalFetch = globalThis.fetch
-  globalThis.fetch = async () => new Response(null, { status: 404 })
-  t.after(() => {
-    globalThis.fetch = originalFetch
-  })
-
-  const response = await worker.fetch(makeRequest({
-    plugin: 'LumenShards',
-    serverSoftware: 'Paper',
-    version: '1.21.4',
-    description: 'Example issue',
-  }), makeEnv())
-
-  assert.equal(response.status, 502)
-  assert.match((await response.json()).error, /Could not deliver/)
-})
-
-test('reports accepts all compatibility statuses and delivers them to the shared inbox', async t => {
-  const originalFetch = globalThis.fetch
-  const delivered = []
-  globalThis.fetch = async (url, options) => {
-    delivered.push({ url, body: JSON.parse(options.body) })
-    return new Response(null, { status: 204 })
-  }
-  t.after(() => {
-    globalThis.fetch = originalFetch
-  })
-
+test('legacy reports translate compatibility and feature submissions into tickets', async () => {
+  await database.ready
+  const token = await tokenFor()
   for (const status of ['untested', 'broken', 'partial', 'working']) {
-    const response = await worker.fetch(makeRequest({
+    const response = await worker.fetch(request('/reports', {
       type: 'compatibility',
       plugin: 'LumenShards',
       serverSoftware: 'Paper',
       version: '1.21.4',
       status,
-      description: 'Tested on a clean server',
-    }, { path: '/reports' }), makeEnv())
-
-    assert.equal(response.status, 200)
+      description: 'Tested on a clean server.',
+    }, { authorization: token }), env)
+    assert.equal(response.status, 201)
+    const { ticket } = await response.json()
+    assert.equal(ticket.type, 'compatibility')
+    assert.deepEqual(Object.keys(ticket), ['id', 'type', 'title', 'body', 'productId', 'status', 'createdAt', 'updatedAt'])
+    assert.match(ticket.body, new RegExp(`Compatibility result: ${status}`))
+    assert.match(ticket.body, /Server software: Paper/)
+    assert.match(ticket.body, /Minecraft version: 1\.21\.4/)
   }
 
-  assert.equal(delivered.length, 4)
-  for (const { url, body } of delivered) {
-    assert.equal(url, 'https://discord.example/webhook')
-    assert.equal(body.embeds[0].title, 'New Compatibility Report')
-    assert.deepEqual(body.allowed_mentions, { parse: [] })
-  }
-  assert.deepEqual(
-    delivered.map(report => report.body.embeds[0].fields[3].value),
-    ['untested', 'broken', 'partial', 'working'],
-  )
-})
-
-test('reports accepts feature requests in the shared inbox', async t => {
-  const originalFetch = globalThis.fetch
-  let embed
-  globalThis.fetch = async (_url, options) => {
-    embed = JSON.parse(options.body).embeds[0]
-    return new Response(null, { status: 204 })
-  }
-  t.after(() => {
-    globalThis.fetch = originalFetch
-  })
-
-  const response = await worker.fetch(makeRequest({
+  const feature = await worker.fetch(request('/reports', {
     type: 'feature',
     title: 'Add a market history export',
     plugin: 'LumenAuction',
-    description: 'Let administrators export transaction history for accounting.',
-  }, { path: '/reports' }), makeEnv())
-
-  assert.equal(response.status, 200)
-  assert.equal(embed.title, 'New Feature Request')
-  assert.equal(embed.fields[0].value, 'Add a market history export')
-  assert.equal(embed.fields[1].value, 'LumenAuction')
+    description: 'Let administrators export transaction history.',
+  }, { authorization: token }), env)
+  assert.equal(feature.status, 201)
+  const featureTicket = (await feature.json()).ticket
+  assert.equal(featureTicket.type, 'feature')
+  assert.equal(featureTicket.title, 'Add a market history export')
+  assert.match(featureTicket.body, /transaction history/)
 })
 
-test('reports rejects invalid types, compatibility statuses, and missing fields', async () => {
-  const validCompatibilityReport = {
-    type: 'compatibility',
-    plugin: 'LumenShards',
-    serverSoftware: 'Paper',
-    version: '1.21.4',
-    status: 'working',
-    description: 'Tested on a clean server',
-  }
+test('legacy report aliases validate types, compatibility status, and required fields', async () => {
+  await database.ready
+  const token = await tokenFor()
   const invalidCases = [
-    { ...validCompatibilityReport, type: 'other' },
-    { ...validCompatibilityReport, status: 'mostly working' },
-    { ...validCompatibilityReport, status: '' },
-    { type: 'feature', title: 'Add a feature' },
+    { path: '/reports', payload: { type: 'other', title: 'Test', description: 'Details' } },
+    { path: '/reports', payload: { type: 'compatibility', plugin: 'LumenShards', serverSoftware: 'Paper', version: '1.21.4', status: 'mostly working', description: 'Details' } },
+    { path: '/reports', payload: { type: 'feature', title: 'A feature' } },
+    { path: '/bug-report', payload: { plugin: 'LumenShards' } },
   ]
-
-  for (const payload of invalidCases) {
-    const response = await worker.fetch(makeRequest(payload, { path: '/reports' }), makeEnv())
+  for (const item of invalidCases) {
+    const response = await worker.fetch(request(item.path, item.payload, { authorization: token }), env)
     assert.equal(response.status, 400)
   }
+
+  const unapproved = await worker.fetch(request('/reports', { type: 'feature', title: 'Test', description: 'Details' }, {
+    authorization: token, requestOrigin: 'https://untrusted.example',
+  }), env)
+  assert.equal(unapproved.status, 403)
 })

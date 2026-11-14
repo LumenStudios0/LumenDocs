@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { withBase } from 'vitepress'
 import { clearDiscordSession, getDiscordSession, storeDiscordSession } from './discord-session'
+import { communityRequest } from './community-api'
 
 declare global {
   interface Window {
@@ -90,8 +91,6 @@ const bugReport = ref({
   plugin: '',
   serverSoftware: '',
   version: '',
-  discordUsername: '',
-  productKey: '',
   consoleLog: '',
   description: '',
 })
@@ -1221,6 +1220,7 @@ async function initializeDiscordLogin() {
       } catch (error) {
         console.error('Unable to clear the expired Discord sign-in session:', error)
       }
+      publishDiscordUser(null)
       if (callbackToken) discordAuthNotice.value = result.error ?? 'Discord sign-in expired. Please sign in again.'
       return
     }
@@ -1307,13 +1307,17 @@ function getBugReportEndpoint() {
   if (!assistantEndpoint) return ''
 
   const endpoint = new URL(assistantEndpoint, window.location.origin)
-  endpoint.pathname = endpoint.pathname.replace(/\/chat\/?$/, '') + '/bug-report'
+  endpoint.pathname = endpoint.pathname.replace(/\/chat\/?$/, '') + '/community/tickets'
   endpoint.search = ''
   return endpoint.toString()
 }
 
 async function submitBugReport() {
   if (submittingBugReport.value) return
+  if (!getDiscordSession()) {
+    bugReportError.value = 'Connect your Discord account using Log in before submitting a website bug ticket.'
+    return
+  }
   const endpoint = getBugReportEndpoint()
   if (!endpoint) {
     bugReportError.value = 'Bug reports are temporarily unavailable. Please contact us on Discord.'
@@ -1323,15 +1327,14 @@ async function submitBugReport() {
   submittingBugReport.value = true
   bugReportError.value = ''
   try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(bugReport.value),
+    await communityRequest('/tickets', {
+      method: 'POST', body: JSON.stringify({
+        type: 'bug', title: `Bug report: ${bugReport.value.plugin}`.slice(0, 120),
+        productId: bugReport.value.plugin, serverSoftware: bugReport.value.serverSoftware,
+        minecraftVersion: bugReport.value.version,
+        body: [bugReport.value.description, bugReport.value.consoleLog ? `Sanitized console excerpt:\n${bugReport.value.consoleLog}` : ''].filter(Boolean).join('\n\n').slice(0, 4000),
+      }),
     })
-    const result = await response.json().catch(() => ({})) as { error?: string; ok?: boolean }
-    if (!response.ok || !result.ok) {
-      throw new Error(result.error || 'Could not deliver the report. Please try again later.')
-    }
 
     bugReportSent.value = true
   } catch (error) {
@@ -1972,7 +1975,9 @@ onUnmounted(() => {
             <a href="/account/licenses" role="menuitem" @click="accountMenuOpen = false">My licenses</a>
             <a href="/account/products" role="menuitem" @click="accountMenuOpen = false">Products purchased</a>
             <a href="/account/settings" role="menuitem" @click="accountMenuOpen = false">Account settings</a>
-            <a v-if="discordUser.role" href="/admin/" role="menuitem" @click="accountMenuOpen = false">Admin dashboard</a>
+            <a v-if="discordUser.role" href="/admin/" role="menuitem" @click="accountMenuOpen = false">Staff Dashboard</a>
+            <a href="/account/tickets" role="menuitem" @click="accountMenuOpen = false">My support tickets</a>
+            <a href="/account/notifications" role="menuitem" @click="accountMenuOpen = false">Notifications &amp; preferences</a>
             <button type="button" role="menuitem" @click="signOutDiscord">Sign out</button>
           </nav>
         </div>
@@ -2198,15 +2203,7 @@ onUnmounted(() => {
                 <input v-model="bugReport.version" type="text" maxlength="60" required placeholder="e.g. 1.21.4">
               </label>
             </div>
-            <label>
-              <span>Discord username <small>Optional</small></span>
-              <input v-model="bugReport.discordUsername" type="text" maxlength="100" autocomplete="off" placeholder="How support can reach you">
-            </label>
-            <label>
-              <span>Product key <small>Optional</small></span>
-              <input v-model="bugReport.productKey" type="text" maxlength="200" autocomplete="off" placeholder="Only if relevant to the issue">
-              <small class="assistant-field-hint">This will be shared in the report channel. Include it only if support needs it; never include passwords.</small>
-            </label>
+            <p class="assistant-field-hint">Connect Discord with Log in before submitting. Remove all credentials from logs; staff reply in your website ticket.</p>
             <label>
               <span>Console log message <small>Optional</small></span>
               <textarea v-model="bugReport.consoleLog" maxlength="2000" rows="3" placeholder="Paste the relevant error or warning"></textarea>
@@ -2216,8 +2213,8 @@ onUnmounted(() => {
               <textarea v-model="bugReport.description" maxlength="2000" rows="3" required placeholder="What did you expect, and what happened instead?"></textarea>
             </label>
             <p v-if="bugReportError" class="assistant-bug-error" role="alert">{{ bugReportError }}</p>
-            <p v-if="bugReportSent" class="assistant-bug-success" role="status">Thanks — your report was sent to the Lumen Studios team.</p>
-            <button class="assistant-bug-submit" type="submit" :disabled="submittingBugReport || bugReportSent">
+            <p v-if="bugReportSent" class="assistant-bug-success" role="status">Your private website ticket is saved. <a href="/account/tickets">View my tickets →</a></p>
+            <button class="assistant-bug-submit" type="submit" :disabled="submittingBugReport || bugReportSent || !discordUser">
               {{ submittingBugReport ? 'Sending report…' : bugReportSent ? 'Report sent' : 'Send bug report' }}
             </button>
           </form>

@@ -3863,6 +3863,7 @@ html.lumen-track-cretaceous-sunrise .lumen-track-horizon {
 
 .reports-form {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   padding: clamp(18px, 4vw, 28px);
   border: 1px solid var(--lumen-card-border);
@@ -3882,6 +3883,7 @@ html.lumen-track-cretaceous-sunrise .lumen-track-horizon {
 
 .reports-type-field {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 7px;
   color: var(--vp-c-text-1);
   font-size: 13px;
@@ -3940,6 +3942,7 @@ html.lumen-track-cretaceous-sunrise .lumen-track-horizon {
 
 .reports-fields {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
 }
 

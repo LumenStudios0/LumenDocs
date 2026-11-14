@@ -2,6 +2,10 @@
 
 Supported versions differ from plugin to plugin. Check the table before installing, and compare it with the release notes for your jar—especially if you’re using a newer Minecraft version or a less common server fork.
 
+<CompatibilityChecker />
+
+## Previously documented targets
+
 | Product | Documented target or notes |
 | --- | --- |
 | LumenAuction | Minecraft 1.21.6–1.21.11; Java 21; Bukkit API, including Paper, Spigot/Bukkit, and Purpur. |
@@ -14,6 +18,6 @@ Supported versions differ from plugin to plugin. Check the table before installi
 | LumenShards | Paper 1.21.6–1.21.11; Java 21. |
 | LumenSpoofer | Built against Paper 1.21.6; startup version check allows 1.21.6–1.21.11 and 26.1+. Paper is intended; test the backend on the exact server build. |
 | LumenSpawners | Compiles against Paper API 1.21.6; API version 1.21. Paper is the only intended platform at this stage; other forks and live runtime support are not verified. |
-| LumenBounty | Check its current BuiltByBit release for supported versions and platform requirements. |
+| LumenBounty | Coming soon. Released compatibility requirements are not established. |
 
 The table reflects each plugin’s documented build target, not a guarantee that every combination has been tested. The product guide calls out known limitations where they apply.

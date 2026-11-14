@@ -22,7 +22,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Deploy Worker
+      - name: Provision community D1 and apply migrations
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
@@ -35,7 +35,93 @@ jobs:
             echo "::error::Add CLOUDFLARE_ACCOUNT_ID as a repository Actions variable."
             exit 1
           fi
+          node --input-type=module <<'NODE'
+          import { readFile, writeFile } from 'node:fs/promises'
+          const account = process.env.CLOUDFLARE_ACCOUNT_ID
+          const headers = {
+            Authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN}`,
+            'Content-Type': 'application/json',
+          }
+          const endpoint = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(account)}/d1/database`
+          async function cloudflare(url, options = {}) {
+            const response = await fetch(url, { ...options, headers: { ...headers, ...options.headers } })
+            let result
+            try { result = await response.json() } catch { throw new Error('Cloudflare D1 API returned an invalid response') }
+            if (!response.ok || !result.success) {
+              const details = (result.errors ?? []).map(error => error.code).filter(Boolean).join(', ')
+              throw new Error(
+                `Cloudflare D1 provisioning failed${details ? ` (codes: ${details})` : ''}. ` +
+                'Grant the configured API token D1:Edit for this account, verify the account ID, and rerun; deployment is stopped.',
+              )
+            }
+            return result
+          }
+          let databases = await cloudflare(`${endpoint}?per_page=100`)
+          let database = (databases.result ?? []).find(item => item.name === 'lumen-community')
+          if (!database) {
+            const created = await cloudflare(endpoint, {
+              method: 'POST',
+              body: JSON.stringify({ name: 'lumen-community' }),
+            })
+            database = created.result
+          }
+          if (!database?.uuid) throw new Error('Cloudflare did not return the community D1 database ID')
+          const config = await readFile('wrangler.toml', 'utf8')
+          const placeholder = 'REPLACE_WITH_PROVISIONED_D1_DATABASE_ID'
+          if (!config.includes(placeholder) && !config.includes(database.uuid)) {
+            throw new Error('wrangler.toml does not contain the community D1 database placeholder')
+          }
+          await writeFile('wrangler.toml', config.replaceAll(placeholder, database.uuid))
+          NODE
+          if ! npx --yes wrangler@4.160.0 d1 migrations apply lumen-community --remote; then
+            echo "::error::Community D1 migration failed. Confirm the API token has D1:Edit for the configured account; deployment is stopped."
+            exit 1
+          fi
+      - name: Deploy Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
           npx --yes wrangler@4.160.0 deploy
+      - name: Verify public community status API
+        run: |
+          node --input-type=module <<'NODE'
+          import { setTimeout as delay } from 'node:timers/promises'
+          const endpoint = 'https://lumen-docs-assistant.lumennetwork0.workers.dev/community/status'
+          const startedAt = Date.now()
+          const deadline = startedAt + 330000
+          async function probe() {
+          const response = await fetch(endpoint, { signal: AbortSignal.timeout(10000) })
+          if (!response.ok) throw new Error(`Community status smoke test failed: HTTP ${response.status}`)
+          const payload = await response.json()
+          const expected = ['website', 'discord', 'licensing'].sort()
+          if (payload.intervalMinutes !== 5 || !Array.isArray(payload.services) ||
+              payload.services.map(service => service.id).sort().join(',') !== expected.join(',')) {
+            throw new Error('Community status response has an unexpected service list or check interval')
+          }
+          const allowed = new Set(['operational', 'degraded', 'outage', 'maintenance', 'unknown'])
+          for (const service of payload.services) {
+            if (!allowed.has(service.status) || !allowed.has(service.automaticStatus) ||
+                !(service.overrideStatus === null || allowed.has(service.overrideStatus)) ||
+                !(service.checkedAt === null || (typeof service.checkedAt === 'string' && Number.isFinite(Date.parse(service.checkedAt)))) ||
+                typeof service.name !== 'string' ||
+                typeof service.message !== 'string' || Object.hasOwn(service, 'lastCheckedAt')) {
+              throw new Error(`Community status fields are invalid for service ${service.id}`)
+            }
+          }
+          return payload
+          }
+          let payload = await probe()
+          console.log('Community D1 status endpoint is public and its response schema is valid.')
+          while (!payload.services.every(service => service.checkedAt && Date.parse(service.checkedAt) >= startedAt)) {
+            if (Date.now() >= deadline) {
+              throw new Error('Automatic community checks did not refresh within the five-minute cron window plus execution grace. Verify the Worker cron trigger is active; a newly configured Cloudflare cron may still be propagating.')
+            }
+            await delay(15000)
+            payload = await probe()
+          }
+          console.log('Automatic community checks refreshed all services; unhealthy or unconfigured services are valid health results.')
+          NODE
       - name: Verify Discord sign-in redirect
         run: |
           node --input-type=module <<'NODE'

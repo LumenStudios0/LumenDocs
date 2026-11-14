@@ -11,7 +11,12 @@ import AccountSettings from './AccountSettings.vue'
 import AdminDashboard from './AdminDashboard.vue'
 import DocsAssistant from './DocsAssistant.vue'
 import HomeExperience from './HomeExperience.vue'
+import CommunityWorkspace from './CommunityWorkspace.vue'
+import CompatibilityChecker from './CompatibilityChecker.vue'
+import ErrorGuides from './ErrorGuides.vue'
+import DocBookmarks from './DocBookmarks.vue'
 import './custom.css'
+import './website-tools.css'
 
 export default {
   ...DefaultTheme,
@@ -25,6 +30,10 @@ export default {
     app.component('AccountSettings', AccountSettings)
     app.component('AdminDashboard', AdminDashboard)
     app.component('HomeExperience', HomeExperience)
+    app.component('CommunityWorkspace', CommunityWorkspace)
+    app.component('CompatibilityChecker', CompatibilityChecker)
+    app.component('ErrorGuides', ErrorGuides)
+    app.component('DocBookmarks', DocBookmarks)
   },
   Layout: defineComponent({
     setup() {
@@ -57,6 +66,8 @@ export default {
         { text: 'Getting started', link: '/getting-started/', detail: 'From download to first launch.', icon: 'm12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z' },
         { text: 'Support & requests', link: '/reports/', detail: 'Get a hand. Share an idea.', icon: 'M4 4h16v12H9l-5 5zM8 8h8M8 12h5' },
         { text: 'Release notes', link: '/changelogs/', detail: 'See what is new at Lumen.', icon: 'M12 8v5l3 2M4 6a9 9 0 1 1-1 9M3 3v5h5' },
+        { text: 'Compatibility checker', link: '/getting-started/compatibility', detail: 'Check declared plugin requirements.', icon: 'm5 12 4 4L19 6' },
+        { text: 'Service status', link: '/status', detail: 'Service health and maintenance.', icon: 'M3 12h4l3-7 4 14 3-7h4' },
       ]
       let slideFromLeft = true
       let sunClicks = 0
@@ -699,13 +710,16 @@ export default {
           h('span', 'Questions, bugs, or a new idea?'),
           h('small', 'Talk to the studio →'),
         ]),
-        'doc-before': () => isDocumentation.value && h('nav', { class: 'studio-breadcrumbs', 'aria-label': 'Breadcrumb' }, [
+        'doc-before': () => isDocumentation.value && [
+          h('nav', { class: 'studio-breadcrumbs', 'aria-label': 'Breadcrumb' }, [
           h('a', { href: '/' }, 'Lumen'),
           h('span', { 'aria-hidden': 'true' }, '/'),
           h('a', { href: '/docs/' }, 'Guidebook'),
           h('span', { 'aria-hidden': 'true' }, '/'),
           h('span', { 'aria-current': 'page' }, page.value.title),
-        ]),
+          ]),
+          currentPath.value !== '/bookmarks' && h(DocBookmarks),
+        ],
         'layout-top': () => [
           h('div', { class: 'lumen-day-night-fade', 'aria-hidden': 'true' }),
           h('div', { class: 'lumen-sky', 'aria-hidden': 'true' }, [

@@ -1,0 +1,341 @@
+{
+  "checkedAt": "2026-11-14",
+  "plugins": [
+    {
+      "id": "gladiator",
+      "name": "Gladiator",
+      "repo": "LumenStudios0/GLADIATOR",
+      "docs": "/products/gladiator",
+      "status": "available",
+      "apiVersion": "1.21.6",
+      "java": 21,
+      "software": ["Bukkit", "Spigot", "Paper", "Purpur"],
+      "dependencies": [],
+      "optionalDependencies": ["Geyser-Spigot", "floodgate", "packetevents"],
+      "notes": ["The README documents Minecraft 1.21.6–1.21.11; this is not a guarantee of testing on every server build.", "Packet masking requires a compatible PacketEvents installation."],
+      "sources": [
+        {"path": "src/main/resources/plugin.yml", "ref": "af40d399f263a9e637c614ff35395a9ad48166de", "evidence": "api-version: '1.21.6'; softdepend: [Geyser-Spigot, floodgate, packetevents]"},
+        {"path": "pom.xml", "ref": "af40d399f263a9e637c614ff35395a9ad48166de", "evidence": "maven.compiler.release: 21; Spigot API 1.21.6"},
+        {"path": "README.md", "ref": "af40d399f263a9e637c614ff35395a9ad48166de", "evidence": "Documents Bukkit, Spigot, Paper and Purpur on Minecraft 1.21.6 through 1.21.11."},
+        {"path": "src/main/java/com/lumenstudios/gladiator/GladiatorPlugin.java", "ref": "af40d399f263a9e637c614ff35395a9ad48166de", "evidence": "Logs when PacketEvents is not installed and masking is unavailable."}
+      ]
+    },
+    {
+      "id": "lumen-spoofer",
+      "name": "LumenSpoofer",
+      "repo": "LumenStudios0/LumenSpoofer",
+      "docs": "/products/lumen-spoofer",
+      "status": "available",
+      "apiVersion": "1.21.6",
+      "java": 21,
+      "software": ["Paper"],
+      "dependencies": [],
+      "optionalDependencies": [],
+      "notes": ["The startup version gate permits Minecraft 1.21.6–1.21.11 and 26.1+; this is not a runtime compatibility guarantee.", "The reflective fake-player backend must be tested on each exact Paper build; Bukkit and Spigot are unverified."],
+      "sources": [
+        {"path": "src/main/resources/plugin.yml", "ref": "bab40d745755df82529e9f93d51bc16a14e73c07", "evidence": "api-version: '1.21.6'"},
+        {"path": "pom.xml", "ref": "bab40d745755df82529e9f93d51bc16a14e73c07", "evidence": "maven.compiler.release: 21; Paper API 1.21.6"},
+        {"path": "README.md", "ref": "bab40d745755df82529e9f93d51bc16a14e73c07", "evidence": "Startup gate permits 1.21.6–1.21.11 and 26.1+; live Paper testing is required."}
+      ]
+    },
+    {
+      "id": "lumen-economy",
+      "name": "LumenEconomy",
+      "repo": "LumenStudios0/LumenEconomy",
+      "docs": "/products/lumen-economy",
+      "status": "available",
+      "apiVersion": "1.21",
+      "java": 21,
+      "software": ["Paper", "Purpur", "Folia"],
+      "dependencies": [],
+      "optionalDependencies": ["Vault", "PlaceholderAPI"],
+      "notes": ["Compiled against Paper API 1.21.4; api-version and compile target do not establish tested Minecraft versions.", "Folia support is declared in the descriptor; verify the exact server and plugin release."],
+      "sources": [
+        {"path": "src/main/resources/plugin.yml", "ref": "90447f52d155a3cba25a8568e9b829d6382f5215", "evidence": "api-version: '1.21'; folia-supported: true; softdepend: [Vault, PlaceholderAPI]"},
+        {"path": "pom.xml", "ref": "90447f52d155a3cba25a8568e9b829d6382f5215", "evidence": "maven.compiler.release: 21; Paper API 1.21.4"},
+        {"path": "README.md", "ref": "90447f52d155a3cba25a8568e9b829d6382f5215", "evidence": "Intends compatibility with Paper, Bukkit-compatible forks such as Purpur, and Folia."}
+      ]
+    },
+    {
+      "id": "lumen-shards",
+      "name": "LumenShards",
+      "repo": "LumenStudios0/LumenShards",
+      "docs": "/products/lumen-shards",
+      "status": "available",
+      "apiVersion": "1.21",
+      "java": 21,
+      "software": ["Paper"],
+      "dependencies": [],
+      "optionalDependencies": ["WorldGuard", "PlaceholderAPI"],
+      "notes": ["The README describes a Paper build for Minecraft 1.21.6–1.21.11; it does not establish testing on every build.", "License validation requires a key, scoped plugin token and allowed server IP; keep credentials private."],
+      "sources": [
+        {"path": "src/main/resources/plugin.yml", "ref": "59f12d11778d334978da898bf8935d2f32234460", "evidence": "api-version: '1.21'; softdepend: WorldGuard, PlaceholderAPI"},
+        {"path": "pom.xml", "ref": "59f12d11778d334978da898bf8935d2f32234460", "evidence": "maven.compiler.release: 21; Spigot API 1.21.6"},
+        {"path": "src/main/resources/README.md", "ref": "59f12d11778d334978da898bf8935d2f32234460", "evidence": "Paper plugin; build for Minecraft 1.21.6 through 1.21.11 with Java 21."},
+        {"path": "src/main/java/studio/lumen/shards/licensing/PaperLicenseGate.java", "ref": "59f12d11778d334978da898bf8935d2f32234460", "evidence": "Logs failure to initialize license validation."}
+      ]
+    },
+    {
+      "id": "lumen-spawners",
+      "name": "LumenSpawners",
+      "repo": "LumenStudios0/LumenSpawners",
+      "docs": "/products/lumen-spawners",
+      "status": "available",
+      "apiVersion": "1.21",
+      "java": 21,
+      "software": ["Paper"],
+      "dependencies": [],
+      "optionalDependencies": ["Vault"],
+      "notes": ["Paper API 1.21.6 compile target; the README says live-server compatibility has not been tested.", "Selling requires Vault and a registered economy provider."],
+      "sources": [
+        {"path": "src/main/resources/plugin.yml", "ref": "d0764b696c3e64f32d726125fdeae25179f05195", "evidence": "api-version: '1.21'; softdepend: [Vault]"},
+        {"path": "pom.xml", "ref": "d0764b696c3e64f32d726125fdeae25179f05195", "evidence": "maven.compiler.release: 21; Paper API 1.21.6"},
+        {"path": "README.md", "ref": "d0764b696c3e64f32d726125fdeae25179f05195", "evidence": "Paper plugin; no live-server test; Vault and an economy provider are required for selling."},
+        {"path": "src/main/java/com/lumenstudios/lumenspawners/LumenSpawnersPlugin.java", "ref": "d0764b696c3e64f32d726125fdeae25179f05195", "evidence": "Warns if Vault is enabled without an economy provider."}
+      ]
+    },
+    {
+      "id": "lumen-order",
+      "name": "LumenOrder",
+      "repo": "LumenStudios0/LumenOrders",
+      "docs": "/products/lumen-order",
+      "status": "available",
+      "apiVersion": "1.21",
+      "java": 21,
+      "software": ["Paper", "Purpur", "Spigot", "Bukkit"],
+      "dependencies": [],
+      "optionalDependencies": ["Vault", "ItemsAdder", "Nexo", "EcoEnchants"],
+      "notes": ["README reports a Paper 1.21.8 smoke test; 26.x is untested and Folia is unsupported.", "Order creation and delivery require Vault and an economy provider."],
+      "sources": [
+        {"path": "src/main/resources/plugin.yml", "ref": "69a90e0f7faea2087c0db25871a22fb5193a2f56", "evidence": "api-version: '1.21'; softdepend: [Vault, ItemsAdder, Nexo, EcoEnchants]"},
+        {"path": "pom.xml", "ref": "69a90e0f7faea2087c0db25871a22fb5193a2f56", "evidence": "maven.compiler.release: 21; Spigot API 1.21.6"},
+        {"path": "README.md", "ref": "69a90e0f7faea2087c0db25871a22fb5193a2f56", "evidence": "Smoke-tested on Paper 1.21.8; 26.x untested; Folia unsupported."},
+        {"path": "src/main/java/studio/lumen/order/LumenOrderPlugin.java", "ref": "69a90e0f7faea2087c0db25871a22fb5193a2f56", "evidence": "Warns when no Vault economy provider is found."}
+      ]
+    },
+    {
+      "id": "lumen-auction",
+      "name": "LumenAuction",
+      "repo": "LumenStudios0/LumenAuction",
+      "docs": "/products/lumen-auction",
+      "status": "available",
+      "apiVersion": "1.21.6",
+      "java": 21,
+      "software": ["Paper", "Spigot", "Bukkit", "Purpur"],
+      "dependencies": [],
+      "optionalDependencies": ["Vault"],
+      "notes": ["The README describes Minecraft 1.21.6–1.21.11 and Bukkit-compatible servers; this does not establish testing on every build.", "Listings and purchases require Vault and an economy provider."],
+      "sources": [
+        {"path": "src/main/resources/plugin.yml", "ref": "81b811c6bee391bf881332af9e9935039c9decb5", "evidence": "api-version: '1.21.6'; softdepend: [Vault]"},
+        {"path": "pom.xml", "ref": "81b811c6bee391bf881332af9e9935039c9decb5", "evidence": "maven.compiler.release: 21; Paper API 1.21.1"},
+        {"path": "README.md", "ref": "81b811c6bee391bf881332af9e9935039c9decb5", "evidence": "Designed for Minecraft 1.21.6–1.21.11 on Paper, Spigot, Bukkit-compatible servers and Purpur; Vault enables trading."}
+      ]
+    },
+    {
+      "id": "lumen-essentials",
+      "name": "LumenEssentials",
+      "repo": "LumenStudios0/LumenEssentials",
+      "docs": "/products/lumen-essentials",
+      "status": "available",
+      "apiVersion": "1.21",
+      "java": 21,
+      "software": ["Paper", "Purpur", "Spigot", "Bukkit"],
+      "dependencies": [],
+      "optionalDependencies": ["Vault", "Essentials", "EssentialsX", "LuckPerms", "GriefPrevention", "WorldGuard"],
+      "notes": ["Compiled against Paper API 1.21.11; the intended Bukkit-family platforms and versions require individual runtime verification."],
+      "sources": [
+        {"path": "src/main/resources/plugin.yml", "ref": "990f84f18cc709d42c1790d251113d70cbfea821", "evidence": "api-version: '1.21'; softdepend: [Vault, Essentials, EssentialsX, LuckPerms, GriefPrevention, WorldGuard]"},
+        {"path": "pom.xml", "ref": "990f84f18cc709d42c1790d251113d70cbfea821", "evidence": "maven.compiler.release: 21; Paper API 1.21.11"},
+        {"path": "README.md", "ref": "990f84f18cc709d42c1790d251113d70cbfea821", "evidence": "Intended for compatible Paper, Purpur, Spigot or Bukkit; compiled against Paper API 1.21.11 only."}
+      ]
+    },
+    {
+      "id": "astrosmp-servercore",
+      "name": "AstroSMP ServerCore",
+      "repo": "LumenStudios0/AstroSMP-servercore",
+      "docs": "/plugins",
+      "status": "available",
+      "apiVersion": "1.21.11",
+      "java": 21,
+      "software": ["Paper"],
+      "dependencies": [],
+      "optionalDependencies": ["LuckPerms", "PlaceholderAPI"],
+      "notes": ["Paper API 1.21.11 is the build target; live compatibility is not established by the build target.", "No dedicated product guide is currently available."],
+      "sources": [
+        {"path": "src/main/resources/plugin.yml", "ref": "58d42c2fb13242aa5980732ce235e981aa1a66b8", "evidence": "name: AstroSMP-servercore-1.0v; api-version: '1.21.11'; softdepend: [LuckPerms, PlaceholderAPI]"},
+        {"path": "pom.xml", "ref": "58d42c2fb13242aa5980732ce235e981aa1a66b8", "evidence": "maven.compiler.source and target: 21; Paper API 1.21.11"},
+        {"path": "README.md", "ref": "58d42c2fb13242aa5980732ce235e981aa1a66b8", "evidence": "Describes a Maven-based Paper plugin."}
+      ]
+    },
+    {
+      "id": "lumen-duels-premium",
+      "name": "LumenDuels Premium",
+      "repo": "LumenStudios0/LumenDuels-Premium",
+      "docs": "/products/lumen-duels-premium",
+      "status": "available",
+      "apiVersion": "1.21",
+      "java": 21,
+      "software": ["Spigot"],
+      "dependencies": [],
+      "optionalDependencies": ["PlaceholderAPI", "Vault", "WorldGuard"],
+      "notes": ["The Spigot API 1.21.1 is a compile dependency, not evidence of live testing or a guarantee for other server versions.", "The descriptor name is LumenDuels; check for conflicts before installing alongside another Duels edition."],
+      "sources": [
+        {"path": "src/main/resources/plugin.yml", "ref": "5cbb5a0f9cd544b2da02aab8ebb66c0e8a872545", "evidence": "name: LumenDuels; api-version: '1.21'; softdepend: [PlaceholderAPI, Vault, WorldGuard]"},
+        {"path": "pom.xml", "ref": "5cbb5a0f9cd544b2da02aab8ebb66c0e8a872545", "evidence": "maven.compiler.release: 21; Spigot API 1.21.1"}
+      ]
+    },
+    {
+      "id": "lumen-cosmetics",
+      "name": "LumenCosmetics",
+      "repo": "LumenStudios0/LumenCosmetics",
+      "docs": "/plugins",
+      "status": "available",
+      "apiVersion": "1.21",
+      "java": 21,
+      "software": ["Bukkit", "Spigot", "Paper", "Purpur"],
+      "dependencies": [],
+      "optionalDependencies": ["PlaceholderAPI"],
+      "notes": ["README documents Bukkit/Spigot/Paper/Purpur for Minecraft 1.21+; verify the exact server build.", "No dedicated product guide is currently available."],
+      "sources": [
+        {"path": "src/main/resources/plugin.yml", "ref": "7325fd9aef4bddfece196ff113cdc69375e43d56", "evidence": "api-version: '1.21'; softdepend: [PlaceholderAPI]"},
+        {"path": "pom.xml", "ref": "7325fd9aef4bddfece196ff113cdc69375e43d56", "evidence": "maven.compiler.release: 21; Spigot API 1.21.4"},
+        {"path": "README.md", "ref": "7325fd9aef4bddfece196ff113cdc69375e43d56", "evidence": "Documents Bukkit/Spigot/Paper/Purpur compatibility for Minecraft 1.21+."}
+      ]
+    },
+    {
+      "id": "lumen-duels",
+      "name": "LumenDuels",
+      "repo": "LumenStudios0/LumenDuels",
+      "docs": "/products/lumen-duels",
+      "status": "available",
+      "apiVersion": "1.21",
+      "java": 21,
+      "software": ["Spigot"],
+      "dependencies": [],
+      "optionalDependencies": ["PlaceholderAPI", "Vault", "WorldGuard"],
+      "notes": ["The Spigot API 1.21.1 is a compile dependency, not evidence of live testing or a guarantee for other server versions."],
+      "sources": [
+        {"path": "src/main/resources/plugin.yml", "ref": "9848bdd15928ddd60cfc9a9616ea493abd493d93", "evidence": "api-version: '1.21'; softdepend: [PlaceholderAPI, Vault, WorldGuard]"},
+        {"path": "pom.xml", "ref": "9848bdd15928ddd60cfc9a9616ea493abd493d93", "evidence": "maven.compiler.release: 21; Spigot API 1.21.1"}
+      ]
+    },
+    {
+      "id": "lumen-donut-core",
+      "name": "LumenDonutCore",
+      "repo": "LumenStudios0/LumenDonutCore",
+      "docs": "/plugins",
+      "status": "coming-soon",
+      "apiVersion": null,
+      "java": null,
+      "software": [],
+      "dependencies": [],
+      "optionalDependencies": [],
+      "notes": ["The accessible repository contains only a README; plugin status and compatibility requirements are unverified.", "Coming-soon is a placeholder status and does not establish a release schedule.", "LumenDonutCore-public is a companion repository, not a separate product."],
+      "sources": [
+        {"path": "README.md", "ref": "45e5abcc3afb5255aff7ef86f95426675aef0b28", "evidence": "README identifies the project as LumenDonutCore."}
+      ]
+    },
+    {
+      "id": "lumen-team",
+      "name": "LumenTeam",
+      "repo": null,
+      "docs": "/coming-soon?product=LumenTeam",
+      "status": "coming-soon",
+      "apiVersion": null,
+      "java": null,
+      "software": [],
+      "dependencies": [],
+      "optionalDependencies": [],
+      "notes": ["Listed as coming soon in the product catalog; no compatibility manifest was found."],
+      "sources": [
+        {"path": "docs/.vitepress/theme/PluginCatalog.vue", "ref": "3ad45df3456e0c06bedd94fcda16bafbd66dcd4b", "evidence": "Catalog lists LumenTeam in the Coming soon category."}
+      ]
+    },
+    {
+      "id": "lumen-intellegance",
+      "name": "LumenIntellegance",
+      "repo": null,
+      "docs": "/coming-soon?product=LumenIntellegance",
+      "status": "coming-soon",
+      "apiVersion": null,
+      "java": null,
+      "software": [],
+      "dependencies": [],
+      "optionalDependencies": [],
+      "notes": ["Listed as coming soon in the product catalog; no compatibility manifest was found."],
+      "sources": [
+        {"path": "docs/.vitepress/theme/PluginCatalog.vue", "ref": "3ad45df3456e0c06bedd94fcda16bafbd66dcd4b", "evidence": "Catalog lists LumenIntellegance in the Coming soon category."}
+      ]
+    },
+    {
+      "id": "sentinel",
+      "name": "Sentinel",
+      "repo": null,
+      "docs": "/coming-soon?product=Sentinel",
+      "status": "coming-soon",
+      "apiVersion": null,
+      "java": null,
+      "software": [],
+      "dependencies": [],
+      "optionalDependencies": [],
+      "notes": ["Listed as coming soon in the product catalog; no compatibility manifest was found."],
+      "sources": [
+        {"path": "docs/.vitepress/theme/PluginCatalog.vue", "ref": "3ad45df3456e0c06bedd94fcda16bafbd66dcd4b", "evidence": "Catalog lists Sentinel in the Coming soon category."}
+      ]
+    },
+    {
+      "id": "lumen-bounty",
+      "name": "LumenBounty",
+      "repo": null,
+      "docs": "/products/lumen-bounty",
+      "status": "coming-soon",
+      "apiVersion": null,
+      "java": null,
+      "software": [],
+      "dependencies": [],
+      "optionalDependencies": [],
+      "notes": ["No accessible plugin repository or compatibility manifest was found; requirements remain unknown."],
+      "sources": [
+        {"path": "docs/products/lumen-bounty.md", "ref": "3ad45df3456e0c06bedd94fcda16bafbd66dcd4b", "evidence": "Product guide directs readers to the current release for supported versions."}
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "id": "order-no-economy",
+      "title": "LumenOrder cannot find an economy provider",
+      "match": ["No Vault economy provider found. Install Vault and an economy plugin; ordering is disabled until then."],
+      "productIds": ["lumen-order"],
+      "cause": "The plugin logged that no Vault economy provider was found (LumenOrders, src/main/java/studio/lumen/order/LumenOrderPlugin.java, commit 69a90e0f7faea2087c0db25871a22fb5193a2f56).",
+      "steps": ["Install and enable Vault and a compatible economy provider.", "Restart and check the startup log for provider detection."],
+      "docs": "/products/lumen-order#troubleshooting"
+    },
+    {
+      "id": "spawners-no-economy",
+      "title": "LumenSpawners selling unavailable",
+      "match": ["Vault is enabled but no economy provider is registered; selling is unavailable."],
+      "productIds": ["lumen-spawners"],
+      "cause": "Vault is enabled but no economy provider is registered (LumenSpawners, src/main/java/com/lumenstudios/lumenspawners/LumenSpawnersPlugin.java, commit d0764b696c3e64f32d726125fdeae25179f05195).",
+      "steps": ["Enable a Vault-compatible economy provider.", "Check selling configuration and prices."],
+      "docs": "/products/lumen-spawners#troubleshooting"
+    },
+    {
+      "id": "gladiator-no-packetevents",
+      "title": "Gladiator packet masking unavailable",
+      "match": ["PacketEvents is not installed; per-player ore and structure-material masking is unavailable."],
+      "productIds": ["gladiator"],
+      "cause": "PacketEvents is absent (GLADIATOR, src/main/java/com/lumenstudios/gladiator/GladiatorPlugin.java, commit af40d399f263a9e637c614ff35395a9ad48166de).",
+      "steps": ["Install a PacketEvents release compatible with the exact server software and protocol.", "Restart and check the startup log."],
+      "docs": "/products/gladiator#troubleshooting"
+    },
+    {
+      "id": "shards-license-initialization",
+      "title": "LumenShards license validation initialization failed",
+      "match": ["Could not initialize license validation:"],
+      "productIds": ["lumen-shards"],
+      "cause": "License validation could not initialize; the accompanying exception gives the specific reason (LumenShards, src/main/java/studio/lumen/shards/licensing/PaperLicenseGate.java, commit 59f12d11778d334978da898bf8935d2f32234460).",
+      "steps": ["Check the detailed startup error and licensing configuration locally.", "Verify the license, scoped token and allowed server IP with support; never share credentials publicly."],
+      "docs": "/products/lumen-shards#troubleshooting"
+    }
+  ]
+}

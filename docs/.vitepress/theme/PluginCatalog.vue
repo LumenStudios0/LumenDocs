@@ -8,7 +8,7 @@ const categoryRail = ref<HTMLElement | null>(null)
 
 const plugins = [
   { name: 'LumenAuction', category: 'Economy', description: 'A player-run marketplace with listings, history, and expired item claims.', href: '/products/lumen-auction', store: 'https://builtbybit.com/resources/lumenauction.132967/' },
-  { name: 'LumenBounty', category: 'Economy', description: 'Put a bounty on a player and give rivals a reason to hunt them.', href: '/products/lumen-bounty', store: 'https://builtbybit.com/resources/lumenbounty.132973/' },
+  { name: 'LumenBounty', category: 'Coming soon', description: 'Player bounties are coming to Lumen Studios. Release details will be announced here.', href: '/products/lumen-bounty' },
   { name: 'LumenEconomy', category: 'Economy', description: 'Player payments, item sales, and an easy way to check what loot is worth.', href: '/products/lumen-economy', store: 'https://builtbybit.com/resources/lumeneconomy.132341/' },
   { name: 'LumenOrder', category: 'Economy', description: 'Player buy orders that other players can fill for a payout.', href: '/products/lumen-order', store: 'https://builtbybit.com/resources/lumenorders.132969/' },
   { name: 'LumenShards', category: 'Economy', description: 'AFK shard rewards and a shop where players can spend their earnings.', href: '/products/lumen-shards', store: 'https://builtbybit.com/resources/lumenshards.116897/' },
