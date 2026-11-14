@@ -1,3 +1,24 @@
+/**
+ * @template T
+ * @param {(path: string) => Promise<{items: T[], total: number, page: number, pageSize: number}>} request
+ * @param {'/plugins' | '/products'} path
+ * @returns {Promise<T[]>}
+ */
+export async function fetchRegistryItems(request, path) {
+  const items = []
+  for (let page = 1; ; page++) {
+    const result = await request(`${path}?page=${page}&pageSize=100`)
+    if (!result || !Array.isArray(result.items) || result.page !== page || !Number.isInteger(result.total) || result.total < 0 ||
+      !Number.isInteger(result.pageSize) || result.pageSize < 1 || result.pageSize > 100 || result.items.length > result.pageSize ||
+      (!result.items.length && items.length < result.total)) {
+      throw new Error('The licensing service returned an invalid registry page.')
+    }
+    items.push(...result.items)
+    if (items.length >= result.total) return items
+    if (result.items.length !== result.pageSize) throw new Error('The licensing service returned an incomplete registry page.')
+  }
+}
+
 /** @param {{status: string, expiresAt?: string | null}} license */
 export function effectiveLicenseStatus(license, now = Date.now()) {
   if (license.status !== 'active') return license.status

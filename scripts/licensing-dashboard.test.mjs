@@ -1,13 +1,39 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  documentedGrantOptions, effectiveLicenseStatus, hasConnectedAccount, licenseNeedsAttention, normalizeIpAddress,
+  documentedGrantOptions, effectiveLicenseStatus, fetchRegistryItems, hasConnectedAccount, licenseNeedsAttention, normalizeIpAddress,
   parseIpAllowlist, redactAuditDetails, toSafeCsv,
 } from '../docs/.vitepress/theme/licensing-utils.mjs'
 import { createAdminTestStore, clearAdminTestData, TEST_OWNER_ID } from '../docs/.vitepress/theme/admin-test-store.mjs'
 
 const now = Date.parse('2026-01-01T00:00:00Z')
 const license = { status: 'active', expiresAt: null, allowedIps: [], lastValidatedAt: null }
+
+test('registry loading includes later pages so newly registered products remain grantable', async () => {
+  const calls = []
+  const firstPage = Array.from({ length: 100 }, (_, id) => ({ productId: String(id), name: `Fixture ${id}`, active: true, plugins: [] }))
+  const product = { productId: 'lumen-shards', name: 'LumenShards', active: true, plugins: ['shards'] }
+  const items = await fetchRegistryItems(async path => {
+    calls.push(path)
+    const page = Number(new URL(path, 'https://test.invalid').searchParams.get('page'))
+    return { items: page === 1 ? firstPage : [product], page, total: 101, pageSize: 100 }
+  }, '/products')
+  assert.deepEqual(calls, ['/products?page=1&pageSize=100', '/products?page=2&pageSize=100'])
+  assert.equal(items.length, 101)
+  assert.equal(documentedGrantOptions([{ id: 'lumen-shards', name: 'LumenShards', status: 'available' }], items)[0].productId, 'lumen-shards')
+})
+
+test('registry loading reports broken pagination and upstream errors rather than incomplete success', async () => {
+  for (const result of [
+    null, { items: [], total: 1, page: 1, pageSize: 100 },
+    { items: [], total: 0, page: 2, pageSize: 100 },
+    { items: [{}], total: 2, page: 1, pageSize: 100 },
+  ]) {
+    await assert.rejects(fetchRegistryItems(async () => result, '/plugins'), /registry page/)
+  }
+  await assert.rejects(fetchRegistryItems(async () => { throw new Error('Service offline') }, '/plugins'), /Service offline/)
+  assert.deepEqual(await fetchRegistryItems(async () => ({ items: [], total: 0, page: 1, pageSize: 100 }), '/plugins'), [])
+})
 
 test('only synced, non-deleted Discord accounts can be opened in licensing', () => {
   assert.equal(hasConnectedAccount({ username: 'somebody' }), true)

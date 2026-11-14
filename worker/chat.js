@@ -839,7 +839,10 @@ function isAllowedAdminRoute(path, method) {
     return method === 'POST'
   }
   if (path === '/admin/licenses' || path === '/admin/products' || path === '/admin/plugins') {
-    return method === 'GET' || (path === '/admin/licenses' && method === 'POST')
+    return method === 'GET' || method === 'POST'
+  }
+  if (/^\/admin\/products\/[A-Za-z0-9_.-]{1,64}\/plugins\/[A-Za-z0-9_.-]{1,64}$/.test(path)) {
+    return method === 'POST'
   }
   if (/^\/admin\/licenses\/[0-9a-f-]{36}$/.test(path)) return method === 'GET'
   if (/^\/admin\/licenses\/[0-9a-f-]{36}\/(revoke|suspend|activate)$/.test(path)) {

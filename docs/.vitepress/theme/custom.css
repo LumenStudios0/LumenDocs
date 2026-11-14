@@ -75,9 +75,16 @@
 }
 
 /* Navigation animations */
-.VPNavBar .content-body {
-  backdrop-filter: blur(12px);
+.VPNavBar {
   background: var(--vp-nav-bg-color);
+}
+
+.VPNavBar .content-body {
+  background: transparent;
+}
+
+.VPNav:has(.lumen-nav-menu-panel, .lumen-account-menu) {
+  z-index: 90;
 }
 
 .VPNavBarMenuLink:hover {
@@ -1602,6 +1609,7 @@ html.lumen-track-paper-lanterns .lumen-track-lantern {
   align-items: center;
   gap: 9px;
   margin-left: 14px;
+  flex-shrink: 0;
 }
 
 .VPNavBarMenu {
@@ -1659,7 +1667,10 @@ html.lumen-track-paper-lanterns .lumen-track-lantern {
   font-weight: 600;
 }
 
-.lumen-nav-menu-chevron {
+.lumen-nav-menu-button .lumen-nav-menu-chevron {
+  flex: 0 0 12px;
+  width: 12px;
+  height: 12px;
   color: var(--vp-c-text-2);
   transition: transform 180ms ease;
 }
@@ -1850,6 +1861,9 @@ html.lumen-track-paper-lanterns .lumen-track-lantern {
   right: 0;
   display: grid;
   width: 240px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - var(--vp-nav-height) - 24px);
+  overflow-y: auto;
   gap: 3px;
   padding: 9px;
   border: 1px solid var(--lumen-card-border);
@@ -2949,7 +2963,7 @@ html.lumen-track-paper-lanterns .lumen-track-lantern {
   position: fixed;
   right: max(20px, env(safe-area-inset-right));
   bottom: max(20px, env(safe-area-inset-bottom));
-  z-index: 100;
+  z-index: var(--vp-z-index-layout-top);
   display: flex;
   align-items: flex-end;
   gap: 0;
@@ -4292,6 +4306,9 @@ html.lumen-music-animations-off .lumen-track-visuals * {
   gap: 9px;
   margin: 0 -10px 27px;
   padding: 9px 10px;
+  min-height: 40px;
+  flex-shrink: 0;
+  line-height: 1.4;
   border: 1px solid var(--lumen-card-border);
   border-radius: 8px;
   background: var(--vp-c-bg);
@@ -4300,7 +4317,9 @@ html.lumen-music-animations-off .lumen-track-visuals * {
   cursor: pointer;
 }
 
-.studio-sidebar-search kbd { display: grid; width: 18px; height: 18px; margin-left: auto; place-items: center; border: 1px solid var(--lumen-card-border); border-radius: 4px; font-size: 10px; }
+.studio-sidebar-search svg { flex-shrink: 0; }
+.studio-sidebar-search span { min-width: 0; text-align: left; }
+.studio-sidebar-search kbd { display: grid; flex-shrink: 0; width: 18px; height: 18px; margin-left: auto; place-items: center; border: 1px solid var(--lumen-card-border); border-radius: 4px; font-size: 10px; line-height: 1; }
 .studio-sidebar-label { margin: 0 0 14px; color: var(--vp-c-text-3); font-size: 9px; font-weight: 600; letter-spacing: 0.14em; }
 .studio-shell .VPSidebar .group + .group { padding-top: 16px; border-top-color: var(--lumen-card-border); }
 .studio-shell .VPSidebarItem.level-0 > .item > .text { padding: 4px 0 9px; color: var(--vp-c-text-3); font-size: 10px; font-weight: 600; letter-spacing: 0.04em; }

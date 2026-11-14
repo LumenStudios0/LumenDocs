@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { getDiscordSession } from './discord-session'
-import { documentedGrantOptions, effectiveLicenseStatus, hasConnectedAccount, licenseNeedsAttention, normalizeIpAddress, redactAuditDetails, toSafeCsv } from './licensing-utils.mjs'
+import { documentedGrantOptions, effectiveLicenseStatus, fetchRegistryItems, hasConnectedAccount, licenseNeedsAttention, normalizeIpAddress, redactAuditDetails, toSafeCsv } from './licensing-utils.mjs'
 import pluginData from './plugin-compatibility-data.json'
 import { clearAdminTestData, createAdminTestStore, TEST_OWNER_ID } from './admin-test-store.mjs'
 import StaffCommunity from './StaffCommunity.vue'
+import StaffPluginRegistry from './StaffPluginRegistry.vue'
 
 interface AdminLicense {
   licenseId: string
@@ -47,7 +48,7 @@ interface Page<T> { items: T[]; total: number; page: number; pageSize: number }
 type View = 'customers' | 'licenses' | 'audit' | 'products'
 const views: { id: View; label: string; number: string }[] = [
   { id: 'customers', label: 'Customers', number: '01' },
-  { id: 'audit', label: 'Audit trail', number: '02' }, { id: 'products', label: 'Product registry', number: '03' },
+  { id: 'audit', label: 'Audit trail', number: '02' }, { id: 'products', label: 'Plugins & products', number: '03' },
 ]
 const pageSize = 50
 const view = ref<View>('customers')
@@ -72,8 +73,6 @@ const licenseFilter = ref('all')
 const productFilter = ref('')
 const licenseSort = ref('product')
 const auditSearch = ref('')
-const productSearch = ref('')
-const productState = ref('all')
 const loading = ref(false)
 const submitting = ref(false)
 const loaded = ref(false)
@@ -129,9 +128,6 @@ const licenseStats = computed(() => ({
 }))
 const filteredAudit = computed(() => auditEntries.value.filter(entry =>
   `${entry.action} ${entry.actor} ${entry.entityType} ${entry.entityId}`.toLowerCase().includes(auditSearch.value.trim().toLowerCase())))
-const filteredProducts = computed(() => products.value.filter(product =>
-  `${product.name} ${product.productId}`.toLowerCase().includes(productSearch.value.trim().toLowerCase()) &&
-  (productState.value === 'all' || product.active === (productState.value === 'active'))))
 const auditCurrentPage = computed(() => user.value ? profileAuditPage.value : pages.audit)
 const auditMaxPage = computed(() => Math.max(1, Math.ceil((user.value ? profileAuditTotal.value : totals.audit) / pageSize)))
 
@@ -270,6 +266,7 @@ async function loadView(page = pages[view.value]) {
   lastUpdated.value = ''
   try {
     lastToken = getDiscordSession()
+    if (target === 'products') { loaded.value = true; return }
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
     if (target === 'customers' && appliedQuery.value) params.set('query', appliedQuery.value)
     const result = validatePage(await adminRequest<Page<Customer | AdminLicense | AuditEntry | AdminProduct>>(
@@ -332,14 +329,13 @@ async function fetchProfile(discordId: string) {
     if (profile.discordId !== discordId || !Array.isArray(profile.licenses)) throw new Error('The admin API returned an invalid customer profile.')
     if (!hasConnectedAccount(profile)) throw new Error('This Discord user has not created a connected website account yet.')
     const [registry, history] = await Promise.all([
-      adminRequest<Page<AdminProduct>>('/products?pageSize=100'),
+      fetchRegistryItems<AdminProduct>(adminRequest, '/products'),
       adminRequest<Page<AuditEntry>>(`/audit?customerDiscordId=${encodeURIComponent(discordId)}&pageSize=${pageSize}&page=1`),
     ])
     if (requestId !== generation) return
-    validatePage(registry)
     validatePage(history)
     user.value = profile
-    products.value = registry.items
+    products.value = registry
     if (!grantOptions.value.some(option => option.productId && option.productId === grantProductId.value)) grantProductId.value = ''
     auditEntries.value = history.items
     profileAuditPage.value = history.page
@@ -677,14 +673,8 @@ onUnmounted(() => {
       <div v-if="auditMaxPage > 1" class="staff-pagination"><button type="button" :disabled="busy || auditCurrentPage <= 1" @click="loadAuditPage(auditCurrentPage - 1)">Previous events</button><span>Page {{ auditCurrentPage }} / {{ auditMaxPage }}</span><button type="button" :disabled="busy || auditCurrentPage >= auditMaxPage" @click="loadAuditPage(auditCurrentPage + 1)">Next events</button></div>
     </section>
 
-    <section v-if="loaded && !user && view === 'products'" class="staff-panel">
-      <header><div><p class="staff-eyebrow">LICENSING PRODUCT REGISTRY</p><h2>Products the service recognizes.</h2></div><span class="staff-badge">{{ totals.products }} products</span></header>
-      <div class="staff-toolbar"><label class="staff-grow">Search this page<input v-model="productSearch" type="search" placeholder="Product name or ID"></label><label>Availability<select v-model="productState"><option value="all">All products</option><option value="active">Active products</option><option value="inactive">Inactive products</option></select></label></div>
-      <div class="staff-products"><article v-for="product in filteredProducts" :key="product.productId"><span class="staff-avatar" aria-hidden="true">{{ product.name.slice(0, 1) }}</span><div><h3>{{ product.name }}</h3><code>{{ product.productId }}</code></div><span class="staff-badge">{{ product.active ? 'Active' : 'Inactive' }}</span><button type="button" @click="copyText(product.productId, 'Product ID')">Copy ID</button></article></div>
-      <p v-if="!filteredProducts.length" class="staff-empty">No products match this page filter.</p>
-      <p class="staff-note">This is the live licensing registry, not the public shop. Product creation and editing are not exposed by the connected admin API.</p>
-    </section>
-    <div v-if="loaded && !user && view !== 'audit'" class="staff-pagination"><button type="button" :disabled="busy || pages[view] <= 1" @click="loadView(pages[view] - 1)">Previous page</button><span>Page {{ pages[view] }} / {{ maxPage }} · {{ totals[view] }} total</span><button type="button" :disabled="busy || pages[view] >= maxPage" @click="loadView(pages[view] + 1)">Next page</button></div>
+    <StaffPluginRegistry v-if="loaded && !user && view === 'products'" :request="adminRequest" :test-mode="testMode" />
+    <div v-if="loaded && !user && view !== 'audit' && view !== 'products'" class="staff-pagination"><button type="button" :disabled="busy || pages[view] <= 1" @click="loadView(pages[view] - 1)">Previous page</button><span>Page {{ pages[view] }} / {{ maxPage }} · {{ totals[view] }} total</span><button type="button" :disabled="busy || pages[view] >= maxPage" @click="loadView(pages[view] + 1)">Next page</button></div>
     <footer class="staff-footer">{{ testMode ? 'Local simulation only. Reset to undo all test edits; exit to return to the real API.' : 'Access is checked by the Worker on every live request. Administrator credentials never reach this page.' }}</footer>
     </template>
   </main>

@@ -567,7 +567,9 @@ export default {
                 h('rect', { x: 14, y: 14, width: 7, height: 7, rx: 1.5 }),
               ]),
               h('span', { class: 'lumen-nav-menu-label' }, 'Explore'),
-              h('span', { class: 'lumen-nav-menu-chevron', 'aria-hidden': 'true' }, '⌄'),
+              h('svg', { class: 'lumen-nav-menu-chevron', viewBox: '0 0 12 12', 'aria-hidden': 'true' }, [
+                h('path', { d: 'm3 4.5 3 3 3-3' }),
+              ]),
             ]),
             navMenuOpen.value && h('nav', {
               id: 'lumen-nav-menu-panel',

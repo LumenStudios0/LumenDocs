@@ -605,6 +605,54 @@ test('owner admin requests proxy with server-only credentials and actor attribut
   assert.equal(upstreamRequest.options.method, 'DELETE')
 })
 
+test('staff can register plugins, create products and link them with audited server credentials', async t => {
+  const token = await createSessionToken(t)
+  const upstreamRequests = []
+  globalThis.fetch = async (url, options) => {
+    upstreamRequests.push({ url: String(url), options })
+    return Response.json({ pluginId: 'lumen-shards', pluginToken: 'new-private-plugin-token' }, { status: 201 })
+  }
+  const routes = [
+    ['/plugins', { pluginId: 'lumen-shards', name: 'LumenShards' }],
+    ['/products', { productId: 'lumen-shards', name: 'LumenShards' }],
+    ['/products/lumen-shards/plugins/lumen-shards', undefined],
+  ]
+  for (const [path, body] of routes) {
+    const response = await worker.fetch(request(`/api/admin${path}`, {
+      method: 'POST', origin, authorization: `Bearer ${token}`, body,
+    }), env({ ADMIN_DISCORD_IDS: '123456789', LICENSE_API_URL: 'https://licenses.example', LICENSE_ADMIN_API_TOKEN: 'server-only-secret' }))
+    assert.equal(response.status, 201)
+    assert.equal((await response.json()).pluginToken, 'new-private-plugin-token')
+    assert.equal(response.headers.get('Cache-Control'), 'no-store')
+    const upstream = upstreamRequests.at(-1)
+    assert.equal(upstream.url, `https://licenses.example/v1/admin${path}`)
+    assert.equal(upstream.options.method, 'POST')
+    assert.equal(upstream.options.headers.Authorization, 'Bearer server-only-secret')
+    assert.equal(upstream.options.headers['X-Admin-Actor'], '123456789:admin')
+    assert.equal(upstream.options.body, body ? JSON.stringify(body) : undefined)
+  }
+})
+
+test('registry mutations reject nonstaff sessions and unsupported paths before upstream access', async t => {
+  const customerToken = await createSessionToken(t)
+  const ownerToken = await createSessionToken(t, '1400375985211441242')
+  globalThis.fetch = async () => { throw new Error('Rejected registry mutations must not reach upstream') }
+  const config = env({ LICENSE_API_URL: 'https://licenses.example', LICENSE_ADMIN_API_TOKEN: 'server-only-secret' })
+  for (const path of ['/plugins', '/products', '/products/product/plugins/plugin']) {
+    const response = await worker.fetch(request(`/api/admin${path}`, { method: 'POST', origin, authorization: `Bearer ${customerToken}` }), config)
+    assert.equal(response.status, 403)
+  }
+  for (const [method, path] of [
+    ['DELETE', '/plugins'], ['PATCH', '/products'], ['DELETE', '/products/product/plugins/plugin'],
+    ['GET', '/products/product/plugins/plugin'], ['POST', '/plugins/plugin/token/rotate'],
+    ['POST', '/products/product/plugins/plugin/extra'], ['POST', '/products/bad%20id/plugins/plugin'],
+    ['POST', `/products/${'x'.repeat(65)}/plugins/plugin`], ['POST', '/products/product/plugins/bad%2Fid'],
+  ]) {
+    const response = await worker.fetch(request(`/api/admin${path}`, { method, origin, authorization: `Bearer ${ownerToken}` }), config)
+    assert.equal(response.status, 404, `${method} ${path}`)
+  }
+})
+
 test('same-origin API requests without Origin are accepted only for an allowed site host', async () => {
   const allowedRequest = new Request('https://lumenstudio.fyi/api/admin/users', {
     method: 'OPTIONS',
