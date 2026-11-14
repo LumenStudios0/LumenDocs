@@ -1023,7 +1023,7 @@ export default {
           'Access-Control-Allow-Methods': path.startsWith('/community')
             ? 'GET, POST, PUT, DELETE, OPTIONS'
             : path.startsWith('/studio/')
-            ? 'GET, POST, PUT, OPTIONS'
+            ? 'GET, HEAD, POST, PUT, OPTIONS'
             : path === '/dinosaur-discoveries'
             ? 'GET, POST, OPTIONS'
             : path === '/auth/me' || path === '/account/servers'

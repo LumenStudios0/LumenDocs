@@ -1,4 +1,5 @@
 import { hasPermission, resolveAccess } from './access-control.js'
+import { handlePluginDownloads } from './plugin-downloads.js'
 
 const productPattern = /^[A-Za-z0-9_.-]{1,64}$/
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -146,6 +147,9 @@ async function bulkGrant(request, env, user, access, send) {
 export async function handleProductTools(request, env, origin, path, deps) {
   const send = (payload, status = 200) => deps.respond(payload, status, origin)
   if (!env.COMMUNITY_DB) return send({ error: 'The website database is unavailable.' }, 503)
+  if (path === '/studio/downloads' || path.startsWith('/studio/downloads/')) {
+    return handlePluginDownloads(request, env, origin, path, { ...deps, licensingRequest })
+  }
   const url = new URL(request.url)
   const publicRead = path === '/studio/releases' && request.method === 'GET'
   let user, access

@@ -45,6 +45,7 @@ async function fixture(t) {
     LICENSE_ADMIN_API_TOKEN: 'server-secret',
     ADMIN_READ_LIMITER: { limit: async () => ({ success: true }) },
     ADMIN_WRITE_LIMITER: { limit: async () => ({ success: true }) },
+    ASSISTANT_LIMITER: { limit: async () => ({ success: true }) },
   }
   const deps = {
     respond: (body, status) => Response.json(body, { status }),
@@ -87,9 +88,15 @@ test('Worker routes product tools and preflights scheduled cancellation', async 
     const response = await worker.fetch(new Request(`https://worker.example${prefix}/studio/releases`, { headers: { Origin: origin } }), env)
     assert.equal(response.status, 200)
     assert.deepEqual((await response.json()).items, [])
+    for (const suffix of ['', '/' + crypto.randomUUID()]) {
+      const denied = await worker.fetch(new Request(`https://worker.example${prefix}/studio/downloads${suffix}`, { headers: { Origin: origin } }), env)
+      assert.equal(denied.status, 401)
+      assert.equal(denied.headers.get('Cache-Control'), 'no-store')
+    }
   }
   for (const [path, methods] of [
     ['/studio/staff/releases', ['GET', 'POST', 'PUT']],
+    ['/studio/downloads/' + crypto.randomUUID(), ['GET', 'HEAD']],
     ['/community/staff/scheduled/' + crypto.randomUUID(), ['DELETE']],
   ]) {
     const response = await worker.fetch(new Request('https://worker.example' + path, { method: 'OPTIONS', headers: { Origin: origin } }), env)
@@ -183,4 +190,104 @@ test('expiry reminders use canonical active entitlements, paginate, and deduplic
   Date.now = () => started + 4 * 86400000
   await runProductChecks(env)
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM community_notifications').get().n, 2)
+})
+
+async function seedDownload(sqlite, productId = '1', published = 1) {
+  const bytes = Buffer.concat([Buffer.from('PK'), Buffer.alloc(65536 * 17 + 25, 42)])
+  const id = crypto.randomUUID()
+  const sha256 = Buffer.from(await crypto.subtle.digest('SHA-256', bytes)).toString('hex')
+  const chunks = Math.ceil(bytes.length / 65536)
+  sqlite.prepare(`INSERT INTO studio_downloads
+    (id,product_id,product_key,name,version,filename,sha256,size,chunk_count,source_commit,created_at,published)
+    VALUES (?,?,?,'LumenShards','1.2','LumenShards-1.2.jar',?,?,?,'test-commit',?,?)`)
+    .run(id, productId, 'lumenshards', sha256, bytes.length, chunks, new Date().toISOString(), published)
+  const insert = sqlite.prepare('INSERT INTO studio_download_chunks (download_id,chunk_index,data) VALUES (?,?,?)')
+  for (let index = 0; index < chunks; index++) insert.run(id, index, bytes.subarray(index * 65536, (index + 1) * 65536).toString('base64'))
+  return { id, bytes, sha256 }
+}
+
+test('plugin downloads require current canonical entitlements and stream the exact private artifact', async t => {
+  const { call, sqlite, customer } = await fixture(t)
+  const artifact = await seedDownload(sqlite)
+  await seedDownload(sqlite, 'other-product')
+  await seedDownload(sqlite, '1', 0)
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  let state = 'active'
+  globalThis.fetch = async input => {
+    assert.equal(new URL(input).pathname, '/v1/admin/customers/' + customer)
+    return Response.json({
+      customerDiscordId: customer, status: state, verificationRequired: false,
+      products: [{ productId: '1', productActive: true, status: 'active', expiresAt: null }],
+    })
+  }
+  assert.equal((await call('/studio/downloads', 'GET', undefined, '')).status, 401)
+  const list = await call('/studio/downloads', 'GET', undefined, customer)
+  assert.equal(list.status, 200)
+  assert.deepEqual((await list.json()).items.map(item => item.id), [artifact.id])
+  const response = await call('/studio/downloads/' + artifact.id, 'GET', undefined, customer)
+  assert.equal(response.status, 200)
+  assert.equal(response.headers.get('Content-Type'), 'application/java-archive')
+  assert.equal(response.headers.get('Content-Length'), String(artifact.bytes.length))
+  assert.equal(response.headers.get('X-Checksum-Sha256'), artifact.sha256)
+  assert.match(response.headers.get('Content-Disposition'), /attachment; filename="LumenShards-1.2.jar"/)
+  assert.equal(response.headers.get('Cache-Control'), 'private, no-store')
+  assert.deepEqual(Buffer.from(await response.arrayBuffer()), artifact.bytes)
+  state = 'banned'
+  assert.equal((await call('/studio/downloads/' + artifact.id, 'GET', undefined, customer)).status, 403)
+})
+
+test('plugin downloads fail closed on expired, revoked, mismatched and unavailable licensing responses', async t => {
+  const { call, sqlite, customer } = await fixture(t)
+  const { id } = await seedDownload(sqlite)
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  const profile = {
+    customerDiscordId: customer, status: 'active', verificationRequired: false,
+    products: [{ productId: '1', productActive: true, status: 'active', expiresAt: null }],
+  }
+  for (const [data, status, expected] of [
+    [{ ...profile, products: [{ ...profile.products[0], expiresAt: new Date(Date.now() - 1000).toISOString() }] }, 200, 404],
+    [{ ...profile, products: [{ ...profile.products[0], status: 'revoked' }] }, 200, 404],
+    [{ ...profile, products: [{ ...profile.products[0], productActive: false }] }, 200, 404],
+    [{ ...profile, products: [{ ...profile.products[0], expiresAt: 'invalid' }] }, 200, 503],
+    [{ ...profile, customerDiscordId: '223456789012345678' }, 200, 503],
+    [{ ...profile, verificationRequired: undefined }, 200, 503],
+    [{ ...profile, verificationRequired: true }, 200, 403],
+    [{}, 503, 503],
+    [{}, 404, 403],
+  ]) {
+    globalThis.fetch = async () => Response.json(data, { status })
+    const response = await call('/studio/downloads/' + id, 'GET', undefined, customer)
+    assert.equal(response.status, expected)
+    assert.equal(response.headers.has('Content-Disposition'), false)
+  }
+})
+
+test('download staff access is permission checked and broken artifacts are never silently truncated', async t => {
+  const { call, sqlite, env, customer } = await fixture(t)
+  const { id } = await seedDownload(sqlite)
+  const catalog = await (await call('/studio/downloads')).json()
+  assert.equal(catalog.items[0].id, id)
+  assert.deepEqual(catalog.builds, [])
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  globalThis.fetch = async () => Response.json({
+    customerDiscordId: customer, status: 'active', verificationRequired: false, products: [],
+  })
+  const customerCatalog = await (await call('/studio/downloads', 'GET', undefined, customer)).json()
+  assert.equal(customerCatalog.total, 0)
+  assert.equal('builds' in customerCatalog, false)
+  assert.equal((await call('/studio/downloads/' + id, 'GET', undefined, customer)).status, 404)
+  const head = await call('/studio/downloads/' + id, 'HEAD')
+  assert.equal(head.status, 200)
+  assert.equal(await head.text(), '')
+  env.ASSISTANT_LIMITER = { limit: async () => ({ success: false }) }
+  assert.equal((await call('/studio/downloads/' + id)).status, 429)
+  env.ASSISTANT_LIMITER = { limit: async () => ({ success: true }) }
+  sqlite.prepare('DELETE FROM studio_download_chunks WHERE download_id = ? AND chunk_index = 16').run(id)
+  const response = await call('/studio/downloads/' + id)
+  await assert.rejects(response.arrayBuffer(), /could not be completed/)
+  sqlite.prepare("UPDATE studio_downloads SET filename = '../not-a-safe-file.jar' WHERE id = ?").run(id)
+  assert.equal((await call('/studio/downloads/' + id)).status, 503)
 })

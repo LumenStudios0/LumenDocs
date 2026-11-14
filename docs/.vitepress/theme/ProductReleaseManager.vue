@@ -5,6 +5,7 @@ import { getDiscordSession } from './discord-session'
 import { useSiteDialog } from './site-dialog'
 import RichEditor from './RichEditor.vue'
 import RichContent from './RichContent.vue'
+import PluginDownloads from './PluginDownloads.vue'
 
 const props = defineProps<{ permissions: string[]; products: { productId: string; name: string; active: boolean }[] }>()
 const can = (value: string) => props.permissions.includes(value)
@@ -115,9 +116,10 @@ onUnmounted(() => { generation++; window.removeEventListener('lumen-discord-user
       <ul v-if="outcomes.length"><li v-for="outcome in outcomes" :key="outcome.customerId"><strong>{{ outcome.customerId }} — {{ outcome.state }}</strong>: {{ outcome.message }}</li></ul>
     </form>
     <template v-if="can('products.manage')">
+      <PluginDownloads staff />
       <form class="website-panel" @submit.prevent="save">
         <h2>Product release manager</h2>
-        <p class="website-note">Create drafts or publish versioned release notes and compatibility details. Download files are not configured: no distributable JARs were found in the studio repositories.</p>
+        <p class="website-note">Create drafts or publish versioned release notes and compatibility details. Successfully built plugin JARs are available in the private download panel above.</p>
         <label>Product<select v-model="productId" required :disabled="busy"><option value="">Choose product</option><option v-for="product in products" :key="product.productId" :value="product.productId">{{ product.name }}</option></select></label>
         <div class="website-columns"><label>Version<input v-model="version" required maxlength="60" :disabled="busy" placeholder="1.2.0"></label><label>Channel<select v-model="channel" :disabled="busy"><option value="stable">Stable</option><option value="beta">Beta</option></select></label></div>
         <label>Supported Minecraft versions<input v-model="minecraftVersions" maxlength="200" :disabled="busy" placeholder="1.21.x"></label>

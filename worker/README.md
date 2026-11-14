@@ -203,7 +203,13 @@ The Worker serves `/studio/releases` as a public, paginated feed of published re
 
 The existing five-minute job scans up to two 25-customer licensing pages per run and persists its cursor. It checks canonical account product entitlements, ignores expired/revoked access, and creates private reminders inside seven days and one day before expiry. Notifications use deterministic IDs to prevent repeated cron runs from duplicating a reminder. Missing licensing configuration disables only this optional scan; errors are logged without replacing service-health results.
 
-No direct JAR downloads were enabled: neither committed JARs nor release JAR assets were found in the studio plugin repositories. Do not publish private repository URLs or embed GitHub credentials in the frontend.
+### Private Maven-built plugin downloads
+
+`GET /studio/downloads?page=1` returns up to 20 published artifacts visible to the signed-in Discord account. `GET|HEAD /studio/downloads/{uuid}` rechecks canonical licensing access on each request. Accounts must be active, not awaiting verification, and hold an active, unexpired entitlement to the exact active product. Licensing failures fail closed. Staff with both `dashboard.view` and `products.manage` can inspect all published builds and see safe build-result summaries. Draft artifacts are never returned.
+
+The manually dispatched **Build private plugin downloads** workflow builds the Java 21 Maven projects in `.github/plugin-downloads.json`, validates real plugin descriptors/classes, and uploads verified JARs into private `studio_downloads` and `studio_download_chunks` tables. JARs are limited to 32 MiB and stored as 64 KiB base64 chunks; the Worker streams bounded groups without loading entire JARs into memory. Responses use attachment headers and `private, no-store`; the browser checks file length and SHA-256 before saving. A failed build never replaces a previously published build. Repository access uses the existing Actions source-read secret; Cloudflare credentials are scoped to uploading, not Maven execution. Never publish paid JARs, private source URLs, or GitHub credentials in Pages assets, public releases, or public Actions artifacts.
+
+Artifact product IDs must match the licensing registry exactly. In particular, LumenShards retains product ID `1`; LumenOrders uses `lumenorder`. Uploading a build does not create registry entries, link plugins, or grant ownership. Staff must configure any missing products and actual licenses before those downloads become available to customers.
 
 ## Optional anonymous dinosaur discoverer total
 

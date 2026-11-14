@@ -7,7 +7,8 @@
 - Added staff-reviewed plugin trial requests, private expiry reminders, ticket ratings, escalations, and configurable Discord follow-up reminders.
 - Added incident history and subscriptions to published known issues.
 - Added scheduled announcements with image links, Discord-style rich formatting, and a public staff updates feed.
-- Added bulk license grants and a product release manager for versioned release notes. Direct JAR downloads remain unavailable until distributable builds are supplied.
+- Added bulk license grants and a product release manager for versioned release notes.
+- Added private Maven-built JAR downloads in My account and the staff release manager. Successful builds require an active matching product license, and downloaded files are SHA-256 verified before saving.
 - Fixed connected servers to show installations reported by the licensing service for the signed-in account.
 - Staff-issued account licenses can be viewed without BuiltByBit sign-in once the licensing API update is installed. Website staff grants also send the customer a private notification.
 - Replaced browser confirmation boxes with purple in-site dialogs, including typed confirmation for permanent deletions.

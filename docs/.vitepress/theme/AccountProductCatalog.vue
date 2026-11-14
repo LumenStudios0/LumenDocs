@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { accountRequest, LicenseApiError } from './licensing-api'
 import { getDiscordSession } from './discord-session'
 import { visibleServiceError, licenseServiceNotice } from './service-errors'
+import PluginDownloads from './PluginDownloads.vue'
 
 type Product = {
   name: string
@@ -82,6 +83,7 @@ onUnmounted(() => {
 <template>
   <section class="account-products" aria-label="Product ownership">
     <p class="account-product-note"><a href="/account/trials">Request a plugin trial →</a> · <a href="/updates">Read staff updates and product releases →</a></p>
+    <PluginDownloads />
     <div class="account-product-tabs" role="tablist" aria-label="Product category">
       <button
         id="owned-products-tab"
