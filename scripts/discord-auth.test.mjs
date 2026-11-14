@@ -436,6 +436,29 @@ test('Discord purchase checks require authentication, POST and configured creato
   assert.equal(preflight.headers.get('Access-Control-Allow-Methods'), 'POST, OPTIONS')
 })
 
+test('BuiltByBit upstream diagnostics are limited to verified staff and safe error codes', async t => {
+  const staff = await createSessionToken(t, '1400375985211441242')
+  const customer = await createSessionToken(t)
+  const config = env({
+    BUILDBYBIT_API_AUTHORIZATION: 'Token synthetic-creator-key', BUILDBYBIT_RESOURCE_IDS: '7001',
+    LICENSE_API_URL: 'https://licenses.example', LICENSE_ADMIN_API_TOKEN: 'license-admin-token',
+  })
+  const call = token => worker.fetch(request('/account/builtbybit/discord', {
+    method: 'POST', origin, authorization: `Bearer ${token}`,
+  }), config)
+  globalThis.fetch = async () => Response.json({ error: { code: 'TokenScopeNotEnabled', message: 'synthetic-creator-key' } }, { status: 403 })
+  const staffResponse = await call(staff)
+  assert.equal(staffResponse.status, 502)
+  assert.match((await staffResponse.json()).error, /HTTP 403, TokenScopeNotEnabled/)
+  const customerResponse = await call(customer)
+  assert.doesNotMatch((await customerResponse.json()).error, /403|TokenScopeNotEnabled|synthetic-creator-key/)
+  globalThis.fetch = async () => Response.json({ error: { code: 'synthetic-creator-key' } }, { status: 401 })
+  const unknownCodeResponse = await call(staff)
+  const error = (await unknownCodeResponse.json()).error
+  assert.match(error, /HTTP 401/)
+  assert.doesNotMatch(error, /synthetic-creator-key/)
+})
+
 test('account license endpoints require a valid Discord session', async () => {
   const response = await worker.fetch(
     request('/account/servers', { origin }),

@@ -59,9 +59,21 @@ export async function claimDiscordPurchases(user, env, origin, respond) {
       return respond({ error: 'BuiltByBit purchase verification timed out or is unavailable. Please try again.' }, 502, origin)
     }
     if (!response.ok) {
-      return respond({ error: response.status === 429
-        ? 'BuiltByBit is rate limiting purchase checks. Please wait and try again.'
-        : 'BuiltByBit could not verify purchases. Check the creator API authorization and required API access.' }, response.status === 429 ? 429 : 502, origin)
+      if (response.status === 429) {
+        return respond({ error: 'BuiltByBit is rate limiting purchase checks. Please wait and try again.' }, 429, origin)
+      }
+      let code = ''
+      if ([400, 401, 403].includes(response.status)) {
+        try {
+          const error = await response.json()
+          if (['HeaderMalformedError', 'TokenScopeNotEnabled', 'V1TokenUseRestrictedError'].includes(error?.error?.code)) {
+            code = `, ${error.error.code}`
+          }
+        } catch {
+          console.warn('BuiltByBit returned an unreadable authorization error response')
+        }
+      }
+      return respond({ error: `BuiltByBit could not verify purchases (HTTP ${response.status}${code}). Check the creator API authorization and required API access.` }, 502, origin)
     }
     let payload
     try { payload = await response.json() }
