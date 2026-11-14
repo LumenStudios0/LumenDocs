@@ -56,7 +56,7 @@ export interface Notification {
   id: string
   title: string
   body: string
-  kind: 'update' | 'announcement' | 'ticket'
+  kind: 'update' | 'announcement' | 'ticket' | 'license'
   productId?: string | null
   audience?: string
   createdAt: string

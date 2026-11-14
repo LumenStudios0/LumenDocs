@@ -392,7 +392,7 @@ async function inspectLicense(license: AdminLicense) {
   document.getElementById('license-inspector')?.focus()
 }
 
-async function mutate<T>(path: string, init: RequestInit, success: string, accept?: (result: T) => void) {
+async function mutate<T>(path: string, init: RequestInit, success: string | ((result: T) => string), accept?: (result: T) => void) {
   if (!user.value || busy.value) return
   const discordId = user.value.discordId
   const session = getDiscordSession()
@@ -400,15 +400,17 @@ async function mutate<T>(path: string, init: RequestInit, success: string, accep
   clearMessages()
   submitting.value = true
   let committed = false
+  let outcome = ''
   try {
     const result = await adminRequest<T>(path, init)
     committed = true
+    outcome = typeof success === 'function' ? success(result) : success
     if (session !== getDiscordSession() || operationId !== generation) return
     accept?.(result)
     await fetchProfile(discordId)
-    if (session === getDiscordSession() && user.value?.discordId === discordId) notice.value = success
+    if (session === getDiscordSession() && user.value?.discordId === discordId) notice.value = outcome
   } catch (requestError) {
-    if (session === getDiscordSession()) error.value = `${committed ? 'Change saved, but the refreshed profile could not be loaded. Do not repeat the action. ' : ''}${messageOf(requestError)}`
+    if (session === getDiscordSession()) error.value = `${committed ? `Change saved. ${outcome} Do not repeat the action. ` : ''}${messageOf(requestError)}`
   } finally {
     submitting.value = false
   }
@@ -431,12 +433,12 @@ async function grantLicense() {
     return
   }
   if (!await confirmSiteAction(`Grant ${selectedProduct.name} to ${user.value.globalName || user.value.username} (${user.value.discordId})${expiry ? ` until ${expiry.toLocaleString()}` : ' with lifetime access'}?`, { title: 'Grant customer license', confirmText: 'Grant license' })) return
-  await mutate<{ licenseKey: string }>('/licenses', {
+  await mutate<{ licenseKey: string; notificationWarning?: string }>('/licenses', {
     method: 'POST', body: JSON.stringify({
       productId: grantProductId.value, customerDiscordId: user.value.discordId,
       ...(expiry ? { expiresAt: expiry.toISOString() } : {}),
     }),
-  }, 'License created. Save the one-time key before leaving this customer.', result => {
+  }, result => result.notificationWarning || 'License created. The customer has been notified.', result => {
     if (typeof result.licenseKey !== 'string' || !result.licenseKey) throw new Error('The service did not return the issued key. Check audit history before retrying.')
     licenseKey.value = result.licenseKey
     licenseKeyOwner.value = discordId

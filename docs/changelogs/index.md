@@ -4,6 +4,7 @@
 
 ### November 14, 2026
 
+- Staff-issued account licenses can be viewed without BuiltByBit sign-in once the licensing API update is installed. Website staff grants also send the customer a private notification.
 - Replaced browser confirmation boxes with purple in-site dialogs, including typed confirmation for permanent deletions.
 - Added BuiltByBit purchase checks through the Discord account linked on BuiltByBit. Actual purchase verification still requires configured studio API access; linking Discord by itself does not grant a license.
 - Shortened the account menu; licenses, purchases and settings remain in My account.

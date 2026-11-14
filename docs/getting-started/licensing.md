@@ -5,7 +5,8 @@ Some Lumen Studios plugins need a license before they’ll run. To request one, 
 1. [Join the Lumen Studios Discord](https://discord.gg/lumenstudios).
 2. Create a ticket under **License Support**.
 3. Ask a staff member to create your license.
-4. Add the license details they give you to that plugin’s `config.yml`.
+4. Open [My licenses](/account/licenses) while signed in with that Discord account to view your key and add your server IPs. BuiltByBit sign-in is not required for staff-granted licenses.
+5. Add the license details to that plugin’s `config.yml`.
 
 The exact config field depends on the plugin. LumenShards, for example, uses a license key and a scoped plugin token. Follow the instructions from staff for your plugin, then restart your server so it can validate the license.
 

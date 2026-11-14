@@ -112,6 +112,54 @@ async function accessFixture(t) {
   return { db, config, owner, api, assign }
 }
 
+test('staff license grants notify only the recipient even when ticket alerts are disabled', async t => {
+  const { db, owner, api } = await accessFixture(t)
+  const customer = await tokenFor(customerId, 'Customer')
+  const other = await tokenFor('987654321098765432', 'Other')
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  let calls = 0
+  globalThis.fetch = async (input, options) => {
+    assert.equal(new URL(input).pathname, '/v1/admin/licenses')
+    assert.equal(JSON.parse(options.body).customerDiscordId, customerId)
+    calls++
+    return Response.json({ licenseKey: 'private-test-key' }, { status: 201 })
+  }
+  await api('/community/preferences', 'PUT', { updates: true, announcements: true, ticketReplies: false, products: [] }, customer)
+  const grant = await api('/admin/licenses', 'POST', { customerDiscordId: customerId, productId: 'gladiator' }, owner)
+  assert.equal(grant.status, 201)
+  assert.equal(calls, 1)
+  const page = await (await api('/community/notifications', 'GET', undefined, customer)).json()
+  assert.equal(page.unreadTotal, 1)
+  assert.equal(page.items[0].kind, 'license')
+  assert.equal(page.items[0].link, '/account/licenses')
+  assert.doesNotMatch(JSON.stringify(page), /private-test-key/)
+  const others = await (await api('/community/notifications', 'GET', undefined, other)).json()
+  assert.equal(others.total, 0)
+  assert.equal((await api(`/community/notifications/${page.items[0].id}/read`, 'POST', {}, customer)).status, 200)
+  assert.equal((await (await api('/community/notifications', 'GET', undefined, customer)).json()).unreadTotal, 0)
+  assert.equal(db.sqlite.prepare("SELECT count(*) AS total FROM community_notifications WHERE kind = 'license'").get().total, 1)
+})
+
+test('staff grant reports notification failure without retrying a committed grant', async t => {
+  const { db, owner, api } = await accessFixture(t)
+  const originalFetch = globalThis.fetch
+  const originalPrepare = db.prepare
+  t.after(() => { globalThis.fetch = originalFetch; db.prepare = originalPrepare })
+  let calls = 0
+  globalThis.fetch = async () => { calls++; return Response.json({ licenseKey: 'private-test-key' }, { status: 201 }) }
+  db.prepare = function (query) {
+    if (query.includes('INSERT INTO community_notifications')) return { bind: () => ({ run: async () => { throw new Error('injected failure') } }) }
+    return originalPrepare.call(this, query)
+  }
+  const response = await api('/admin/licenses', 'POST', { customerDiscordId: customerId, productId: 'gladiator' }, owner)
+  const result = await response.json()
+  assert.equal(response.status, 201)
+  assert.equal(calls, 1)
+  assert.equal(result.licenseKey, 'private-test-key')
+  assert.match(result.notificationWarning, /do not grant it again/i)
+})
+
 test('community routes require configured persistent storage and valid sign-in', async () => {
   await database.ready
   const customer = await tokenFor(customerId, 'Customer')

@@ -340,7 +340,7 @@ async function notifications(request, env, url, user, deps, staff) {
       ? `product_id IN (${productSlots})`
       : 'product_id IS NOT NULL'
     where = `WHERE
-      (audience = 'user' AND recipient_id = ? AND ? = 1) OR
+      (audience = 'user' AND recipient_id = ? AND (kind = 'license' OR ? = 1)) OR
       (audience = 'all' AND ((kind = 'update' AND ? = 1) OR (kind = 'announcement' AND ? = 1)) AND
         ${allProductFilter}) OR
       (audience = 'product' AND ((kind = 'update' AND ? = 1) OR (kind = 'announcement' AND ? = 1)) AND

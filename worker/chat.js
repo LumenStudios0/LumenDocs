@@ -837,12 +837,21 @@ async function adminApi(request, env, origin, path) {
   }
   const options = { method: request.method, headers, signal: AbortSignal.timeout(10000) }
   let registryPatch
+  let licenseGrant
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     const body = await request.text()
     if (body.length > 8000) return respond({ error: 'Request is too large' }, 413, origin)
     if (body) {
       try {
         const parsed = JSON.parse(body)
+        if (path === '/admin/licenses' && request.method === 'POST') {
+          if (!env.COMMUNITY_DB) return respond({ error: 'Notifications are unavailable; the license was not granted.' }, 503, origin)
+          if (typeof parsed?.customerDiscordId !== 'string' || !/^[1-9]\d{0,31}$/.test(parsed.customerDiscordId) ||
+              (parsed.productId !== undefined && (typeof parsed.productId !== 'string' || !parsed.productId.trim() || parsed.productId.length > 64))) {
+            return respond({ error: 'A valid customer Discord ID and product ID are required.' }, 400, origin)
+          }
+          licenseGrant = { customerId: parsed.customerDiscordId, productId: parsed.productId ?? null }
+        }
         if (request.method === 'PATCH') {
           if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !Object.keys(parsed).length ||
               Object.keys(parsed).some(key => !['active', 'name'].includes(key)) ||
@@ -864,6 +873,14 @@ async function adminApi(request, env, origin, path) {
   }
 
   try {
+    if (licenseGrant) {
+      try {
+        await env.COMMUNITY_DB.prepare('SELECT id FROM community_notifications LIMIT 1').first()
+      } catch (error) {
+        console.error('License notification storage is unavailable:', error)
+        return respond({ error: 'Notifications are unavailable; the license was not granted.' }, 503, origin)
+      }
+    }
     const upstream = await fetch(upstreamUrl, options)
     const responseBody = await upstream.text()
     if (responseBody.length > 50000) {
@@ -880,6 +897,19 @@ async function adminApi(request, env, origin, path) {
     }
     if (upstream.ok && registryPatch?.name && payload?.name !== registryPatch.name) {
       return respond({ error: 'The licensing API did not apply the new name. Refresh the registry and update the VPS API before retrying.' }, 502, origin)
+    }
+    if (upstream.ok && licenseGrant) {
+      try {
+        await env.COMMUNITY_DB.prepare(
+          `INSERT INTO community_notifications (id, recipient_id, title, body, kind, product_id, audience, link, created_at)
+           VALUES (?, ?, ?, ?, 'license', ?, 'user', ?, ?)`,
+        ).bind(crypto.randomUUID(), licenseGrant.customerId, 'License granted',
+          'A staff member granted you a license. Open My licenses to view your key and manage server IPs.',
+          licenseGrant.productId, '/account/licenses', new Date().toISOString()).run()
+      } catch (error) {
+        console.error('License granted, but notification could not be saved:', error)
+        return respond({ ...payload, notificationWarning: 'License granted, but the notification could not be saved. Tell the customer directly; do not grant it again.' }, upstream.status, origin)
+      }
     }
     return respond(payload, upstream.status, origin)
   } catch (error) {

@@ -26,7 +26,7 @@ const serviceDown = computed(() => licenseError.value === licenseServiceNotice |
 const headline = computed(() => loading.value ? 'Checking your license…'
   : serviceDown.value ? 'Licensing is temporarily unavailable'
   : ready.value ? 'License and server IPs configured'
-    : hasKey.value === false ? 'Start with your first purchase'
+    : hasKey.value === false ? 'Your license is not yet available'
       : hasKey.value === null ? 'Your account needs a connection'
         : status.value !== 'active' ? 'Review your license status' : 'Add an IP to enable validation')
 
@@ -76,7 +76,7 @@ async function refresh() {
           if (requestId !== generation) return
           console.error('Unable to load license IP usage:', error)
           const message = error instanceof LicenseApiError && error.status === 404
-            ? 'Claim a license before adding IP addresses.' : await visibleServiceError(error instanceof Error ? error.message : 'Could not load IP usage.', error instanceof LicenseApiError ? error.status : 0, 'licensing')
+            ? 'Ask staff to grant a license before adding IP addresses.' : await visibleServiceError(error instanceof Error ? error.message : 'Could not load IP usage.', error instanceof LicenseApiError ? error.status : 0, 'licensing')
           if (requestId === generation) ipError.value = message
         }
       })(),
@@ -105,6 +105,11 @@ function handleSession() {
     console.error('Unable to refresh the license session:', error)
     void refresh()
   }
+}
+
+function refreshAccount() {
+  window.dispatchEvent(new Event('lumen-license-refresh'))
+  void refresh()
 }
 
 async function copyDiagnostics() {
@@ -147,10 +152,10 @@ onUnmounted(() => {
         <h2 id="license-health-title">{{ headline }}</h2>
         <p>One shared key. Your eligible plugins. Server access you control.</p>
       </div>
-      <button type="button" :disabled="loading" @click="refresh">{{ loading ? 'Refreshing…' : 'Refresh account' }}</button>
+      <button type="button" :disabled="loading" @click="refreshAccount">{{ loading ? 'Refreshing…' : 'Refresh account' }}</button>
     </header>
     <div class="health-metrics">
-      <article><span>LICENSE STATUS</span><strong :class="{ 'health-ready': ready }">{{ loading ? 'Checking…' : serviceDown ? 'Unavailable' : status.replaceAll('_', ' ') }}</strong><small>{{ serviceDown ? 'Please check back later' : hasKey === false ? 'Connect BuiltByBit to claim a key' : 'Reported by the licensing service' }}</small></article>
+      <article><span>LICENSE STATUS</span><strong :class="{ 'health-ready': ready }">{{ loading ? 'Checking…' : serviceDown ? 'Unavailable' : status.replaceAll('_', ' ') }}</strong><small>{{ serviceDown ? 'Please check back later' : hasKey === false ? 'Ask staff to grant your license' : 'Reported by the licensing service' }}</small></article>
       <article><span>ELIGIBLE PRODUCTS</span><strong>{{ hasKey === null ? '—' : productIds.length }}</strong><small>Verified entitlements on your shared license</small></article>
       <article><span>SERVER IP SLOTS</span><strong>{{ ipCount === null ? '—' : ipCount }} <em>/ 3</em></strong><progress :value="ipCount ?? 0" max="3" aria-label="Used IP address slots" /><small>{{ ipCount === null ? 'Usage unavailable' : `${3 - ipCount} ${ipCount === 2 ? 'slot' : 'slots'} available` }}</small></article>
     </div>
@@ -160,16 +165,16 @@ onUnmounted(() => {
     <div class="health-bottom">
       <div class="health-checklist">
         <p class="health-eyebrow">SETUP CHECKLIST</p>
-        <a href="/account/licenses#builtbybit-claim-title"><b>{{ hasKey ? '✓' : '01' }}</b><span>Verify your purchases<small>{{ hasKey ? 'Shared key available' : 'Connect your BuiltByBit buyer account' }}</small></span><span aria-hidden="true">↗</span></a>
+        <a href="/account/licenses#builtbybit-claim-title"><b>{{ hasKey ? '✓' : '01' }}</b><span>Get your license<small>{{ hasKey ? 'Shared key available' : 'Ask staff to grant your license' }}</small></span><span aria-hidden="true">↗</span></a>
         <a href="/account/licenses#manage-server-ips"><b>{{ ipCount ? '✓' : '02' }}</b><span>Allow your server IPs<small>A key without an IP cannot validate</small></span><span aria-hidden="true">↗</span></a>
         <a href="/account/licenses#connected-servers"><b>03</b><span>Check your installations<small>Confirm activity after configuring your plugins</small></span><span aria-hidden="true">↗</span></a>
       </div>
       <div class="health-products">
         <p class="health-eyebrow">VERIFIED PRODUCT IDS</p>
         <div v-if="productIds.length" class="health-tags"><code v-for="id in productIds" :key="id">{{ id }}</code></div>
-        <p v-else>{{ hasKey === null ? 'Connect to the licensing service to see your products.' : 'No product IDs reported. Reconnect BuiltByBit to check eligible purchases.' }}</p>
-        <a href="/account/licenses#builtbybit-claim-title">Manage purchases &amp; key →</a>
-        <p class="health-hint">New purchase? Reconnect BuiltByBit to refresh your entitlements. Purchases are not synced automatically.</p>
+        <p v-else>{{ hasKey === null ? 'Connect to the licensing service to see your products.' : 'No active product IDs reported. Contact staff for a license.' }}</p>
+        <a href="/account/licenses#builtbybit-claim-title">View your key →</a>
+        <p class="health-hint">Staff grants appear on your Discord account. BuiltByBit purchase verification remains optional.</p>
       </div>
     </div>
     <footer><span>{{ updatedAt ? `Checked at ${updatedAt}` : 'Unavailable values are not counted as zero.' }}</span><button type="button" :disabled="loading" @click="copyDiagnostics">Copy safe diagnostics</button></footer>

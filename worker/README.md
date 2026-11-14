@@ -112,6 +112,19 @@ If the dashboard says `LICENSE_SERVICE_UNAVAILABLE`, one or both Worker settings
 
 The customer portal can verify BuiltByBit purchases, issue one shared key across mapped Lumen products, and manage its server IP allowlist. It requires the updated licensing backend and a separately deployed Worker; GitHub Pages deployment alone does not enable these controls.
 
+### Staff-granted licenses
+
+The archive-based VPS needs the following one-time API update before staff-granted account keys and IP controls are available without BuiltByBit. It preserves keys and entitlements; it does not change the database schema.
+
+```bash
+cd /opt/lumen-license
+curl --fail --show-error --location https://raw.githubusercontent.com/LumenStudios0/LumenDocs/main/scripts/upgrade-staff-license-access.py -o /tmp/lumen-staff-license-access.py
+python3 /tmp/lumen-staff-license-access.py backend
+docker compose up -d --build --no-deps api
+```
+
+The updater checks the installed route and refuses unknown layouts, preserves `api.py.before-staff-license-access.bak`, and is safe to rerun. Staff grants from the website dashboard produce a private license notification for the recipient even when ticket-reply alerts are disabled. Grants made outside the website dashboard do not currently generate website notifications. If notification storage fails after a grant, the dashboard warns staff to tell the customer directly and not repeat the grant.
+
 ### Recommended: linked Discord purchase checks
 
 Customers sign in here with Discord, open their [BuiltByBit account settings](https://builtbybit.com/account/), choose **Link Discord account**, and connect that same Discord identity. They then select **Check Discord & claim key** on My licenses. Discord linking alone does not grant anything: the Worker verifies the creator's actual purchase-license records, including the buyer's linked Discord ID.

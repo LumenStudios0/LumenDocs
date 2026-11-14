@@ -57,6 +57,7 @@ async function loadExistingLicense(token: string) {
   try {
     const result = await accountRequest<LicenseInfo>('/account/license-key')
     if (token !== getDiscordSession()) return
+    errorMessage.value = ''
     if (typeof result.licenseKey === 'string') {
       licenseKey.value = result.licenseKey
       productIds.value = result.license?.productIds ?? []
@@ -64,7 +65,14 @@ async function loadExistingLicense(token: string) {
       errorMessage.value = await visibleServiceError(result.error ?? 'Could not load your shared license key.', 0, 'licensing')
     }
   } catch (error) {
-    if (error instanceof LicenseApiError && error.status === 404) return
+    if (token !== getDiscordSession()) return
+    if (error instanceof LicenseApiError && error.status === 404) {
+      licenseKey.value = ''
+      productIds.value = []
+      keyVisible.value = false
+      errorMessage.value = ''
+      return
+    }
     console.error('Unable to load the customer license key:', error)
     errorMessage.value = error instanceof LicenseApiError ? error.message : await visibleServiceError('Could not load your license key.', 0, 'licensing')
   }
@@ -196,8 +204,17 @@ async function handleSession() {
   if (token) await loadExistingLicense(token)
 }
 
+async function refreshKey() {
+  const token = readSession()
+  if (!token) return
+  loading.value = true
+  try { await loadExistingLicense(token) }
+  finally { if (token === getDiscordSession()) loading.value = false }
+}
+
 onMounted(async () => {
   window.addEventListener('lumen-discord-user', handleSession)
+  window.addEventListener('lumen-license-refresh', refreshKey)
   const token = readSession()
   lastToken = token
   if (!token) {
@@ -208,29 +225,34 @@ onMounted(async () => {
   if (!callbackHandled || !licenseKey.value) await loadExistingLicense(token)
   loading.value = false
 })
-onUnmounted(() => window.removeEventListener('lumen-discord-user', handleSession))
+onUnmounted(() => {
+  window.removeEventListener('lumen-discord-user', handleSession)
+  window.removeEventListener('lumen-license-refresh', refreshKey)
+})
 </script>
 
 <template>
   <section class="builtbybit-claim" aria-labelledby="builtbybit-claim-title">
     <div class="claim-glow" aria-hidden="true" />
     <div class="claim-copy">
-      <span class="claim-eyebrow"><i /> BUILTBYBIT PURCHASE LINK</span>
-      <h2 id="builtbybit-claim-title">Your purchase.<br><span>Your Lumen key.</span></h2>
-      <p>Link Discord in your BuiltByBit account, then check your purchases here to get one shared Lumen license key.</p>
+      <span class="claim-eyebrow"><i /> YOUR LICENSE</span>
+      <h2 id="builtbybit-claim-title">Your plugins.<br><span>Your Lumen key.</span></h2>
+      <p>When staff grant a license to your Discord account, your key appears here. No BuiltByBit sign-in is needed.</p>
       <ul>
-        <li>On BuiltByBit, choose Link Discord account.</li>
-        <li>Use the same Discord account you use on this website.</li>
-        <li>We verify the linked account and its Lumen purchases; we never ask for your password.</li>
-        <li>Keep the same Lumen key for your eligible plugins.</li>
+        <li>Sign in to this website with your Discord account.</li>
+        <li>Ask staff to grant your license to that account.</li>
+        <li>Add your server IPs and keep your key private.</li>
       </ul>
-      <a class="claim-link-discord" href="https://builtbybit.com/account/" target="_blank" rel="noopener noreferrer">Link Discord on BuiltByBit <span aria-hidden="true">↗</span></a>
-      <button class="claim-button" type="button" :disabled="loading || connecting" @click="startClaim('discord')">
-        {{ connecting ? 'Checking purchases…' : loading ? 'Checking your account…' : licenseKey ? 'Refresh purchases with Discord' : 'Check Discord & claim key' }}
-        <span aria-hidden="true">↗</span>
-      </button>
-      <button class="claim-oauth" type="button" :disabled="loading || connecting" @click="startClaim('oauth')">Use BuiltByBit sign-in instead</button>
-      <p class="claim-refresh-note">New purchases require another check. Your first shared-key claim replaces legacy per-product keys; update your plugin configs and re-add your IPs.</p>
+      <details>
+        <summary>Optional: verify a BuiltByBit purchase</summary>
+        <p class="claim-refresh-note">Link the same Discord account on BuiltByBit first. Your first purchase claim replaces legacy per-product keys; update your plugin configs and re-add your IPs.</p>
+        <a class="claim-link-discord" href="https://builtbybit.com/account/" target="_blank" rel="noopener noreferrer">Link Discord on BuiltByBit <span aria-hidden="true">↗</span></a>
+        <button class="claim-button" type="button" :disabled="loading || connecting" @click="startClaim('discord')">
+          {{ connecting ? 'Checking purchases…' : loading ? 'Checking your account…' : 'Check Discord purchases' }}
+          <span aria-hidden="true">↗</span>
+        </button>
+        <button class="claim-oauth" type="button" :disabled="loading || connecting" @click="startClaim('oauth')">Use BuiltByBit sign-in instead</button>
+      </details>
       <p v-if="message" class="claim-message" role="status">{{ message }}</p>
       <p v-if="errorMessage" :class="errorMessage === licenseServiceNotice ? 'claim-message' : 'claim-error'" :role="errorMessage === licenseServiceNotice ? 'status' : 'alert'">{{ errorMessage }}</p>
     </div>
@@ -251,7 +273,7 @@ onUnmounted(() => window.removeEventListener('lumen-discord-user', handleSession
         <span class="claim-empty-orbit" aria-hidden="true" />
         <span class="claim-empty-key" aria-hidden="true">⌁</span>
         <b>{{ loading ? 'Checking for your key…' : 'Your key will appear here' }}</b>
-        <small>Link Discord on BuiltByBit, then check your purchases.</small>
+        <small>Ask staff to grant a license to your Discord account.</small>
       </div>
     </div>
   </section>
