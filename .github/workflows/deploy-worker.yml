@@ -91,7 +91,10 @@ jobs:
           const startedAt = Date.now()
           const deadline = startedAt + 330000
           async function probe() {
-          const response = await fetch(endpoint, { signal: AbortSignal.timeout(10000) })
+          const response = await fetch(endpoint, {
+            headers: { Origin: 'https://lumenstudio.fyi' },
+            signal: AbortSignal.timeout(10000),
+          })
           if (!response.ok) throw new Error(`Community status smoke test failed: HTTP ${response.status}`)
           const payload = await response.json()
           const expected = ['website', 'discord', 'licensing'].sort()
