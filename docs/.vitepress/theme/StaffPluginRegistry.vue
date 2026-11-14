@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import pluginData from './plugin-compatibility-data.json'
 import { fetchRegistryItems } from './licensing-utils.mjs'
 
@@ -29,6 +29,9 @@ const notice = ref('')
 const token = ref('')
 const tokenOwner = ref('')
 const tokenVisible = ref(false)
+const editing = ref<{ kind: 'plugins' | 'products'; id: string; name: string } | null>(null)
+const editedName = ref('')
+const editInput = ref<HTMLInputElement | null>(null)
 let generation = 0
 const busy = computed(() => loading.value || submitting.value)
 const matchingPlugins = computed(() => plugins.value.filter(plugin =>
@@ -124,6 +127,22 @@ function setActive(kind: 'plugins' | 'products', item: Plugin | Product) {
   if (!window.confirm(`${item.active ? 'Deactivate' : 'Activate'} ${item.name}? Deactivation prevents validation for the affected plugin or product.`)) return
   void save(`/${kind}/${encodeURIComponent(id)}`, { active: !item.active }, `${item.name} ${item.active ? 'deactivated' : 'activated'}.`, undefined, 'PATCH')
 }
+async function edit(kind: 'plugins' | 'products', item: Plugin | Product) {
+  editing.value = { kind, id: 'pluginId' in item ? item.pluginId : item.productId, name: item.name }
+  editedName.value = item.name
+  error.value = ''; notice.value = ''
+  await nextTick()
+  editInput.value?.focus()
+}
+function saveEdit() {
+  const target = editing.value
+  const name = editedName.value.trim()
+  if (!target || !name || name.length > 120) { error.value = 'Enter a name between 1 and 120 characters.'; return }
+  void save<Plugin | Product>(`/${target.kind}/${encodeURIComponent(target.id)}`, { name }, 'Name updated. IDs, tokens, links and licenses are unchanged.', result => {
+    if (result.name !== name) throw new Error('The licensing API did not apply the new name. Refresh and update the VPS licensing API before retrying.')
+    editing.value = null
+  }, 'PATCH')
+}
 function unlink(product: Product, id: string) {
   if (!window.confirm(`Remove plugin ${id} from ${product.name}? Licenses for this product will lose access to that plugin.`)) return
   void save(`/products/${encodeURIComponent(product.productId)}/plugins/${encodeURIComponent(id)}`, undefined, 'Plugin removed from product.', undefined, 'DELETE')
@@ -133,6 +152,7 @@ function remove(kind: 'plugins' | 'products', item: Plugin | Product) {
   if (window.prompt(`Permanently delete ${item.name}? This cannot be undone. Type ${id} to confirm.`) !== id) return
   void save(`/${kind}/${encodeURIComponent(id)}`, undefined, `${item.name} permanently deleted.`, () => {
     if (kind === 'plugins' && tokenOwner.value === id) clearToken()
+    if (editing.value?.kind === kind && editing.value.id === id) editing.value = null
   }, 'DELETE')
 }
 async function copyValue(value: string, label: string) {
@@ -152,6 +172,13 @@ onUnmounted(() => { generation++; clearToken() })
       <p v-if="error" class="staff-message staff-error" role="alert">{{ error }}</p>
       <p v-if="notice" class="staff-message" role="status">{{ notice }}</p>
       <p v-if="loading" role="status">Loading the shared registry...</p>
+      <form v-if="editing" class="registry-form registry-editor" @submit.prevent="saveEdit">
+        <h3>Edit {{ editing.kind === 'plugins' ? 'plugin' : 'product' }}</h3>
+        <p class="staff-note">ID: <code>{{ editing.id }}</code>. IDs cannot be renamed because plugin jars and existing licenses reference them.</p>
+        <label class="staff-field">Display name<input ref="editInput" v-model="editedName" maxlength="120" required :disabled="busy"></label>
+        <p v-if="editing.kind === 'plugins'" class="staff-note">Plugin name editing requires the VPS licensing API update described in the Worker setup guide. Activation and deletion work independently.</p>
+        <div class="staff-actions"><button class="staff-primary" type="submit" :disabled="busy || !editedName.trim() || editedName.trim() === editing.name">Save changes</button><button type="button" :disabled="busy" @click="editing = null">Cancel editing</button></div>
+      </form>
       <section v-if="token" class="staff-key" aria-label="New plugin token">
         <strong>Private plugin token for {{ tokenOwner }}</strong>
         <p class="staff-note">Save this token before leaving or refreshing this screen. It is not stored in your browser and will not be displayed again.</p>
@@ -188,13 +215,14 @@ onUnmounted(() => { generation++; clearToken() })
         <label class="staff-field">Search registry<input v-model="search" type="search" placeholder="Plugin or product name or ID"></label>
         <label class="staff-field">Availability<select v-model="availability"><option value="all">All registrations</option><option value="active">Active registrations</option><option value="inactive">Inactive registrations</option></select></label>
       </div>
+      <h3>Registered plugins</h3>
       <div class="staff-products">
-        <article v-for="plugin in matchingPlugins" :key="plugin.pluginId"><div><h3>{{ plugin.name }}</h3><code>{{ plugin.pluginId }}</code><p class="staff-note">Products: {{ products.filter(product => product.plugins.includes(plugin.pluginId)).map(product => product.name).join(', ') || 'Not linked yet' }}</p><div class="staff-actions"><button v-if="can('plugins.manage')" type="button" :disabled="busy" @click="setActive('plugins', plugin)">{{ plugin.active ? 'Deactivate plugin' : 'Activate plugin' }}</button><button v-if="can('plugins.delete')" class="registry-danger" type="button" :disabled="busy || products.some(product => product.plugins.includes(plugin.pluginId))" @click="remove('plugins', plugin)">Delete plugin permanently</button></div><p v-if="can('plugins.delete') && products.some(product => product.plugins.includes(plugin.pluginId))" class="staff-note">Deactivate each linked product and unlink this plugin below before deletion.</p></div><span class="staff-badge">{{ plugin.active ? 'Active' : 'Inactive' }}</span></article>
+        <article v-for="plugin in matchingPlugins" :key="plugin.pluginId"><div><h3>{{ plugin.name }}</h3><code>{{ plugin.pluginId }}</code><p class="staff-note">Products: {{ products.filter(product => product.plugins.includes(plugin.pluginId)).map(product => product.name).join(', ') || 'Not linked yet' }}</p><div class="staff-actions"><button v-if="can('plugins.manage')" type="button" :disabled="busy" @click="edit('plugins', plugin)">Edit plugin</button><button v-if="can('plugins.manage')" type="button" :disabled="busy" @click="setActive('plugins', plugin)">{{ plugin.active ? 'Deactivate plugin' : 'Activate plugin' }}</button><button v-if="can('plugins.delete')" class="registry-danger" type="button" :disabled="busy || products.some(product => product.plugins.includes(plugin.pluginId))" @click="remove('plugins', plugin)">Delete plugin permanently</button></div><p v-if="can('plugins.delete') && products.some(product => product.plugins.includes(plugin.pluginId))" class="staff-note">Deactivate each linked product and unlink this plugin below before deletion.</p></div><span class="staff-badge">{{ plugin.active ? 'Active' : 'Inactive' }}</span></article>
       </div>
       <p v-if="!loading && !matchingPlugins.length" class="staff-empty">No registered plugins match.</p>
       <h3>License products</h3>
       <p class="staff-note">Removing a plugin requires unlinking it from every product first. The licensing service requires products to be inactive before unlinking, and refuses product deletion while license records exist.</p>
-      <div class="staff-products"><article v-for="product in matchingProducts" :key="product.productId"><div><h3>{{ product.name }}</h3><code>{{ product.productId }}</code><p class="staff-note">{{ product.plugins.length }} linked plugins</p><div class="staff-actions"><button v-if="can('products.manage')" type="button" :disabled="busy" @click="setActive('products', product)">{{ product.active ? 'Deactivate product' : 'Activate product' }}</button><button v-if="can('products.delete')" class="registry-danger" type="button" :disabled="busy" @click="remove('products', product)">Delete product permanently</button></div><div v-for="id in product.plugins" :key="id" class="registry-link"><code>{{ id }}</code><button v-if="can('products.unlink')" type="button" :disabled="busy || product.active" @click="unlink(product, id)">Unlink plugin</button></div></div><span class="staff-badge">{{ product.active ? 'Active' : 'Inactive' }}</span><button type="button" :aria-label="`Copy product ID ${product.productId}`" @click="copyValue(product.productId, 'Product ID')">Copy ID</button></article></div>
+      <div class="staff-products"><article v-for="product in matchingProducts" :key="product.productId"><div><h3>{{ product.name }}</h3><code>{{ product.productId }}</code><p class="staff-note">{{ product.plugins.length }} linked plugins</p><div class="staff-actions"><button v-if="can('products.manage')" type="button" :disabled="busy" @click="edit('products', product)">Edit product</button><button v-if="can('products.manage')" type="button" :disabled="busy" @click="setActive('products', product)">{{ product.active ? 'Deactivate product' : 'Activate product' }}</button><button v-if="can('products.delete')" class="registry-danger" type="button" :disabled="busy" @click="remove('products', product)">Delete product permanently</button></div><div v-for="id in product.plugins" :key="id" class="registry-link"><code>{{ id }}</code><button v-if="can('products.unlink')" type="button" :disabled="busy || product.active" @click="unlink(product, id)">Unlink plugin</button></div></div><span class="staff-badge">{{ product.active ? 'Active' : 'Inactive' }}</span><button type="button" :aria-label="`Copy product ID ${product.productId}`" @click="copyValue(product.productId, 'Product ID')">Copy ID</button></article></div>
       <p v-if="!loading && !matchingProducts.length" class="staff-empty">No registered products match.</p>
     </template>
   </section>

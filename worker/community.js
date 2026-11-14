@@ -5,6 +5,7 @@ const SERVICES = [
   { id: 'website', name: 'Website' },
   { id: 'discord', name: 'Discord sign-in' },
   { id: 'licensing', name: 'Licensing service' },
+  { id: 'builtbybit', name: 'BuiltByBit API' },
 ]
 const DEFAULT_PREFERENCES = { updates: true, announcements: true, ticketReplies: true, products: [] }
 
@@ -562,7 +563,9 @@ async function updateStatus(request, env, deps, id) {
 
 async function checkedStatus(url, options = {}) {
   const response = await fetch(url, { redirect: options.redirect ?? 'follow', signal: AbortSignal.timeout(6000), ...options })
-  if (response.status < 200 || response.status >= 400) return 'outage'
+  const expectedAuthFailure = options.builtbybit && response.status === 401
+  if (options.builtbybit && response.status === 429) return 'degraded'
+  if (!expectedAuthFailure && (response.status < 200 || response.status >= 400)) return 'outage'
   if (options.discord) {
     const location = response.headers.get('location')
     if (response.status !== 302 || !location) return 'degraded'
@@ -587,7 +590,7 @@ async function checkedStatus(url, options = {}) {
   }
   const pathname = new URL(url).pathname
   const contentType = (response.headers.get('content-type') ?? '').toLowerCase()
-  if (pathname === '/v1/admin/products') {
+  if (pathname === '/v1/admin/products' || options.builtbybit) {
     if (!contentType.includes('json')) return 'degraded'
     try {
       const length = chunks.reduce((total, chunk) => total + chunk.length, 0)
@@ -595,7 +598,8 @@ async function checkedStatus(url, options = {}) {
       let offset = 0
       for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.length }
       const payload = JSON.parse(new TextDecoder().decode(body))
-      if (!payload || typeof payload !== 'object') return 'degraded'
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return 'degraded'
+      if (options.builtbybit && (!expectedAuthFailure || !(payload.error || payload.errors || payload.result === 'error'))) return 'degraded'
     } catch { return 'degraded' }
   } else if (pathname === '/') {
     const length = chunks.reduce((total, chunk) => total + chunk.length, 0)
@@ -624,6 +628,11 @@ export async function runCommunityChecks(env) {
       redirect: 'manual', discord: true,
     })
   } catch { results.discord = 'outage' }
+  try {
+    results.builtbybit = await checkedStatus('https://api.builtbybit.com/v2/members/self', {
+      builtbybit: true, redirect: 'manual', headers: { Accept: 'application/json' },
+    })
+  } catch { results.builtbybit = 'outage' }
   if (!env.LICENSE_API_URL || !env.LICENSE_ADMIN_API_TOKEN) {
     results.licensing = 'unknown'
   } else {

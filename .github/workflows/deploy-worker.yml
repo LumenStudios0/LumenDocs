@@ -98,7 +98,7 @@ jobs:
           })
           if (!response.ok) throw new Error(`Community status smoke test failed: HTTP ${response.status}`)
           const payload = await response.json()
-          const expected = ['website', 'discord', 'licensing'].sort()
+          const expected = ['website', 'discord', 'licensing', 'builtbybit'].sort()
           if (payload.intervalMinutes !== 5 || !Array.isArray(payload.services) ||
               payload.services.map(service => service.id).sort().join(',') !== expected.join(',')) {
             throw new Error('Community status response has an unexpected service list or check interval')

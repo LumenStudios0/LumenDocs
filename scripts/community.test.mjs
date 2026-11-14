@@ -451,7 +451,7 @@ test('manual service overrides persist while automatic checks update independent
   assert.equal(publicStatus.status, 200)
   const publicStatusPayload = await publicStatus.json()
   assert.equal(publicStatusPayload.intervalMinutes, 5)
-  assert.deepEqual(publicStatusPayload.services.map(service => service.id), ['website', 'discord', 'licensing'])
+  assert.deepEqual(publicStatusPayload.services.map(service => service.id), ['website', 'discord', 'licensing', 'builtbybit'])
   assert.ok(publicStatusPayload.services.every(service => (
     'automaticStatus' in service && 'overrideStatus' in service && 'checkedAt' in service &&
     !('lastCheckedAt' in service)
@@ -472,6 +472,10 @@ test('manual service overrides persist while automatic checks update independent
       assert.equal(options.headers.Authorization, 'Bearer safe-test-token')
       return new Response('{"items":[]}', { status: 200, headers: { 'Content-Type': 'application/json' } })
     }
+    if (String(input).startsWith('https://api.builtbybit.com/')) {
+      assert.equal(options.headers.Authorization, undefined)
+      return Response.json({ result: 'error', error: { code: 'UNAUTHENTICATED' } }, { status: 401 })
+    }
     return new Response('<html>ok</html>', { status: 200, headers: { 'Content-Type': 'text/html' } })
   }
   try {
@@ -484,7 +488,9 @@ test('manual service overrides persist while automatic checks update independent
     globalThis.fetch = originalFetch
   }
   const statusResponse = await call('/community/status', 'GET')
-  const website = (await statusResponse.json()).services.find(service => service.id === 'website')
+  const services = (await statusResponse.json()).services
+  const website = services.find(service => service.id === 'website')
+  assert.equal(services.find(service => service.id === 'builtbybit').automaticStatus, 'operational')
   assert.equal(website.status, 'maintenance')
   assert.equal(website.automaticStatus, 'operational')
   assert.equal(website.overrideStatus, 'maintenance')
@@ -499,6 +505,38 @@ test('manual service overrides persist while automatic checks update independent
     status: 'healthy', message: '',
   }, staff)
   assert.equal(invalidStatus.status, 400)
+})
+
+test('BuiltByBit status distinguishes unavailable and invalid API responses and preserves staff overrides', async t => {
+  const { api, config } = await accessFixture(t)
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  assert.equal((await api('/community/staff/status/builtbybit', 'PUT', {
+    status: 'maintenance', message: 'Marketplace integration maintenance.',
+  })).status, 200)
+  for (const [response, expected] of [
+    [() => new Response('Unavailable', { status: 503 }), 'outage'],
+    [() => Response.json({ error: 'rate_limited' }, { status: 429 }), 'degraded'],
+    [() => new Response('<html>Challenge</html>', { status: 401 }), 'degraded'],
+    [() => Response.json({}), 'degraded'],
+    [() => Response.json({ error: 'unauthenticated' }, { status: 401 }), 'operational'],
+    [() => { throw new Error('Connection refused') }, 'outage'],
+  ]) {
+    globalThis.fetch = async input => String(input).startsWith('https://api.builtbybit.com/')
+      ? response() : new Response('<html>ok</html>', { headers: { 'Content-Type': 'text/html' } })
+    let pending
+    await worker.scheduled({}, config, { waitUntil: promise => { pending = promise } })
+    await pending
+    const builtbybit = (await (await api('/community/status')).json()).services.find(service => service.id === 'builtbybit')
+    assert.equal(builtbybit.automaticStatus, expected)
+    assert.equal(builtbybit.status, 'maintenance')
+    assert.equal(builtbybit.message, 'Marketplace integration maintenance.')
+    assert.ok(Date.parse(builtbybit.checkedAt))
+  }
+  assert.equal((await api('/community/staff/status/builtbybit', 'PUT', { status: 'auto' })).status, 200)
+  const automatic = (await (await api('/community/status')).json()).services.find(service => service.id === 'builtbybit')
+  assert.equal(automatic.status, 'outage')
+  assert.equal(automatic.overrideStatus, null)
 })
 
 test('community support forum is public to read, Discord-only to post, and staff-moderated', async () => {
@@ -687,6 +725,47 @@ test('website settings persist and pause every customer intake path without bloc
   assert.equal((await api('/admin/website/settings', 'PUT', { settings: { ...settings, forumOpen: 'yes' }, revision: 1 })).status, 400)
 })
 
+test('registry name edits validate fields, enforce permissions and report incompatible licensing APIs', async t => {
+  const { api, assign } = await accessFixture(t)
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  const forwarded = []
+  globalThis.fetch = async (url, options) => {
+    forwarded.push({ url: String(url), options })
+    return Response.json({ name: JSON.parse(options.body).name })
+  }
+  const developerId = '623456789012345680'
+  const supportId = '623456789012345681'
+  await assign(developerId, 'developer')
+  await assign(supportId, 'support_team')
+  const developer = await tokenFor(developerId, 'Developer')
+  const support = await tokenFor(supportId, 'Support')
+  for (const kind of ['plugins', 'products']) {
+    const path = `/admin/${kind}/stable-id`
+    assert.equal((await api(path, 'PATCH', { name: '  New display name  ' }, developer)).status, 200)
+    assert.deepEqual(JSON.parse(forwarded.at(-1).options.body), { name: 'New display name' })
+    assert.equal(forwarded.at(-1).url, `https://licenses.example/v1/admin/${kind}/stable-id`)
+    const count = forwarded.length
+    assert.equal((await api(path, 'PATCH', { name: 'Not allowed' }, support)).status, 403)
+    for (const invalid of [{}, [], null, { name: '' }, { name: '   ' }, { name: 'a'.repeat(121) },
+      { name: 7 }, { active: null }, { active: 'false' }, { name: 'Valid', pluginId: 'new-id' }, { productId: 'new-id' }]) {
+      assert.equal((await api(path, 'PATCH', invalid)).status, 400)
+    }
+    assert.equal((await api(path, 'PATCH')).status, 400)
+    assert.equal(forwarded.length, count)
+  }
+  globalThis.fetch = async () => Response.json({ detail: 'Field active required' }, { status: 422 })
+  const unsupported = await api('/admin/plugins/stable-id', 'PATCH', { name: 'New name' })
+  assert.equal(unsupported.status, 422)
+  assert.match((await unsupported.json()).error, /VPS updater/)
+  globalThis.fetch = async () => Response.json({ name: 'Old name', active: true })
+  const ignored = await api('/admin/plugins/stable-id', 'PATCH', { name: 'New name', active: true })
+  assert.equal(ignored.status, 502)
+  assert.match((await ignored.json()).error, /did not apply/)
+  globalThis.fetch = async () => Response.json({ detail: 'Product still has licenses' }, { status: 409 })
+  assert.equal((await api('/admin/products/stable-id', 'DELETE')).status, 409)
+})
+
 test('registry removals are narrowly permission controlled and configured access database failures fail closed', async t => {
   const { db, api } = await accessFixture(t)
   const actualFetch = globalThis.fetch
@@ -702,7 +781,7 @@ test('registry removals are narrowly permission controlled and configured access
   ]) assert.equal((await api(path, method, body)).status, 200)
   assert.equal(forwarded[3].options.body, JSON.stringify({ active: false }))
   const before = forwarded.length
-  assert.equal((await api('/admin/products/shards', 'PATCH', { active: false, name: 'Unexpected edit' })).status, 400)
+  assert.equal((await api('/admin/products/shards', 'PATCH', { active: false, productId: 'changed-id' })).status, 400)
   assert.equal((await api('/admin/plugins/shards/token/rotate', 'POST')).status, 404)
   assert.equal((await api('/admin/website/settings', 'PATCH')).status, 404)
   db.sqlite.exec('DROP TABLE website_role_permissions')

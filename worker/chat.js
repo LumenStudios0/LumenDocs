@@ -860,20 +860,30 @@ async function adminApi(request, env, origin, path) {
     'X-Admin-Actor': `${user.id}:${access.role}`,
   }
   const options = { method: request.method, headers, signal: AbortSignal.timeout(10000) }
+  let registryPatch
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     const body = await request.text()
     if (body.length > 8000) return respond({ error: 'Request is too large' }, 413, origin)
     if (body) {
       try {
         const parsed = JSON.parse(body)
-        if (request.method === 'PATCH' && (!parsed || typeof parsed.active !== 'boolean' || Object.keys(parsed).some(key => key !== 'active'))) {
-          return respond({ error: 'Only an active boolean can be changed through this registry route' }, 400, origin)
+        if (request.method === 'PATCH') {
+          if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !Object.keys(parsed).length ||
+              Object.keys(parsed).some(key => !['active', 'name'].includes(key)) ||
+              ('active' in parsed && typeof parsed.active !== 'boolean') ||
+              ('name' in parsed && (typeof parsed.name !== 'string' || !parsed.name.trim() || parsed.name.length > 120))) {
+            return respond({ error: 'Supply a name of 1–120 characters and/or an active boolean. Registry IDs cannot be changed.' }, 400, origin)
+          }
+          if ('name' in parsed) parsed.name = parsed.name.trim()
+          registryPatch = parsed
         }
       } catch {
         return respond({ error: 'Expected a JSON request' }, 400, origin)
       }
       headers['Content-Type'] = 'application/json'
-      options.body = body
+      options.body = registryPatch ? JSON.stringify(registryPatch) : body
+    } else if (request.method === 'PATCH') {
+      return respond({ error: 'Supply registry changes as JSON.' }, 400, origin)
     }
   }
 
@@ -888,6 +898,12 @@ async function adminApi(request, env, origin, path) {
       payload = JSON.parse(responseBody)
     } catch {
       return respond({ error: 'The licensing service returned an invalid response' }, 502, origin)
+    }
+    if (registryPatch?.name && path.startsWith('/admin/plugins/') && upstream.status === 422) {
+      return respond({ error: 'This licensing API does not support plugin name editing yet. Run the plugin-editing VPS updater from worker/README.md, rebuild api and bot, then retry.' }, 422, origin)
+    }
+    if (upstream.ok && registryPatch?.name && payload?.name !== registryPatch.name) {
+      return respond({ error: 'The licensing API did not apply the new name. Refresh the registry and update the VPS API before retrying.' }, 502, origin)
     }
     return respond(payload, upstream.status, origin)
   } catch (error) {

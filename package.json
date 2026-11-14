@@ -9,7 +9,7 @@
     "docs:preview": "vitepress preview docs",
     "test:worker": "node --test scripts/bug-report.test.mjs scripts/dinosaur-discoveries.test.mjs scripts/discord-auth.test.mjs scripts/community.test.mjs",
     "test:website": "node --test scripts/website-tools.test.mjs scripts/plugin-compatibility.test.mjs",
-    "test:licensing": "node --test scripts/licensing-dashboard.test.mjs"
+    "test:licensing": "node --test scripts/licensing-dashboard.test.mjs scripts/plugin-editing-upgrade.test.mjs"
   },
   "overrides": {
     "vite": "6.4.5"
