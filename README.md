@@ -78,4 +78,6 @@ An older Worker returns `Not found` for new `/community/*` routes. The website t
 
 Status badges keep text labels and use light/dark palettes: operational/resolved green, degraded/waiting amber, outage red, maintenance purple, unknown/closed slate, open blue, and investigating orange. Effective and automatic service results are colored separately so overrides do not hide the probe result.
 
+Staff replies use a purple outlined card and a SUPPORT tag beside the author name in customer and staff conversations. This distinction uses the server-provided reply staff flag, not the viewer's role or the author's display name.
+
 The compatibility checker at `/getting-started/compatibility` covers identified studio plugins and upcoming/unverified projects using pinned repository manifest evidence. It distinguishes declared Java/API/dependency requirements from actual runtime testing. `/error-guides` searches known messages locally, without uploading logs. Documentation bookmarks at `/bookmarks` also remain in local browser storage and need no sign-in. Run `npm run test:website`, `npm run test:licensing`, and `npm run test:worker` before publishing.

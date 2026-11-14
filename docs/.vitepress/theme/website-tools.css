@@ -41,7 +41,12 @@
 .ticket-heading h3 { font-size: clamp(1.2rem, 3vw, 1.65rem); letter-spacing: -.035em; overflow-wrap: anywhere; }
 .ticket-thread { display: grid; gap: 14px; margin: 18px 0; }
 .ticket-message { padding: 18px; border: 1px solid var(--vp-c-divider); border-radius: 14px; background: var(--vp-c-bg); }
-.ticket-message-staff { border-left: 3px solid var(--vp-c-brand-1); background: var(--vp-c-brand-soft); }
+.ticket-author { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; overflow-wrap: anywhere; }
+.ticket-author strong { font-size: .8rem; }
+.ticket-message-staff { --ticket-staff-color: #6b21a8; --ticket-staff-soft: #f3e8ff; border-color: #c084fc; border-left: 3px solid var(--ticket-staff-color); background: linear-gradient(135deg, #a855f714, transparent 75%), var(--vp-c-bg); box-shadow: 0 3px 16px #7b3ff20a; }
+.ticket-message-staff .ticket-author strong { color: var(--ticket-staff-color); }
+.ticket-support-badge { padding: 3px 7px; border: 1px solid currentColor; border-radius: 5px; background: var(--ticket-staff-soft); color: var(--ticket-staff-color); font-size: .6rem; font-weight: 750; line-height: 1.4; letter-spacing: .07em; text-transform: uppercase; }
+.dark .ticket-message-staff { --ticket-staff-color: #d8b4fe; --ticket-staff-soft: #581c87; border-color: #a78bfa; }
 .ticket-routing { padding: 18px; border: 1px solid var(--vp-c-divider); border-radius: 14px; }
 .ticket-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .ticket-filters form { display: flex; align-items: end; gap: 8px; min-width: 0; }
