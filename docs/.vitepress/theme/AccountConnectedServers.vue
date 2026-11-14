@@ -4,7 +4,7 @@ import { accountRequest, LicenseApiError } from './licensing-api'
 import { visibleServiceError, licenseServiceNotice } from './service-errors'
 import { getDiscordSession } from './discord-session'
 
-interface ConnectedServer { id: string; name: string; address?: string; status?: string }
+interface ConnectedServer { id: string; pluginId: string; name: string; address?: string | null; lastSeenAt?: string | null; status?: string }
 const servers = ref<ConnectedServer[]>([])
 const loading = ref(false)
 const loaded = ref(false)
@@ -32,7 +32,7 @@ async function refresh() {
     lastToken = getDiscordSession()
     const result = await accountRequest<{ servers: ConnectedServer[] }>('/account/servers')
     if (requestId !== generation) return
-    if (!Array.isArray(result.servers) || !result.servers.every(server => server && typeof server.id === 'string' && typeof server.name === 'string')) {
+    if (!Array.isArray(result.servers) || !result.servers.every(server => server && typeof server.id === 'string' && typeof server.pluginId === 'string' && typeof server.name === 'string')) {
       throw new Error('The licensing service returned an invalid server list.')
     }
     servers.value = result.servers
@@ -61,7 +61,7 @@ function handleSession() {
 }
 async function copyServer(server: ConnectedServer) {
   try {
-    await navigator.clipboard.writeText(`Server: ${server.name}\nID: ${server.id}\nAddress: ${server.address || 'Not reported'}\nReported status: ${server.status || 'Not reported'}`)
+    await navigator.clipboard.writeText(`Plugin: ${server.name}\nServer ID: ${server.id || 'Not reported'}\nAddress: ${server.address || 'Not reported'}\nLast seen: ${server.lastSeenAt || 'Not reported'}\nReported status: ${server.status || 'Not reported'}`)
     notice.value = 'Server details copied. No license key is included.'
   } catch (copyError) {
     console.error('Unable to copy server details:', copyError)
@@ -90,9 +90,9 @@ onUnmounted(() => {
     <p v-if="loading" class="server-empty" role="status">Loading your installations…</p>
     <p v-else-if="error" :class="error === licenseServiceNotice ? 'server-empty' : 'server-error'" :role="error === licenseServiceNotice ? 'status' : 'alert'">{{ error }}</p>
     <div v-else-if="visibleServers.length" class="server-list">
-      <article v-for="server in visibleServers" :key="server.id">
+      <article v-for="server in visibleServers" :key="JSON.stringify([server.pluginId, server.id])">
         <span class="server-mark" aria-hidden="true">▤</span>
-        <div><strong>{{ server.name }}</strong><code>{{ server.address || 'Address not reported' }}</code><small>ID: {{ server.id }}</small></div>
+        <div><strong>{{ server.name }}</strong><code>{{ server.address || 'Address not reported' }}</code><small>Server ID: {{ server.id || 'Not reported' }}<template v-if="server.lastSeenAt"> · Last seen: {{ server.lastSeenAt }}</template></small></div>
         <span class="server-status">{{ server.status || 'Status not reported' }}</span>
         <button type="button" :aria-label="`Copy details for ${server.name}`" @click="copyServer(server)">Copy details</button>
       </article>

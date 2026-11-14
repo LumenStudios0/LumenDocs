@@ -544,6 +544,54 @@ test('account server endpoint clearly reports the unconnected license service', 
   assert.equal(result.code, 'LICENSE_SERVICE_UNAVAILABLE')
 })
 
+test('connected servers use the signed-in customer and expose only installation details', async t => {
+  const token = await createSessionToken(t)
+  let calls = 0
+  globalThis.fetch = async (input, options) => {
+    calls++
+    assert.equal(String(input), 'https://licenses.example/v1/admin/customers/123456789')
+    assert.equal(options.headers.Authorization, 'Bearer license-admin-token')
+    assert.equal(options.headers['X-Admin-Actor'], 'customer:123456789')
+    return Response.json({
+      customerDiscordId: '123456789', keyConfigured: true, privateDetail: 'must-not-leak',
+      connectedServers: [
+        { pluginId: 'shards', pluginName: 'LumenShards', serverId: 'survival', ipAddress: '203.0.113.1', lastSeenAt: '2026-11-14T17:00:00Z' },
+        { pluginId: 'gladiator', pluginName: 'Gladiator', serverId: null, ipAddress: null, lastSeenAt: null },
+      ],
+    })
+  }
+  const config = env({ LICENSE_API_URL: 'https://licenses.example', LICENSE_ADMIN_API_TOKEN: 'license-admin-token' })
+  const response = await worker.fetch(request('/account/servers?customerDiscordId=987654321', { origin, authorization: `Bearer ${token}` }), config)
+  assert.equal(response.status, 200)
+  const result = await response.json()
+  assert.deepEqual(result.servers, [
+    { id: 'survival', pluginId: 'shards', name: 'LumenShards', address: '203.0.113.1', lastSeenAt: '2026-11-14T17:00:00Z' },
+    { id: '', pluginId: 'gladiator', name: 'Gladiator', address: null, lastSeenAt: null },
+  ])
+  assert.doesNotMatch(JSON.stringify(result), /license-admin-token|must-not-leak|987654321/)
+  assert.equal(calls, 1)
+})
+
+test('connected servers distinguish empty results, missing accounts, and invalid backend responses', async t => {
+  const token = await createSessionToken(t)
+  const config = env({ LICENSE_API_URL: 'https://licenses.example', LICENSE_ADMIN_API_TOKEN: 'license-admin-token' })
+  const call = () => worker.fetch(request('/account/servers', { origin, authorization: `Bearer ${token}` }), config)
+  globalThis.fetch = async () => Response.json({ customerDiscordId: '123456789', connectedServers: [] })
+  assert.deepEqual(await (await call()).json(), { servers: [] })
+  globalThis.fetch = async () => Response.json({ detail: 'Customer account not found' }, { status: 404 })
+  assert.equal((await call()).status, 404)
+  globalThis.fetch = async () => Response.json({ detail: 'Not Found' }, { status: 404 })
+  assert.equal((await call()).status, 502)
+  globalThis.fetch = async () => Response.json({ customerDiscordId: 'another-customer', connectedServers: [] })
+  assert.equal((await call()).status, 502)
+  globalThis.fetch = async () => Response.json({ customerDiscordId: '123456789', connectedServers: [{ pluginId: 'x' }] })
+  assert.equal((await call()).status, 502)
+  globalThis.fetch = async () => Response.json({ detail: 'invalid backend credential' }, { status: 401 })
+  const invalidCredential = await call()
+  assert.equal(invalidCredential.status, 502)
+  assert.doesNotMatch(JSON.stringify(await invalidCredential.json()), /invalid backend credential/)
+})
+
 test('only verified staff see technical licensing configuration errors on customer routes', async t => {
   const staff = await createSessionToken(t, '1400375985211441242')
   const response = await worker.fetch(

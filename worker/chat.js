@@ -669,6 +669,59 @@ async function accountLicenseApi(request, env, origin, path) {
     }
   }
 
+  if (path === '/account/servers') {
+    if (!env.LICENSE_API_URL || !env.LICENSE_ADMIN_API_TOKEN) return licenseServiceUnavailable(origin)
+    let apiBase
+    try { apiBase = new URL(env.LICENSE_API_URL) }
+    catch { return respond({ error: 'The licensing service URL is invalid' }, 503, origin) }
+    if (apiBase.protocol !== 'https:' || apiBase.username || apiBase.password) {
+      return respond({ error: 'The licensing service URL must use HTTPS' }, 503, origin)
+    }
+    try {
+      const upstream = await fetch(new URL(`/v1/admin/customers/${encodeURIComponent(user.id)}`, apiBase), {
+        headers: {
+          Authorization: 'Bearer ' + env.LICENSE_ADMIN_API_TOKEN,
+          'X-Admin-Actor': `customer:${user.id}`,
+        },
+        signal: AbortSignal.timeout(10000),
+      })
+      if (!upstream.ok) {
+        if (upstream.status === 404) {
+          let missingAccount = false
+          try { missingAccount = (await upstream.json())?.detail === 'Customer account not found' } catch {
+            console.warn('Licensing service returned an unreadable customer lookup error')
+          }
+          if (missingAccount) return respond({ error: 'Customer account not found' }, 404, origin)
+        }
+        return respond({ error: 'Could not load connected servers from the licensing service.' }, 502, origin)
+      }
+      const text = await upstream.text()
+      if (text.length > 50000) return respond({ error: 'The licensing service returned an oversized response' }, 502, origin)
+      let payload
+      try { payload = JSON.parse(text) }
+      catch { return respond({ error: 'The licensing service returned an invalid response' }, 502, origin) }
+      if (payload?.customerDiscordId !== user.id || !Array.isArray(payload.connectedServers) ||
+          payload.connectedServers.some(server => !server || typeof server.pluginId !== 'string' || !server.pluginId ||
+            typeof server.pluginName !== 'string' || !server.pluginName ||
+            !(server.serverId == null || typeof server.serverId === 'string') ||
+            !(server.ipAddress == null || typeof server.ipAddress === 'string') ||
+            !(server.lastSeenAt == null || typeof server.lastSeenAt === 'string'))) {
+        return respond({ error: 'The licensing service returned an invalid server list.' }, 502, origin)
+      }
+      const servers = payload.connectedServers.map(server => ({
+        id: server.serverId || '',
+        pluginId: server.pluginId,
+        name: server.pluginName,
+        address: server.ipAddress,
+        lastSeenAt: server.lastSeenAt,
+      }))
+      return respond({ servers }, 200, origin)
+    } catch (error) {
+      console.error('Customer server request failed:', error)
+      return respond({ error: 'The licensing service is temporarily unavailable' }, 503, origin)
+    }
+  }
+
   let requestedAddresses
   if (path === '/account/license-ips' && request.method === 'PUT') {
     const body = await request.text()
