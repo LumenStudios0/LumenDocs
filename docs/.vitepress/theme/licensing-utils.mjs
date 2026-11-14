@@ -22,6 +22,33 @@ export function licenseNeedsAttention(license, filter, now = Date.now()) {
   return filter === 'all' || effectiveLicenseStatus(license, now) === filter
 }
 
+/** @param {{username?: string | null, deleted?: boolean}} customer */
+export function hasConnectedAccount(customer) {
+  return !customer.deleted && typeof customer.username === 'string' && customer.username.trim().length > 0
+}
+
+/**
+ * Match documented plugins only to unambiguous active registry products that
+ * have at least one plugin association. Never invent backend product IDs.
+ * @param {{id: string, name: string, status: string}[]} plugins
+ * @param {{productId: string, name: string, active: boolean, plugins?: string[]}[]} products
+ */
+export function documentedGrantOptions(plugins, products) {
+  const normalize = value => value.toLowerCase().replace(/[^a-z0-9]/g, '')
+  return plugins.map(plugin => {
+    const names = new Set([normalize(plugin.id), normalize(plugin.name)])
+    const matches = products.filter(product => names.has(normalize(product.productId)) || names.has(normalize(product.name)))
+    const product = matches.length === 1 ? matches[0] : null
+    const reason = plugin.status !== 'available' ? 'Coming soon'
+      : matches.length > 1 ? 'Ambiguous registry match'
+        : !product ? 'Not registered in licensing'
+          : !product.active ? 'Inactive in licensing'
+            : !Array.isArray(product.plugins) || !product.plugins.length ? 'No plugin linked in licensing'
+              : ''
+    return { id: plugin.id, name: plugin.name, productId: reason ? '' : product.productId, reason }
+  })
+}
+
 /** @param {string} address */
 export function normalizeIpAddress(address) {
   const value = address.trim()

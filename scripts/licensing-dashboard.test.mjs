@@ -1,13 +1,40 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  effectiveLicenseStatus, licenseNeedsAttention, normalizeIpAddress,
+  documentedGrantOptions, effectiveLicenseStatus, hasConnectedAccount, licenseNeedsAttention, normalizeIpAddress,
   parseIpAllowlist, redactAuditDetails, toSafeCsv,
 } from '../docs/.vitepress/theme/licensing-utils.mjs'
 import { createAdminTestStore, clearAdminTestData, TEST_OWNER_ID } from '../docs/.vitepress/theme/admin-test-store.mjs'
 
 const now = Date.parse('2026-01-01T00:00:00Z')
 const license = { status: 'active', expiresAt: null, allowedIps: [], lastValidatedAt: null }
+
+test('only synced, non-deleted Discord accounts can be opened in licensing', () => {
+  assert.equal(hasConnectedAccount({ username: 'somebody' }), true)
+  assert.equal(hasConnectedAccount({ username: null }), false)
+  assert.equal(hasConnectedAccount({ username: '  ' }), false)
+  assert.equal(hasConnectedAccount({ username: 'somebody', deleted: true }), false)
+})
+
+test('grant options require an unambiguous active documented product with a linked plugin', () => {
+  const plugins = [
+    { id: 'lumen-shards', name: 'LumenShards', status: 'available' },
+    { id: 'lumen-order', name: 'LumenOrder', status: 'available' },
+    { id: 'lumen-bounty', name: 'LumenBounty', status: 'coming-soon' },
+  ]
+  const registry = [
+    { productId: '37', name: 'LumenShards', active: true, plugins: ['shards'] },
+    { productId: 'lumen-order', name: 'Lumen Order', active: true, plugins: [] },
+    { productId: 'bounty', name: 'LumenBounty', active: true, plugins: ['bounty'] },
+  ]
+  const options = documentedGrantOptions(plugins, registry)
+  assert.equal(options[0].productId, '37')
+  assert.match(options[1].reason, /No plugin linked/)
+  assert.match(options[2].reason, /Coming soon/)
+  assert.equal(documentedGrantOptions(plugins, [])[0].reason, 'Not registered in licensing')
+  assert.equal(documentedGrantOptions(plugins, [{ ...registry[0], active: false }])[0].reason, 'Inactive in licensing')
+  assert.equal(documentedGrantOptions(plugins, [registry[0], { ...registry[0], productId: 'lumen-shards' }])[0].reason, 'Ambiguous registry match')
+})
 
 test('effective status respects expiration, invalid dates and explicit restrictions', () => {
   assert.equal(effectiveLicenseStatus(license, now), 'active')

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { getDiscordSession } from './discord-session'
-import { effectiveLicenseStatus, licenseNeedsAttention, normalizeIpAddress, redactAuditDetails, toSafeCsv } from './licensing-utils.mjs'
+import { documentedGrantOptions, effectiveLicenseStatus, hasConnectedAccount, licenseNeedsAttention, normalizeIpAddress, redactAuditDetails, toSafeCsv } from './licensing-utils.mjs'
+import pluginData from './plugin-compatibility-data.json'
 import { clearAdminTestData, createAdminTestStore, TEST_OWNER_ID } from './admin-test-store.mjs'
 import StaffCommunity from './StaffCommunity.vue'
 
@@ -32,7 +33,7 @@ interface AdminUser {
   licenses: AdminLicense[]
 }
 type Customer = Pick<AdminUser, 'discordId' | 'username' | 'globalName' | 'banned' | 'onHold' | 'verificationStatus' | 'licenseCount'>
-interface AdminProduct { productId: string; name: string; active: boolean }
+interface AdminProduct { productId: string; name: string; active: boolean; plugins?: string[] }
 interface AuditEntry {
   auditId: string
   actor: string
@@ -45,8 +46,8 @@ interface AuditEntry {
 interface Page<T> { items: T[]; total: number; page: number; pageSize: number }
 type View = 'customers' | 'licenses' | 'audit' | 'products'
 const views: { id: View; label: string; number: string }[] = [
-  { id: 'customers', label: 'Customers', number: '01' }, { id: 'licenses', label: 'License inventory', number: '02' },
-  { id: 'audit', label: 'Audit trail', number: '03' }, { id: 'products', label: 'Product registry', number: '04' },
+  { id: 'customers', label: 'Customers', number: '01' },
+  { id: 'audit', label: 'Audit trail', number: '02' }, { id: 'products', label: 'Product registry', number: '03' },
 ]
 const pageSize = 50
 const view = ref<View>('customers')
@@ -99,16 +100,19 @@ let lastToken = ''
 let clockTimer: ReturnType<typeof setInterval> | undefined
 const busy = computed(() => loading.value || submitting.value || verifyingOwner.value)
 const maxPage = computed(() => Math.max(1, Math.ceil(totals[view.value] / pageSize)))
-const sourceLicenses = computed(() => user.value?.licenses ?? inventory.value)
+const sourceLicenses = computed(() => user.value?.licenses ?? [])
+const grantOptions = computed(() => testMode.value
+  ? products.value.filter(product => product.active).map(product => ({ id: product.productId, name: product.name, productId: product.productId, reason: '' }))
+  : documentedGrantOptions(pluginData.plugins, products.value))
 const filteredCustomers = computed(() => customers.value.filter(customer =>
-  customerFilter.value === 'all' ||
+  hasConnectedAccount(customer) && (customerFilter.value === 'all' ||
   (customerFilter.value === 'restricted' && (customer.banned || customer.onHold)) ||
-  (customerFilter.value === 'unverified' && customer.verificationStatus !== 'verified'),
+  (customerFilter.value === 'unverified' && customer.verificationStatus !== 'verified')),
 ).sort((a, b) => customerSort.value === 'licenses' ? b.licenseCount - a.licenseCount
   : (a.globalName || a.username || a.discordId).localeCompare(b.globalName || b.username || b.discordId)))
 const licenseProducts = computed(() => [...new Set(sourceLicenses.value.map(license => license.productId))].sort())
 const filteredLicenses = computed(() => sourceLicenses.value.filter(license => {
-  const text = `${license.licenseId} ${license.productId} ${license.customerDiscordId} ${license.allowedIps.join(' ')} ${license.serverId ?? ''} ${license.lastValidatedServerId ?? ''}`.toLowerCase()
+  const text = `${license.licenseId} ${license.productId} ${productName(license.productId)} ${user.value?.username ?? ''} ${license.customerDiscordId} ${license.allowedIps.join(' ')} ${license.serverId ?? ''} ${license.lastValidatedServerId ?? ''}`.toLowerCase()
   return text.includes(licenseSearch.value.trim().toLowerCase()) &&
     (!productFilter.value || license.productId === productFilter.value) &&
     licenseNeedsAttention(license, licenseFilter.value, clock.value)
@@ -116,7 +120,7 @@ const filteredLicenses = computed(() => sourceLicenses.value.filter(license => {
   ? expiryTime(a) - expiryTime(b)
   : licenseSort.value === 'validation'
     ? (Date.parse(b.lastValidatedAt ?? '') || 0) - (Date.parse(a.lastValidatedAt ?? '') || 0)
-    : a.productId.localeCompare(b.productId)))
+    : productName(a.productId).localeCompare(productName(b.productId))))
 const licenseStats = computed(() => ({
   active: sourceLicenses.value.filter(license => effectiveLicenseStatus(license, clock.value) === 'active').length,
   expiring: sourceLicenses.value.filter(license => licenseNeedsAttention(license, 'expiring', clock.value)).length,
@@ -132,6 +136,7 @@ const auditCurrentPage = computed(() => user.value ? profileAuditPage.value : pa
 const auditMaxPage = computed(() => Math.max(1, Math.ceil((user.value ? profileAuditTotal.value : totals.audit) / pageSize)))
 
 function expiryTime(license: AdminLicense) { return license.expiresAt ? Date.parse(license.expiresAt) || Infinity : Infinity }
+function productName(id: string) { return products.value.find(product => product.productId === id)?.name || id }
 function messageOf(value: unknown) { return value instanceof Error ? value.message : 'The admin request could not be completed.' }
 function clearMessages() { error.value = ''; notice.value = '' }
 function clearKey() { licenseKey.value = ''; licenseKeyOwner.value = ''; keyVisible.value = false }
@@ -241,9 +246,12 @@ async function adminRequest<T>(path: string, init: RequestInit = {}): Promise<T>
     console.error('Invalid admin API response:', parseError)
     throw new Error(`The admin API returned a non-JSON response (${response.status}).`)
   }
-  if (!response.ok) throw new Error(
-    typeof result?.detail === 'string' ? result.detail : result?.error ?? `Admin request failed (${response.status}).`,
-  )
+  if (!response.ok) {
+    if (response.status === 404 && /^\/users(?:\/|\?|$)/.test(path)) {
+      throw new Error('The licensing server does not support customer accounts yet. Update the VPS licensing API before using the customer directory.')
+    }
+    throw new Error(typeof result?.detail === 'string' ? result.detail : result?.error ?? `Admin request failed (${response.status}).`)
+  }
   return result
 }
 function validatePage<T>(result: Page<T>) {
@@ -319,18 +327,20 @@ async function fetchProfile(discordId: string) {
   loading.value = true
   lastUpdated.value = ''
   try {
-    const [profile, registry, history] = await Promise.all([
-      adminRequest<AdminUser>(`/users/${encodeURIComponent(discordId)}`),
+    const profile = await adminRequest<AdminUser>(`/users/${encodeURIComponent(discordId)}`)
+    if (requestId !== generation) return
+    if (profile.discordId !== discordId || !Array.isArray(profile.licenses)) throw new Error('The admin API returned an invalid customer profile.')
+    if (!hasConnectedAccount(profile)) throw new Error('This Discord user has not created a connected website account yet.')
+    const [registry, history] = await Promise.all([
       adminRequest<Page<AdminProduct>>('/products?pageSize=100'),
       adminRequest<Page<AuditEntry>>(`/audit?customerDiscordId=${encodeURIComponent(discordId)}&pageSize=${pageSize}&page=1`),
     ])
     if (requestId !== generation) return
-    if (profile.discordId !== discordId || !Array.isArray(profile.licenses)) throw new Error('The admin API returned an invalid customer profile.')
     validatePage(registry)
     validatePage(history)
     user.value = profile
     products.value = registry.items
-    if (!grantProductId.value) grantProductId.value = registry.items.find(product => product.active)?.productId ?? ''
+    if (!grantOptions.value.some(option => option.productId && option.productId === grantProductId.value)) grantProductId.value = ''
     auditEntries.value = history.items
     profileAuditPage.value = history.page
     profileAuditTotal.value = history.total
@@ -386,6 +396,8 @@ function confirmAction(message: string, path: string, success: string) {
 }
 async function grantLicense() {
   if (!user.value || !grantProductId.value) return
+  const selectedProduct = grantOptions.value.find(option => option.productId === grantProductId.value && !option.reason)
+  if (!selectedProduct) { error.value = 'Select an available, registered plugin before granting a license.'; return }
   const discordId = user.value.discordId
   if (licenseKey.value && !window.confirm('Another one-time key is still displayed. Have you saved it? Creating another license will replace the displayed key.')) return
   const expiry = grantExpiresAt.value ? new Date(grantExpiresAt.value) : null
@@ -393,7 +405,7 @@ async function grantLicense() {
     error.value = 'Choose a future expiry date, or leave it blank for a lifetime license.'
     return
   }
-  if (!window.confirm(`Grant ${grantProductId.value} to ${user.value.discordId}${expiry ? ` until ${expiry.toLocaleString()}` : ' with lifetime access'}?`)) return
+  if (!window.confirm(`Grant ${selectedProduct.name} to ${user.value.globalName || user.value.username} (${user.value.discordId})${expiry ? ` until ${expiry.toLocaleString()}` : ' with lifetime access'}?`)) return
   await mutate<{ licenseKey: string }>('/licenses', {
     method: 'POST', body: JSON.stringify({
       productId: grantProductId.value, customerDiscordId: user.value.discordId,
@@ -567,7 +579,7 @@ onUnmounted(() => {
     <p v-if="loading && !loaded" class="staff-loading" role="status">Loading authorized workspace data…</p>
 
     <section v-if="!user && view === 'customers'" class="staff-panel">
-      <header><div><p class="staff-eyebrow">CUSTOMER DIRECTORY</p><h2>Find the right account.</h2></div><span v-if="loaded" class="staff-badge">{{ totals.customers }} matching accounts</span></header>
+      <header><div><p class="staff-eyebrow">CUSTOMER DIRECTORY</p><h2>Find the right account.</h2></div><span v-if="loaded" class="staff-badge">{{ filteredCustomers.length }} connected on this page</span></header>
       <form class="staff-search" @submit.prevent="searchCustomers"><label for="customer-search">Search usernames or open a Discord ID</label><div><input id="customer-search" v-model="query" maxlength="32" autocomplete="off" placeholder="Username, display name, or full Discord ID"><button class="staff-primary" type="submit" :disabled="busy">Find customer</button></div></form>
       <div v-if="loaded" class="staff-toolbar"><label>Filter loaded page<select v-model="customerFilter"><option value="all">All accounts</option><option value="restricted">Banned or on hold</option><option value="unverified">Not verified</option></select></label><label>Sort this page<select v-model="customerSort"><option value="name">Name A–Z</option><option value="licenses">Most licenses</option></select></label><span>{{ filteredCustomers.length }} / {{ customers.length }} on this page</span></div>
       <div v-if="loaded && filteredCustomers.length" class="staff-customers">
@@ -578,8 +590,8 @@ onUnmounted(() => {
           <span class="staff-license-count">{{ customer.licenseCount }}<small>licenses →</small></span>
         </button>
       </div>
-      <p v-else-if="loaded" class="staff-empty">No customers match this search and page filter.</p>
-      <p class="staff-note">Usernames sync when customers visit Account Settings. Filters and sorting apply only to the loaded page; username search is server-side.</p>
+      <p v-else-if="loaded" class="staff-empty">No connected website accounts match this search and page filter. Check other pages or ask the customer to sign in.</p>
+      <p class="staff-note">Only customers who have connected their Discord account to the website are shown. Filters and sorting apply to the loaded page; the page count also includes unconnected licensing records.</p>
     </section>
 
     <template v-if="user && loaded">
@@ -605,20 +617,20 @@ onUnmounted(() => {
         </section>
         <section class="staff-panel">
           <p class="staff-eyebrow">ISSUE AN ENTITLEMENT</p><h2>Grant a license</h2>
-          <p class="staff-note">Creates a product-specific license and returns a one-time key. This does not refresh BuiltByBit purchases or rotate the customer's shared key.</p>
+          <p class="staff-note">Creates a license in the same service used by the Discord bot and returns a one-time key. This does not notify the customer, refresh BuiltByBit purchases, or rotate their shared key.</p>
           <form @submit.prevent="grantLicense">
-            <label class="staff-field">Product<select v-model="grantProductId" :disabled="busy || user.deleted"><option disabled value="">Select an active product</option><option v-for="product in products.filter(item => item.active)" :key="product.productId" :value="product.productId">{{ product.name }} / {{ product.productId }}</option></select></label>
+            <label class="staff-field">Plugin<select v-model="grantProductId" :disabled="busy || user.deleted"><option disabled value="">Select a plugin</option><option v-for="option in grantOptions" :key="option.id" :value="option.productId" :disabled="!!option.reason">{{ option.name }}{{ option.reason ? ` — ${option.reason}` : '' }}</option></select></label>
             <label class="staff-field">Expires at · local time<input v-model="grantExpiresAt" type="datetime-local" :disabled="busy || user.deleted"><small>Leave blank for a lifetime license. Expiry must be in the future.</small></label>
             <button class="staff-primary" type="submit" :disabled="busy || user.deleted || !grantProductId">Review &amp; create license</button>
           </form>
-          <p class="staff-note">The selector loads up to 100 registered products. The service validates product availability again when granting.</p>
+          <p class="staff-note">Only documented plugins matched to an active licensing product with a linked plugin can be selected. Unavailable entries need setup in the licensing service; coming-soon plugins cannot be granted.</p>
         </section>
       </div>
     </template>
 
-    <section v-if="loaded && (user || view === 'licenses')" class="staff-panel">
-      <header><div><p class="staff-eyebrow">{{ user ? 'CUSTOMER ENTITLEMENTS' : 'GLOBAL LICENSE INVENTORY' }}</p><h2>{{ user ? 'Licenses & server access' : 'Every license. One workspace.' }}</h2></div><button type="button" :disabled="busy || !filteredLicenses.length" @click="exportLicenses">Export displayed CSV</button></header>
-      <p class="staff-note">{{ user ? 'Metrics cover the licenses returned on this customer profile.' : `Metrics and filters cover this loaded page only, not all ${totals.licenses} licenses.` }} Expiring means active and due within 30 days.</p>
+    <section v-if="loaded && user" class="staff-panel">
+      <header><div><p class="staff-eyebrow">CUSTOMER ENTITLEMENTS</p><h2>Licenses &amp; server access</h2></div><button type="button" :disabled="busy || !filteredLicenses.length" @click="exportLicenses">Export displayed CSV</button></header>
+      <p class="staff-note">Metrics cover the licenses returned on this customer profile. Expiring means active and due within 30 days.</p>
       <div class="staff-metrics">
         <button type="button" :disabled="busy" @click="licenseFilter = 'active'"><small>ACTIVE</small><strong>{{ licenseStats.active }}</strong></button>
         <button type="button" :disabled="busy" @click="licenseFilter = 'expiring'"><small>EXPIRING / 30D</small><strong>{{ licenseStats.expiring }}</strong></button>
@@ -628,20 +640,20 @@ onUnmounted(() => {
       <div class="staff-toolbar">
         <label class="staff-grow">Search loaded licenses<input v-model="licenseSearch" type="search" placeholder="License, owner, IP, or server ID"></label>
         <label>Status / attention<select v-model="licenseFilter"><option value="all">All licenses</option><option value="active">Active</option><option value="suspended">Suspended</option><option value="revoked">Revoked</option><option value="expired">Expired</option><option value="unknown">Unknown status</option><option value="expiring">Expiring in 30 days</option><option value="no-ips">No allowed IP</option><option value="never-validated">Never validated</option></select></label>
-        <label>Product<select v-model="productFilter"><option value="">All products</option><option v-for="id in licenseProducts" :key="id">{{ id }}</option></select></label>
+        <label>Product<select v-model="productFilter"><option value="">All products</option><option v-for="id in licenseProducts" :key="id" :value="id">{{ productName(id) }}</option></select></label>
         <label>Sort<select v-model="licenseSort"><option value="product">Product A–Z</option><option value="expiry">Nearest expiry</option><option value="validation">Latest validation</option></select></label>
       </div>
       <div class="staff-results"><span>{{ filteredLicenses.length }} / {{ sourceLicenses.length }} licenses shown</span><button type="button" @click="resetLicenseFilters">Clear filters</button></div>
       <div v-if="filteredLicenses.length" class="staff-table-scroll" tabindex="0" aria-label="License inventory table">
-        <table class="staff-table"><thead><tr><th>Product / license</th><th v-if="!user">Customer</th><th>Status</th><th>Expiry</th><th>IPs</th><th>Last validation</th><th><span class="staff-sr-only">Actions</span></th></tr></thead><tbody>
-          <tr v-for="license in filteredLicenses" :key="license.licenseId" :class="{ 'staff-selected': selectedLicenseId === license.licenseId }"><td><strong>{{ license.productId }}</strong><small>{{ license.licenseId }}</small></td><td v-if="!user"><button type="button" :disabled="busy" @click="lookupUser(license.customerDiscordId)">{{ license.customerDiscordId }}</button></td><td><span class="staff-badge" :data-status="effectiveLicenseStatus(license, clock)">{{ effectiveLicenseStatus(license, clock) }}</span></td><td>{{ formatDate(license.expiresAt, 'Lifetime') }}</td><td>{{ license.allowedIps.length }} / 3</td><td>{{ formatDate(license.lastValidatedAt) }}</td><td><button type="button" :disabled="busy" @click="inspectLicense(license)">Inspect →</button></td></tr>
+        <table class="staff-table"><thead><tr><th>Product / license</th><th>Customer</th><th>Status</th><th>Expiry</th><th>IPs</th><th>Last validation</th><th><span class="staff-sr-only">Actions</span></th></tr></thead><tbody>
+          <tr v-for="license in filteredLicenses" :key="license.licenseId" :class="{ 'staff-selected': selectedLicenseId === license.licenseId }"><td><strong>{{ productName(license.productId) }}</strong><small>{{ license.licenseId }}</small></td><td><strong>{{ user.globalName || user.username }}</strong><small>@{{ user.username }}</small></td><td><span class="staff-badge" :data-status="effectiveLicenseStatus(license, clock)">{{ effectiveLicenseStatus(license, clock) }}</span></td><td>{{ formatDate(license.expiresAt, 'Lifetime') }}</td><td>{{ license.allowedIps.length }} / 3</td><td>{{ formatDate(license.lastValidatedAt) }}</td><td><button type="button" :disabled="busy" @click="inspectLicense(license)">Inspect →</button></td></tr>
         </tbody></table>
       </div>
       <p v-else class="staff-empty">No licenses match these filters.</p>
     </section>
 
     <section v-if="loaded && selectedLicense" id="license-inspector" class="staff-panel staff-inspector" tabindex="-1">
-      <header><div><p class="staff-eyebrow">LICENSE INSPECTOR / {{ selectedLicense.productId }}</p><h2>Network &amp; validation</h2></div><button type="button" :disabled="busy" @click="selectedLicenseId = ''">Close inspector</button></header>
+      <header><div><p class="staff-eyebrow">LICENSE INSPECTOR / {{ productName(selectedLicense.productId) }}</p><h2>Network &amp; validation</h2></div><button type="button" :disabled="busy" @click="selectedLicenseId = ''">Close inspector</button></header>
       <p class="staff-license-id">{{ selectedLicense.licenseId }} <button type="button" @click="copyText(selectedLicense.licenseId, 'License ID')">Copy ID</button></p>
       <dl class="staff-facts staff-network-facts"><div><dt>API status</dt><dd>{{ selectedLicense.status }}</dd></div><div><dt>Expires</dt><dd>{{ formatDate(selectedLicense.expiresAt, 'Lifetime') }}</dd></div><div><dt>Bound server</dt><dd>{{ selectedLicense.serverId || 'Not bound' }}</dd></div><div><dt>Last validated server</dt><dd>{{ selectedLicense.lastValidatedServerId || 'Not reported' }}</dd></div><div><dt>Last validated</dt><dd>{{ formatDate(selectedLicense.lastValidatedAt) }}</dd></div></dl>
       <div class="staff-actions">

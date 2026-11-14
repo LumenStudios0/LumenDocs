@@ -1138,6 +1138,38 @@ function publishDiscordUser(user: DiscordUser | null) {
   window.dispatchEvent(new CustomEvent('lumen-discord-user', { detail: user }))
 }
 
+async function syncLicenseAccount(token: string, user: DiscordUser) {
+  const cacheKey = 'lumen-license-profile-sync'
+  const identity = JSON.stringify([user.id, user.username, user.globalName])
+  try {
+    if (sessionStorage.getItem(cacheKey) === identity) return
+  } catch (error) {
+    console.error('Unable to read customer profile sync state:', error)
+  }
+  const response = await fetch(getWorkerEndpoint('/account/profile'), {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (getDiscordSession() !== token) return
+  if (!response.ok) {
+    if (response.status === 410) {
+      clearDiscordSession()
+      discordUser.value = null
+      publishDiscordUser(null)
+      discordAuthNotice.value = 'This customer account has been deleted.'
+      return
+    }
+    console.error('Customer profile sync failed:', response.status)
+    discordAuthNotice.value = 'Discord is connected, but the license account could not be synced. Try Account settings later.'
+    return
+  }
+  try {
+    sessionStorage.setItem(cacheKey, identity)
+  } catch (error) {
+    console.error('Unable to save customer profile sync state:', error)
+  }
+}
+
 async function initializeDiscordLogin() {
   const hash = new URLSearchParams(window.location.hash.slice(1))
   const callbackToken = hash.get('discord_token')
@@ -1188,8 +1220,15 @@ async function initializeDiscordLogin() {
     }
 
     if (result.sessionToken) storeDiscordSession(result.sessionToken)
+    discordAuthNotice.value = ''
     discordUser.value = result.user
     publishDiscordUser(result.user)
+    try {
+      await syncLicenseAccount(result.sessionToken || token, result.user)
+    } catch (error) {
+      console.error('Unable to sync customer profile:', error)
+      discordAuthNotice.value = 'Discord is connected, but the license account could not be synced. Try Account settings later.'
+    }
   } catch (error) {
     console.error('Unable to verify Discord sign-in:', error)
     if (callbackToken) discordAuthNotice.value = 'Could not verify Discord sign-in. Please try again.'
@@ -1248,6 +1287,7 @@ function signOutDiscord() {
   discordUser.value = null
   try {
     clearDiscordSession()
+    sessionStorage.removeItem('lumen-license-profile-sync')
   } catch (error) {
     console.error('Unable to clear the Discord sign-in session:', error)
   }
@@ -1913,6 +1953,7 @@ onUnmounted(() => {
             <div class="lumen-account-menu-heading" role="presentation">
               <small>SIGNED IN WITH DISCORD</small>
               <strong>{{ discordUser.globalName || discordUser.username }}</strong>
+              <small v-if="discordAuthNotice" role="status">{{ discordAuthNotice }}</small>
             </div>
             <a href="/account/" role="menuitem" @click="accountMenuOpen = false">Dashboard</a>
             <a href="/account/licenses" role="menuitem" @click="accountMenuOpen = false">My licenses</a>
