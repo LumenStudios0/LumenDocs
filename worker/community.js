@@ -1,3 +1,5 @@
+import { hasPermission, resolveAccess, siteSettings } from './access-control.js'
+
 const STATUS_VALUES = new Set(['operational', 'degraded', 'outage', 'maintenance'])
 const SERVICES = [
   { id: 'website', name: 'Website' },
@@ -139,11 +141,12 @@ async function session(request, env, deps, staffRequired = false) {
   const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : ''
   const user = await deps.verifyLoginToken(token, env)
   if (!user) return { response: json(request, { error: 'Sign in to access the community' }, 401, deps.respond) }
-  const role = deps.getAdminRole(user.id, env)
+  const access = await resolveAccess(user.id, env)
+  const role = hasPermission(access, 'dashboard.view') ? access.role : null
   if (staffRequired && !role) {
     return { response: json(request, { error: 'Staff access is required' }, 403, deps.respond) }
   }
-  return { user, role }
+  return { user, role, access }
 }
 
 async function limit(request, env, user, deps, key = 'community') {
@@ -187,6 +190,10 @@ async function issueList(request, env, url, deps) {
 }
 
 async function createTicket(request, env, user, deps, body, typeOverride) {
+  const { settings } = await siteSettings(env)
+  if (!settings.supportOpen && !hasPermission(await resolveAccess(user.id, env), 'tickets.manage')) {
+    return json(request, { error: settings.supportClosedMessage, code: 'SUPPORT_PAUSED' }, 503, deps.respond)
+  }
   if (!body || typeof body !== 'object' || Array.isArray(body)) return json(request, { error: 'Expected a ticket object' }, 400, deps.respond)
   const type = typeOverride ?? body.type
   const types = new Set(['support', 'bug', 'compatibility', 'feature'])
@@ -220,7 +227,7 @@ async function createTicket(request, env, user, deps, body, typeOverride) {
     owner_name: user.globalName || user.username,
   }
   const alertDelivery = await deliverTicketAlert(env, id)
-  return { ...ticketView(record), ...(deps.getAdminRole(user.id, env) ? { alertDelivery } : {}) }
+  return { ...ticketView(record), ...(await deps.getAdminRole(user.id, env) ? { alertDelivery } : {}) }
 }
 
 async function tickets(request, env, url, user, deps) {
@@ -338,7 +345,7 @@ async function notifications(request, env, url, user, deps, staff) {
       (audience = 'product' AND ((kind = 'update' AND ? = 1) OR (kind = 'announcement' AND ? = 1)) AND
         ${targetedProductFilter}) OR
       (audience = 'staff' AND ? = 1)`
-    const isStaff = Boolean(deps.getAdminRole(user.id, env))
+    const isStaff = Boolean(await deps.getAdminRole(user.id, env))
     values = [
       user.id, +prefs.ticketReplies,
       +prefs.updates, +prefs.announcements, ...productParams,
@@ -392,7 +399,7 @@ async function createNotification(request, env, user, deps) {
 async function markRead(request, env, user, deps, id) {
   const row = await env.COMMUNITY_DB.prepare('SELECT * FROM community_notifications WHERE id = ?').bind(id).first()
   if (!row || (row.audience === 'user' && row.recipient_id !== user.id) ||
-      (row.audience === 'staff' && !deps.getAdminRole(user.id, env))) {
+      (row.audience === 'staff' && !await deps.getAdminRole(user.id, env))) {
     return json(request, { error: 'Notification not found' }, 404, deps.respond)
   }
   await env.COMMUNITY_DB.prepare(
@@ -433,7 +440,7 @@ async function updateStaffTicket(request, env, deps, id, user) {
   if (!row) return json(request, { error: 'Ticket not found' }, 404, deps.respond)
   const body = parsed.value
   const assigneeId = body.assigneeId === undefined ? row.assignee_id : body.assigneeId
-  if (assigneeId !== null && (!/^\d{5,22}$/.test(assigneeId) || !deps.getAdminRole(assigneeId, env))) {
+  if (assigneeId !== null && (!/^\d{5,22}$/.test(assigneeId) || !(await deps.getStaffMembers(env)).some(member => member.id === assigneeId))) {
     return json(request, { error: 'Assign tickets only to an authorized staff account' }, 400, deps.respond)
   }
   const labels = body.labels === undefined ? JSON.parse(row.labels) : body.labels
@@ -673,7 +680,7 @@ function postView(row, staff = false) {
   }
 }
 
-async function forumList(request, env, url, deps, staff, viewerId) {
+async function forumList(request, env, url, deps, staff, viewerId, canAnnounce = false) {
   const page = parsePage(url)
   const filters = staff ? [] : ['hidden = 0']
   const values = []
@@ -704,11 +711,11 @@ async function forumList(request, env, url, deps, staff, viewerId) {
     page,
   )
   return json(request, {
-    ...result, items: result.items.map(row => threadView(row, staff, viewerId)), viewer: { signedIn: Boolean(viewerId), staff },
+    ...result, items: result.items.map(row => threadView(row, staff, viewerId)), viewer: { signedIn: Boolean(viewerId), staff, canAnnounce },
   }, 200, deps.respond)
 }
 
-async function forumThread(request, env, deps, id, staff, viewerId) {
+async function forumThread(request, env, deps, id, staff, viewerId, canAnnounce = false) {
   const row = await env.COMMUNITY_DB.prepare('SELECT * FROM community_threads WHERE id = ?').bind(id).first()
   if (!row || (row.hidden && !staff)) return json(request, { error: 'Thread not found' }, 404, deps.respond)
   const posts = await env.COMMUNITY_DB.prepare(
@@ -717,16 +724,19 @@ async function forumThread(request, env, deps, id, staff, viewerId) {
   return json(request, {
     thread: threadView(row, staff, viewerId),
     posts: (posts.results ?? []).map(post => postView(post, staff)),
-    viewer: { signedIn: Boolean(viewerId), staff },
+    viewer: { signedIn: Boolean(viewerId), staff, canAnnounce },
   }, 200, deps.respond)
 }
 
-async function createThread(request, env, user, role, deps) {
+async function createThread(request, env, user, access, deps) {
+  const canModerate = hasPermission(access, 'dashboard.view') && hasPermission(access, 'forum.moderate')
+  const { settings } = await siteSettings(env)
+  if (!settings.forumOpen && !canModerate) return json(request, { error: settings.forumClosedMessage }, 503, deps.respond)
   const parsed = await bodyJson(request)
   if (parsed.error) return json(request, { error: parsed.error }, parsed.status, deps.respond)
   const input = parsed.value ?? {}
   if (!FORUM_CHANNELS.has(input.channel)) return json(request, { error: 'Choose a valid channel' }, 400, deps.respond)
-  if (input.channel === 'announcements' && !role) {
+  if (input.channel === 'announcements' && !(hasPermission(access, 'dashboard.view') && hasPermission(access, 'forum.announce'))) {
     return json(request, { error: 'Only staff can post announcements' }, 403, deps.respond)
   }
   if (!validText(input.title, 3, 160) || !validText(input.body, 2, 8000) ||
@@ -736,7 +746,7 @@ async function createThread(request, env, user, role, deps) {
   const now = new Date().toISOString()
   const row = {
     id: crypto.randomUUID(), channel: input.channel, author_id: user.id, author_name: user.globalName || user.username,
-    author_staff: role ? 1 : 0, title: cleanText(input.title), body: cleanText(input.body),
+    author_staff: hasPermission(access, 'dashboard.view') ? 1 : 0, title: cleanText(input.title), body: cleanText(input.body),
     product_id: input.productId ? cleanText(input.productId) : null, status: 'open', pinned: 0, locked: 0, hidden: 0,
     reply_count: 0, created_at: now, updated_at: now, last_activity_at: now,
   }
@@ -745,21 +755,24 @@ async function createThread(request, env, user, role, deps) {
       (id, channel, author_id, author_name, author_staff, title, body, product_id, created_at, updated_at, last_activity_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(row.id, row.channel, row.author_id, row.author_name, row.author_staff, row.title, row.body, row.product_id, now, now, now).run()
-  return json(request, { thread: threadView(row, Boolean(role), user.id) }, 201, deps.respond)
+  return json(request, { thread: threadView(row, canModerate, user.id) }, 201, deps.respond)
 }
 
-async function createPost(request, env, user, role, deps, id) {
+async function createPost(request, env, user, access, deps, id) {
+  const canModerate = hasPermission(access, 'dashboard.view') && hasPermission(access, 'forum.moderate')
+  const { settings } = await siteSettings(env)
+  if (!settings.forumOpen && !canModerate) return json(request, { error: settings.forumClosedMessage }, 503, deps.respond)
   const parsed = await bodyJson(request)
   if (parsed.error) return json(request, { error: parsed.error }, parsed.status, deps.respond)
   if (!validText(parsed.value?.body, 1, 4000)) {
     return json(request, { error: 'Replies must be 1–4000 characters' }, 400, deps.respond)
   }
   const thread = await env.COMMUNITY_DB.prepare('SELECT * FROM community_threads WHERE id = ?').bind(id).first()
-  if (!thread || (thread.hidden && !role)) return json(request, { error: 'Thread not found' }, 404, deps.respond)
-  if (thread.locked && !role) return json(request, { error: 'This thread is locked' }, 409, deps.respond)
+  if (!thread || (thread.hidden && !canModerate)) return json(request, { error: 'Thread not found' }, 404, deps.respond)
+  if (thread.locked && !canModerate) return json(request, { error: 'This thread is locked' }, 409, deps.respond)
   const now = new Date().toISOString()
   const post = {
-    id: crypto.randomUUID(), author_name: user.globalName || user.username, staff: role ? 1 : 0,
+    id: crypto.randomUUID(), author_name: user.globalName || user.username, staff: hasPermission(access, 'dashboard.view') ? 1 : 0,
     body: cleanText(parsed.value.body), hidden: 0, created_at: now,
   }
   await env.COMMUNITY_DB.batch([
@@ -772,7 +785,7 @@ async function createPost(request, env, user, role, deps, id) {
        status = CASE WHEN ? = 1 AND status = 'open' THEN 'answered' ELSE status END WHERE id = ?`,
     ).bind(now, now, post.staff, id),
   ])
-  return json(request, { post: postView(post, Boolean(role)) }, 201, deps.respond)
+  return json(request, { post: postView(post, canModerate) }, 201, deps.respond)
 }
 
 async function updateOwnThread(request, env, user, deps, id) {
@@ -788,7 +801,7 @@ async function updateOwnThread(request, env, user, deps, id) {
   return json(request, { ok: true }, 200, deps.respond)
 }
 
-async function moderateThread(request, env, deps, id) {
+async function moderateThread(request, env, deps, id, access) {
   const parsed = await bodyJson(request, 2000)
   if (parsed.error) return json(request, { error: parsed.error }, parsed.status, deps.respond)
   const input = parsed.value ?? {}
@@ -806,6 +819,9 @@ async function moderateThread(request, env, deps, id) {
     values.push(input.status)
   }
   if (input.channel !== undefined) {
+    if (input.channel === 'announcements' && !hasPermission(access, 'forum.announce')) {
+      return json(request, { error: 'Permission required: forum.announce' }, 403, deps.respond)
+    }
     if (!FORUM_CHANNELS.has(input.channel)) return json(request, { error: 'Choose a valid channel' }, 400, deps.respond)
     sets.push('channel = ?')
     values.push(input.channel)
@@ -848,12 +864,14 @@ export async function handleCommunity(request, env, origin, path, deps) {
   if (isPublic) {
     const authorization = request.headers.get('Authorization') || ''
     const viewer = authorization.startsWith('Bearer ') ? await deps.verifyLoginToken(authorization.slice(7), env) : null
-    const viewerStaff = Boolean(viewer && deps.getAdminRole(viewer.id, env))
+    const viewerAccess = viewer ? await resolveAccess(viewer.id, env) : null
+    const viewerStaff = Boolean(viewerAccess && hasPermission(viewerAccess, 'dashboard.view') && hasPermission(viewerAccess, 'forum.moderate'))
+    const canAnnounce = Boolean(viewerAccess && hasPermission(viewerAccess, 'dashboard.view') && hasPermission(viewerAccess, 'forum.announce'))
     const dbFailure = await requireDb(request, env, deps, viewerStaff)
     if (dbFailure) return dbFailure
     try {
-      if (suffix === '/forum') return await forumList(request, env, url, deps, viewerStaff, viewer?.id)
-      if (threadMatch) return await forumThread(request, env, deps, threadMatch[1], viewerStaff, viewer?.id)
+      if (suffix === '/forum') return await forumList(request, env, url, deps, viewerStaff, viewer?.id, canAnnounce)
+      if (threadMatch) return await forumThread(request, env, deps, threadMatch[1], viewerStaff, viewer?.id, canAnnounce)
       return suffix === '/status' ? await statusResponse(request, env, deps) : await issueList(request, env, url, deps)
     } catch {
       return json(request, { error: 'The community database is temporarily unavailable' }, 503, deps.respond)
@@ -863,11 +881,22 @@ export async function handleCommunity(request, env, origin, path, deps) {
   const staffPath = suffix.startsWith('/staff/')
   const auth = await session(request, env, deps, staffPath)
   if (auth.response) return auth.response
-  const { user, role } = auth
+  const { user, role, access } = auth
   const dbFailure = await requireDb(request, env, deps, Boolean(role))
   if (dbFailure) return dbFailure
   const privateResponse = await limit(request, env, user, deps)
   if (privateResponse) return privateResponse
+  if (staffPath) {
+    const permission = suffix === '/staff/members' || suffix === '/staff/tickets' && request.method === 'GET' ? 'tickets.view'
+      : /^\/staff\/tickets\/[^/]+\/alert$/.test(suffix) ? 'tickets.alerts'
+        : suffix.startsWith('/staff/tickets/') ? 'tickets.manage'
+          : suffix.startsWith('/staff/issues') ? 'issues.manage'
+            : suffix.startsWith('/staff/forum/') ? 'forum.moderate'
+              : suffix.startsWith('/staff/notifications') ? 'notifications.manage'
+                : suffix.startsWith('/staff/status/') ? 'status.manage' : null
+    if (!permission) return json(request, { error: 'Staff route not found' }, 404, deps.respond)
+    if (!hasPermission(access, permission)) return json(request, { error: `Permission required: ${permission}` }, 403, deps.respond)
+  }
 
   try {
     if (legacyAlias) {
@@ -933,6 +962,10 @@ export async function handleCommunity(request, env, origin, path, deps) {
       return ticket instanceof Response ? ticket : json(request, { ticket }, 201, deps.respond)
     }
     if (suffix === '/issues' && request.method === 'POST') {
+      const { settings } = await siteSettings(env)
+      if (!settings.supportOpen && !hasPermission(access, 'tickets.manage')) {
+        return json(request, { error: settings.supportClosedMessage, code: 'SUPPORT_PAUSED' }, 503, deps.respond)
+      }
       const parsed = await bodyJson(request)
       if (parsed.error) return json(request, { error: parsed.error }, parsed.status, deps.respond)
       const issue = parsed.value ?? {}
@@ -963,9 +996,9 @@ export async function handleCommunity(request, env, origin, path, deps) {
     }
     let match = suffix.match(/^\/tickets\/([0-9a-f-]{36})(?:\/(replies))?$/i)
     if (match) {
-      if (request.method === 'GET' && !match[2]) return ticketDetail(request, env, user, deps, match[1], Boolean(role))
+      if (request.method === 'GET' && !match[2]) return ticketDetail(request, env, user, deps, match[1], hasPermission(access, 'tickets.view'))
       if (request.method === 'PUT' && !match[2]) return editCustomerTicket(request, env, user, deps, match[1])
-      if (request.method === 'POST' && match[2]) return addReply(request, env, user, deps, match[1], Boolean(role))
+      if (request.method === 'POST' && match[2]) return addReply(request, env, user, deps, match[1], hasPermission(access, 'tickets.view') && hasPermission(access, 'tickets.reply'))
     }
     if (suffix === '/preferences' && ['GET', 'PUT'].includes(request.method)) return preferences(request, env, user, deps)
     if (suffix === '/notifications' && request.method === 'GET') return notifications(request, env, url, user, deps, false)
@@ -974,7 +1007,7 @@ export async function handleCommunity(request, env, origin, path, deps) {
     if (suffix === '/staff/tickets' && request.method === 'GET') return staffTickets(request, env, url, deps)
     if (suffix === '/staff/members' && request.method === 'GET') return json(request, {
       currentStaffId: user.id,
-      members: deps.getStaffMembers(env).map(member => ({
+      members: (await deps.getStaffMembers(env)).map(member => ({
         ...member, name: member.id === user.id ? user.globalName || user.username : member.name,
       })),
     }, 200, deps.respond)
@@ -998,12 +1031,12 @@ export async function handleCommunity(request, env, origin, path, deps) {
     if (suffix === '/staff/issues' && request.method === 'POST') return saveIssue(request, env, deps)
     match = suffix.match(/^\/staff\/issues\/([0-9a-f-]{36})$/i)
     if (match && request.method === 'PUT') return saveIssue(request, env, deps, match[1])
-    if (suffix === '/forum' && request.method === 'POST') return createThread(request, env, user, role, deps)
+    if (suffix === '/forum' && request.method === 'POST') return createThread(request, env, user, access, deps)
     match = suffix.match(new RegExp(`^/forum/(${UUID})(?:/(posts))?$`, 'i'))
-    if (match && request.method === 'POST' && match[2]) return createPost(request, env, user, role, deps, match[1])
+    if (match && request.method === 'POST' && match[2]) return createPost(request, env, user, access, deps, match[1])
     if (match && request.method === 'PUT' && !match[2]) return updateOwnThread(request, env, user, deps, match[1])
     match = suffix.match(new RegExp(`^/staff/forum/(${UUID})$`, 'i'))
-    if (match && request.method === 'PUT') return moderateThread(request, env, deps, match[1])
+    if (match && request.method === 'PUT') return moderateThread(request, env, deps, match[1], access)
     match = suffix.match(new RegExp(`^/staff/forum/posts/(${UUID})$`, 'i'))
     if (match && request.method === 'PUT') return moderatePost(request, env, deps, match[1])
     if (suffix === '/staff/notifications' && request.method === 'GET') return notifications(request, env, url, user, deps, true)

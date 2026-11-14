@@ -605,8 +605,8 @@ test('owner admin requests proxy with server-only credentials and actor attribut
   assert.equal(upstreamRequest.options.method, 'DELETE')
 })
 
-test('staff can register plugins, create products and link them with audited server credentials', async t => {
-  const token = await createSessionToken(t)
+test('developers can register plugins, create products and link them with audited server credentials', async t => {
+  const token = await createSessionToken(t, '1012053634911064114')
   const upstreamRequests = []
   globalThis.fetch = async (url, options) => {
     upstreamRequests.push({ url: String(url), options })
@@ -628,7 +628,7 @@ test('staff can register plugins, create products and link them with audited ser
     assert.equal(upstream.url, `https://licenses.example/v1/admin${path}`)
     assert.equal(upstream.options.method, 'POST')
     assert.equal(upstream.options.headers.Authorization, 'Bearer server-only-secret')
-    assert.equal(upstream.options.headers['X-Admin-Actor'], '123456789:admin')
+    assert.equal(upstream.options.headers['X-Admin-Actor'], '1012053634911064114:studio_lead')
     assert.equal(upstream.options.body, body ? JSON.stringify(body) : undefined)
   }
 })
@@ -643,7 +643,7 @@ test('registry mutations reject nonstaff sessions and unsupported paths before u
     assert.equal(response.status, 403)
   }
   for (const [method, path] of [
-    ['DELETE', '/plugins'], ['PATCH', '/products'], ['DELETE', '/products/product/plugins/plugin'],
+    ['DELETE', '/plugins'], ['PATCH', '/products'], ['PATCH', '/products/product/plugins/plugin'],
     ['GET', '/products/product/plugins/plugin'], ['POST', '/plugins/plugin/token/rotate'],
     ['POST', '/products/product/plugins/plugin/extra'], ['POST', '/products/bad%20id/plugins/plugin'],
     ['POST', `/products/${'x'.repeat(65)}/plugins/plugin`], ['POST', '/products/product/plugins/bad%2Fid'],

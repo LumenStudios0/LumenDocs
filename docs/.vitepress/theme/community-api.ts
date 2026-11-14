@@ -51,7 +51,7 @@ export interface ForumThread {
   lastActivityAt: string
 }
 export interface ForumPost { id: string; body: string; authorName: string; staff: boolean; hidden?: boolean; createdAt: string }
-export interface ForumViewer { signedIn: boolean; staff: boolean }
+export interface ForumViewer { signedIn: boolean; staff: boolean; canAnnounce?: boolean }
 export interface Notification {
   id: string
   title: string

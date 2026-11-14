@@ -37,7 +37,8 @@ interface DiscordUser {
   globalName: string
   avatarUrl: string
   expiresAt: number
-  role?: 'owner' | 'studio_lead' | 'admin' | null
+  role?: string
+  permissions?: string[]
 }
 
 const sourceFiles = import.meta.glob('../../**/*.md', {
@@ -1959,7 +1960,7 @@ onUnmounted(() => {
             <a href="/account/licenses" role="menuitem" @click="accountMenuOpen = false">My licenses</a>
             <a href="/account/products" role="menuitem" @click="accountMenuOpen = false">Products purchased</a>
             <a href="/account/settings" role="menuitem" @click="accountMenuOpen = false">Account settings</a>
-            <a v-if="discordUser.role" href="/admin/" role="menuitem" @click="accountMenuOpen = false">Staff Dashboard</a>
+            <a v-if="discordUser.permissions?.includes('dashboard.view')" href="/admin/" role="menuitem" @click="accountMenuOpen = false">Staff Dashboard</a>
             <a href="/account/tickets" role="menuitem" @click="accountMenuOpen = false">My support tickets</a>
             <a href="/account/notifications" role="menuitem" @click="accountMenuOpen = false">Notifications &amp; preferences</a>
             <button type="button" role="menuitem" @click="signOutDiscord">Sign out</button>

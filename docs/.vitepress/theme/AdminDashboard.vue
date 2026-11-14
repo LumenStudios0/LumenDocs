@@ -6,6 +6,7 @@ import pluginData from './plugin-compatibility-data.json'
 import { clearAdminTestData, createAdminTestStore, TEST_OWNER_ID } from './admin-test-store.mjs'
 import StaffCommunity from './StaffCommunity.vue'
 import StaffPluginRegistry from './StaffPluginRegistry.vue'
+import StaffAccessSettings from './StaffAccessSettings.vue'
 
 interface AdminLicense {
   licenseId: string
@@ -53,6 +54,14 @@ const views: { id: View; label: string; number: string }[] = [
 const pageSize = 50
 const view = ref<View>('customers')
 const websiteOperations = ref(false)
+const settingsArea = ref<'' | 'roles' | 'settings'>('')
+const permissions = ref<string[]>([])
+const accessRole = ref('')
+const accessError = ref('')
+const accessReady = ref(false)
+const can = (permission: string) => testMode.value || permissions.value.includes(permission)
+const availableViews = computed(() => views.filter(tab => can(tab.id === 'products' ? 'plugins.view' : tab.id === 'audit' ? 'audit.view' : 'customers.view')))
+const communityAccess = computed(() => ['tickets.view', 'issues.manage', 'notifications.manage', 'status.manage'].some(can))
 const pages = reactive<Record<View, number>>({ customers: 1, licenses: 1, audit: 1, products: 1 })
 const totals = reactive<Record<View, number>>({ customers: 0, licenses: 0, audit: 0, products: 0 })
 const customers = ref<Customer[]>([])
@@ -151,7 +160,7 @@ function workerBase() {
   return url.toString()
 }
 
-async function verifyTestOwner() {
+async function verifyAccess() {
   const requestId = ++identityGeneration
   ownerVerified.value = false
   verifiedToken = ''
@@ -159,19 +168,36 @@ async function verifyTestOwner() {
   testError.value = ''
   try {
     const token = getDiscordSession()
-    if (!token) throw new Error('Sign in with the owner Discord account to enable local test mode.')
+    if (!token) throw new Error('Sign in with an authorized Discord account to open Staff Dashboard.')
     const response = await fetch(`${workerBase()}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
-    const result = await response.json() as { user?: { id: string; role: string | null; username?: string; globalName?: string }; error?: string }
+    const result = await response.json() as { user?: { id: string; role: string; roleName: string; permissions: string[]; username?: string; globalName?: string }; error?: string }
     if (requestId !== identityGeneration || token !== getDiscordSession()) return null
-    if (!response.ok || !result.user) throw new Error(result.error || 'Could not verify the owner session.')
-    if (result.user.id !== TEST_OWNER_ID || result.user.role !== 'owner') throw new Error('Local test mode is only available to the studio owner.')
-    verifiedToken = token
-    ownerVerified.value = true
+    if (!response.ok || !result.user || !Array.isArray(result.user.permissions)) throw new Error(result.error || 'Could not verify website permissions.')
+    if (permissions.value.length && JSON.stringify([...permissions.value].sort()) !== JSON.stringify([...result.user.permissions].sort())) clearWorkspace()
+    permissions.value = result.user.permissions
+    lastToken = token
+    accessRole.value = result.user.roleName
+    accessError.value = ''
+    accessReady.value = true
+    if (result.user.id === TEST_OWNER_ID && result.user.role === 'owner') { verifiedToken = token; ownerVerified.value = true }
     return result.user
   } catch (verificationError) {
-    if (requestId === identityGeneration) testError.value = messageOf(verificationError)
+    if (requestId === identityGeneration) { clearWorkspace(); accessError.value = messageOf(verificationError); permissions.value = []; accessReady.value = true }
     return null
   } finally { if (requestId === identityGeneration) verifyingOwner.value = false }
+}
+async function initialize() {
+  const identity = await verifyAccess()
+  if (!identity || !can('dashboard.view')) return
+  if (settingsArea.value && !can(settingsArea.value === 'roles' ? 'roles.assign' : 'settings.view')) settingsArea.value = ''
+  if (websiteOperations.value && !communityAccess.value) websiteOperations.value = false
+  if (!availableViews.value.some(tab => tab.id === view.value)) {
+    if (availableViews.value.length) view.value = availableViews.value[0].id
+    else if (communityAccess.value) websiteOperations.value = true
+    else if (can('roles.assign')) settingsArea.value = 'roles'
+    else if (can('settings.view')) settingsArea.value = 'settings'
+  }
+  if (!websiteOperations.value && !settingsArea.value && availableViews.value.length) await loadView()
 }
 
 function clearWorkspace() {
@@ -190,8 +216,8 @@ function clearWorkspace() {
 
 async function enterTestMode(reset = false) {
   if (busy.value || verifyingOwner.value) return
-  const identity = await verifyTestOwner()
-  if (!identity) return
+  const identity = await verifyAccess()
+  if (!identity || !ownerVerified.value) return
   try {
     if (reset) clearAdminTestData(localStorage)
     testStore = createAdminTestStore(localStorage, identity)
@@ -292,6 +318,7 @@ async function loadView(page = pages[view.value]) {
 function switchView(target: View) {
   if (submitting.value) return
   websiteOperations.value = false
+  settingsArea.value = ''
   user.value = null
   selectedLicenseId.value = ''
   clearKey()
@@ -329,8 +356,8 @@ async function fetchProfile(discordId: string) {
     if (profile.discordId !== discordId || !Array.isArray(profile.licenses)) throw new Error('The admin API returned an invalid customer profile.')
     if (!hasConnectedAccount(profile)) throw new Error('This Discord user has not created a connected website account yet.')
     const [registry, history] = await Promise.all([
-      fetchRegistryItems<AdminProduct>(adminRequest, '/products'),
-      adminRequest<Page<AuditEntry>>(`/audit?customerDiscordId=${encodeURIComponent(discordId)}&pageSize=${pageSize}&page=1`),
+      can('plugins.view') ? fetchRegistryItems<AdminProduct>(adminRequest, '/products') : Promise.resolve([]),
+      can('audit.view') ? adminRequest<Page<AuditEntry>>(`/audit?customerDiscordId=${encodeURIComponent(discordId)}&pageSize=${pageSize}&page=1`) : Promise.resolve({ items: [], total: 0, page: 1, pageSize }),
     ])
     if (requestId !== generation) return
     validatePage(history)
@@ -502,6 +529,10 @@ function handleSession() {
     testStore = null
     ownerVerified.value = false
     verifiedToken = ''
+    permissions.value = []
+    accessReady.value = false
+    settingsArea.value = ''
+    websiteOperations.value = false
     generation++
     user.value = null
     customers.value = []
@@ -510,8 +541,7 @@ function handleSession() {
     auditEntries.value = []
     selectedLicenseId.value = ''
     clearKey()
-    void verifyTestOwner()
-    void loadView()
+    void initialize()
   } catch (sessionError) {
     generation++
     identityGeneration++
@@ -519,6 +549,8 @@ function handleSession() {
     testStore = null
     ownerVerified.value = false
     verifiedToken = ''
+    permissions.value = []
+    settingsArea.value = ''
     user.value = null
     loaded.value = false
     loading.value = false
@@ -528,8 +560,7 @@ function handleSession() {
 }
 onMounted(() => {
   if (/^[0-9a-f-]{36}$/i.test(new URLSearchParams(window.location.search).get('ticket') || '')) websiteOperations.value = true
-  void verifyTestOwner()
-  void loadView()
+  void initialize()
   clockTimer = setInterval(() => { clock.value = Date.now() }, 60000)
   window.addEventListener('lumen-discord-user', handleSession)
 })
@@ -546,23 +577,34 @@ onUnmounted(() => {
   <main id="admin-dashboard" class="admin-workspace">
     <header class="staff-hero">
       <div><p class="staff-eyebrow">LUMEN STUDIOS / STAFF OPERATIONS</p><h1>Staff Dashboard<span>.</span></h1><p>Website tickets, updates, service health, and customer access.</p></div>
-      <span class="staff-access">Authorized staff only</span>
+      <span class="staff-access">{{ accessRole || 'Authorized staff only' }}</span>
     </header>
-    <nav class="staff-navigation" aria-label="Staff dashboard areas"><button type="button" :aria-pressed="!websiteOperations" @click="websiteOperations = false">Licenses &amp; accounts</button><button type="button" :aria-pressed="websiteOperations" :disabled="submitting" @click="websiteOperations = true">Tickets, updates &amp; status</button></nav>
-    <StaffCommunity v-if="websiteOperations" />
-    <template v-else>
-    <aside class="staff-test-mode" :class="{ 'is-testing': testMode }" aria-label="Owner local test mode">
+    <p v-if="accessError" class="staff-message staff-error" role="alert">{{ accessError }}</p>
+    <button v-if="accessError" type="button" :disabled="verifyingOwner" @click="initialize">Recheck website access</button>
+    <p v-if="accessReady && !can('dashboard.view') && !accessError" class="staff-message" role="status">Your role does not have Staff Dashboard access.</p>
+    <p v-if="can('dashboard.view') && !availableViews.length && !communityAccess && !can('roles.assign') && !can('settings.view')" class="staff-message" role="status">Dashboard access is enabled, but your role has no tools assigned yet.</p>
+    <nav v-if="can('dashboard.view')" class="staff-navigation" aria-label="Staff dashboard areas">
+      <button v-if="availableViews.length" type="button" :aria-pressed="!websiteOperations && !settingsArea" @click="websiteOperations = false; settingsArea = ''; loadView()">Licenses &amp; accounts</button>
+      <button v-if="communityAccess" type="button" :aria-pressed="websiteOperations && !settingsArea" :disabled="submitting" @click="websiteOperations = true; settingsArea = ''">Tickets, updates &amp; status</button>
+      <button v-if="can('roles.assign')" type="button" :aria-pressed="settingsArea === 'roles'" @click="settingsArea = 'roles'; clearKey()">Users &amp; roles</button>
+      <button v-if="can('settings.view')" type="button" :aria-pressed="settingsArea === 'settings'" @click="settingsArea = 'settings'; clearKey()">Website settings</button>
+      <button type="button" :disabled="verifyingOwner" @click="initialize">Refresh my permissions</button>
+    </nav>
+    <StaffAccessSettings v-if="can('dashboard.view') && settingsArea && can(settingsArea === 'roles' ? 'roles.assign' : 'settings.view')" :key="settingsArea" :request="adminRequest" :mode="settingsArea" @updated="verifyAccess" />
+    <StaffCommunity v-else-if="can('dashboard.view') && websiteOperations && communityAccess" :permissions="permissions" />
+    <template v-else-if="can('dashboard.view') && availableViews.length">
+    <aside v-if="ownerVerified || testMode" class="staff-test-mode" :class="{ 'is-testing': testMode }" aria-label="Owner local test mode">
       <div><strong>{{ testMode ? 'LOCAL TEST MODE — NOT LIVE DATA' : 'Licensing API offline? Try the controls safely.' }}</strong><p>{{ testMode ? 'Editing your owner test account only. Changes stay in this browser; test keys never validate plugins. Nothing here changes real licenses.' : 'The owner account can practice grants, bans, holds, verification, IP edits, and deletion without the licensing backend. Discord sign-in must still work.' }}</p></div>
       <div class="staff-actions">
         <button v-if="!testMode && ownerVerified" type="button" :disabled="busy || verifyingOwner" @click="enterTestMode()">Open my editable test account</button>
-        <button v-if="!ownerVerified" type="button" :disabled="busy || verifyingOwner" @click="verifyTestOwner">{{ verifyingOwner ? 'Verifying owner…' : 'Verify owner access' }}</button>
+        <button v-if="!ownerVerified" type="button" :disabled="busy || verifyingOwner" @click="verifyAccess">{{ verifyingOwner ? 'Verifying owner…' : 'Verify owner access' }}</button>
         <button v-if="testMode" type="button" :disabled="busy || verifyingOwner" @click="exitTestMode">Exit test mode · return to live</button>
         <button v-if="ownerVerified" type="button" :disabled="busy || verifyingOwner" @click="resetTestMode">Reset test data</button>
       </div>
       <p v-if="testError" class="staff-error" role="alert">{{ testError }}</p>
     </aside>
     <nav class="staff-navigation" aria-label="Administration workspaces">
-      <button v-for="tab in views" :key="tab.id" type="button" :aria-current="view === tab.id && !user ? 'page' : undefined" :disabled="submitting" @click="switchView(tab.id)"><small>{{ tab.number }}</small>{{ tab.label }}</button>
+      <button v-for="tab in availableViews" :key="tab.id" type="button" :aria-current="view === tab.id && !user ? 'page' : undefined" :disabled="submitting" @click="switchView(tab.id)"><small>{{ tab.number }}</small>{{ tab.label }}</button>
     </nav>
     <div class="staff-context"><span>{{ user ? `Customers / ${user.globalName || user.username || user.discordId}` : views.find(tab => tab.id === view)?.label }}</span><div><span v-if="lastUpdated">Updated {{ lastUpdated }}</span><button type="button" :disabled="busy" @click="user ? lookupUser(user.discordId) : loadView()">{{ loading ? 'Loading…' : 'Refresh view' }}</button></div></div>
     <p v-if="error" class="staff-message staff-error" role="alert">{{ error }}</p>
@@ -603,15 +645,15 @@ onUnmounted(() => {
           <dl class="staff-facts"><div><dt>Ban reason</dt><dd>{{ user.banReason || 'None recorded' }}</dd></div><div><dt>Hold reason</dt><dd>{{ user.holdReason || 'None recorded' }}</dd></div><div><dt>Verification</dt><dd>{{ user.verificationReason || 'No reason recorded' }}<small>{{ formatDate(user.verificationRequestedAt, 'No request recorded') }}</small></dd></div></dl>
           <label class="staff-field">Reason for next action<input v-model="reason" maxlength="500" placeholder="Reason recorded in audit history" :disabled="busy"></label>
           <div class="staff-actions">
-            <button type="button" :disabled="busy || user.deleted" :class="{ 'staff-danger': !user.banned }" @click="user.banned ? perform(`/users/${user.discordId}/unban`, undefined, 'Account unbanned.') : confirmAction('Ban this customer? Future license validation will be blocked.', `/users/${user.discordId}/ban`, 'Account banned.')">{{ user.banned ? 'Remove ban' : 'Ban account' }}</button>
-            <button type="button" :disabled="busy || user.deleted" @click="user.onHold ? perform(`/users/${user.discordId}/release`, undefined, 'Hold released.') : confirmAction('Place this customer on hold? Future license validation will be blocked.', `/users/${user.discordId}/hold`, 'Customer placed on hold.')">{{ user.onHold ? 'Release hold' : 'Place on hold' }}</button>
-            <button type="button" :disabled="busy || user.deleted" @click="perform(`/users/${user.discordId}/verification-request`, { reason: reason.trim() || undefined }, 'Verification request recorded; no automatic notification was sent.')">Request verification</button>
-            <button type="button" :disabled="busy || user.deleted || user.verificationStatus === 'verified'" @click="perform(`/users/${user.discordId}/verify`, undefined, 'Account marked verified.')">Mark verified</button>
+            <button type="button" :disabled="busy || user.deleted || !can('customers.restrict')" :class="{ 'staff-danger': !user.banned }" @click="user.banned ? perform(`/users/${user.discordId}/unban`, undefined, 'Account unbanned.') : confirmAction('Ban this customer? Future license validation will be blocked.', `/users/${user.discordId}/ban`, 'Account banned.')">{{ user.banned ? 'Remove ban' : 'Ban account' }}</button>
+            <button type="button" :disabled="busy || user.deleted || !can('customers.restrict')" @click="user.onHold ? perform(`/users/${user.discordId}/release`, undefined, 'Hold released.') : confirmAction('Place this customer on hold? Future license validation will be blocked.', `/users/${user.discordId}/hold`, 'Customer placed on hold.')">{{ user.onHold ? 'Release hold' : 'Place on hold' }}</button>
+            <button type="button" :disabled="busy || user.deleted || !can('customers.verify')" @click="perform(`/users/${user.discordId}/verification-request`, { reason: reason.trim() || undefined }, 'Verification request recorded; no automatic notification was sent.')">Request verification</button>
+            <button type="button" :disabled="busy || user.deleted || !can('customers.verify') || user.verificationStatus === 'verified'" @click="perform(`/users/${user.discordId}/verify`, undefined, 'Account marked verified.')">Mark verified</button>
           </div>
           <p class="staff-note">Bans and holds block future validation, not existing sessions. Verification requests are recorded only; contact the customer separately.</p>
-          <details class="staff-danger-zone"><summary>Danger zone</summary><p>Deletion revokes active licenses, clears IP/server bindings, and erases profile details. Minimal audit history is retained.</p><button class="staff-danger" type="button" :disabled="busy || user.deleted" @click="deleteCustomer">Permanently delete customer</button></details>
+          <details v-if="can('customers.delete')" class="staff-danger-zone"><summary>Danger zone</summary><p>Deletion revokes active licenses, clears IP/server bindings, and erases profile details. Minimal audit history is retained.</p><button class="staff-danger" type="button" :disabled="busy || user.deleted" @click="deleteCustomer">Permanently delete customer</button></details>
         </section>
-        <section class="staff-panel">
+        <section v-if="can('licenses.grant') && can('plugins.view')" class="staff-panel">
           <p class="staff-eyebrow">ISSUE AN ENTITLEMENT</p><h2>Grant a license</h2>
           <p class="staff-note">Creates a license in the same service used by the Discord bot and returns a one-time key. This does not notify the customer, refresh BuiltByBit purchases, or rotate their shared key.</p>
           <form @submit.prevent="grantLicense">
@@ -652,19 +694,19 @@ onUnmounted(() => {
       <header><div><p class="staff-eyebrow">LICENSE INSPECTOR / {{ productName(selectedLicense.productId) }}</p><h2>Network &amp; validation</h2></div><button type="button" :disabled="busy" @click="selectedLicenseId = ''">Close inspector</button></header>
       <p class="staff-license-id">{{ selectedLicense.licenseId }} <button type="button" @click="copyText(selectedLicense.licenseId, 'License ID')">Copy ID</button></p>
       <dl class="staff-facts staff-network-facts"><div><dt>API status</dt><dd>{{ selectedLicense.status }}</dd></div><div><dt>Expires</dt><dd>{{ formatDate(selectedLicense.expiresAt, 'Lifetime') }}</dd></div><div><dt>Bound server</dt><dd>{{ selectedLicense.serverId || 'Not bound' }}</dd></div><div><dt>Last validated server</dt><dd>{{ selectedLicense.lastValidatedServerId || 'Not reported' }}</dd></div><div><dt>Last validated</dt><dd>{{ formatDate(selectedLicense.lastValidatedAt) }}</dd></div></dl>
-      <div class="staff-actions">
+      <div v-if="can('licenses.status')" class="staff-actions">
         <button v-if="selectedLicense.status === 'active'" type="button" :disabled="busy || user?.deleted" @click="confirmAction('Suspend this license? It will stop validating until reactivated.', `/licenses/${selectedLicense.licenseId}/suspend`, 'License suspended.')">Suspend license</button>
         <button v-if="selectedLicense.status === 'suspended'" type="button" :disabled="busy || user?.deleted" @click="perform(`/licenses/${selectedLicense.licenseId}/activate`, undefined, 'License reactivated.')">Reactivate license</button>
         <button v-if="selectedLicense.status !== 'revoked'" class="staff-danger" type="button" :disabled="busy || user?.deleted" @click="confirmAction('Permanently revoke this license? This cannot be undone.', `/licenses/${selectedLicense.licenseId}/revoke`, 'License revoked.')">Revoke permanently</button>
       </div>
       <p class="staff-note">The account reason field above is recorded for suspension/revocation. Reactivation does not change expiry or override an account ban/hold.</p>
       <h3>Allowed IPs <span class="staff-badge">{{ selectedLicense.allowedIps.length }} / 3</span></h3>
-      <div class="staff-ip-list"><div v-for="address in selectedLicense.allowedIps" :key="address"><code>{{ address }}</code><button type="button" :disabled="busy || user?.deleted || selectedLicense.status === 'revoked'" @click="removeIp(address)">Remove</button></div></div>
+      <div class="staff-ip-list"><div v-for="address in selectedLicense.allowedIps" :key="address"><code>{{ address }}</code><button v-if="can('licenses.ips')" type="button" :disabled="busy || user?.deleted || selectedLicense.status === 'revoked'" @click="removeIp(address)">Remove</button></div></div>
       <p v-if="!selectedLicense.allowedIps.length" class="staff-note">No allowed IPs. This license cannot validate.</p>
-      <form v-if="selectedLicense.allowedIps.length < 3 && selectedLicense.status !== 'revoked'" class="staff-inline-form" @submit.prevent="addIp"><label class="staff-grow">New allowed IP<input v-model="ipAddress" maxlength="45" placeholder="Public IPv4 or IPv6" :disabled="busy || user?.deleted"></label><button class="staff-primary" type="submit" :disabled="busy || user?.deleted || !ipAddress.trim()">Add allowed IP</button></form>
+      <form v-if="can('licenses.ips') && selectedLicense.allowedIps.length < 3 && selectedLicense.status !== 'revoked'" class="staff-inline-form" @submit.prevent="addIp"><label class="staff-grow">New allowed IP<input v-model="ipAddress" maxlength="45" placeholder="Public IPv4 or IPv6" :disabled="busy || user?.deleted"></label><button class="staff-primary" type="submit" :disabled="busy || user?.deleted || !ipAddress.trim()">Add allowed IP</button></form>
     </section>
 
-    <section v-if="loaded && (user || view === 'audit')" class="staff-panel">
+    <section v-if="loaded && can('audit.view') && (user || view === 'audit')" class="staff-panel">
       <header><div><p class="staff-eyebrow">{{ user ? 'CUSTOMER HISTORY' : 'GLOBAL AUDIT TRAIL' }}</p><h2>Every action, traceable.</h2></div><span class="staff-badge">{{ user ? profileAuditTotal : totals.audit }} events</span></header>
       <label class="staff-field">Filter loaded events<input v-model="auditSearch" type="search" placeholder="Action, actor, entity type, or entity ID"></label>
       <p class="staff-note">{{ filteredAudit.length }} / {{ auditEntries.length }} events on this page. Credential-named fields are redacted from details.</p>
@@ -673,7 +715,7 @@ onUnmounted(() => {
       <div v-if="auditMaxPage > 1" class="staff-pagination"><button type="button" :disabled="busy || auditCurrentPage <= 1" @click="loadAuditPage(auditCurrentPage - 1)">Previous events</button><span>Page {{ auditCurrentPage }} / {{ auditMaxPage }}</span><button type="button" :disabled="busy || auditCurrentPage >= auditMaxPage" @click="loadAuditPage(auditCurrentPage + 1)">Next events</button></div>
     </section>
 
-    <StaffPluginRegistry v-if="loaded && !user && view === 'products'" :request="adminRequest" :test-mode="testMode" />
+    <StaffPluginRegistry v-if="loaded && !user && view === 'products' && can('plugins.view')" :request="adminRequest" :test-mode="testMode" :permissions="permissions" />
     <div v-if="loaded && !user && view !== 'audit' && view !== 'products'" class="staff-pagination"><button type="button" :disabled="busy || pages[view] <= 1" @click="loadView(pages[view] - 1)">Previous page</button><span>Page {{ pages[view] }} / {{ maxPage }} · {{ totals[view] }} total</span><button type="button" :disabled="busy || pages[view] >= maxPage" @click="loadView(pages[view] + 1)">Next page</button></div>
     <footer class="staff-footer">{{ testMode ? 'Local simulation only. Reset to undo all test edits; exit to return to the real API.' : 'Access is checked by the Worker on every live request. Administrator credentials never reach this page.' }}</footer>
     </template>

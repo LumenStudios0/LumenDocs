@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { DatabaseSync } from 'node:sqlite'
 import worker from '../worker/chat.js'
+import { ROLES } from '../shared/permissions.mjs'
 
 const origin = 'https://lumenstudio.fyi'
 const staffId = '1400375985211441242'
@@ -27,7 +28,7 @@ async function tokenFor(id, name) {
 
 function createD1() {
   const sqlite = new DatabaseSync(':memory:')
-  const migrations = Promise.all(['0001_community.sql', '0002_ticket_routing.sql', '0003_community_forum.sql'].map(
+  const migrations = Promise.all(['0001_community.sql', '0002_ticket_routing.sql', '0003_community_forum.sql', '0004_website_access.sql'].map(
     name => readFile(new URL(`../worker/migrations/community/${name}`, import.meta.url), 'utf8'),
   ))
   const database = {
@@ -95,6 +96,20 @@ function request(path, method = 'GET', body, token) {
 
 async function call(path, method, body, token) {
   return worker.fetch(request(path, method, body, token), env)
+}
+
+async function accessFixture(t) {
+  const db = createD1()
+  await db.ready
+  t.after(() => db.sqlite.close())
+  const config = { ...env, COMMUNITY_DB: db, LICENSE_API_URL: 'https://licenses.example', LICENSE_ADMIN_API_TOKEN: 'server-only-secret' }
+  const owner = await tokenFor(staffId, 'Owner')
+  const api = (path, method = 'GET', body, token = owner) => worker.fetch(request(path, method, body, token), config)
+  async function assign(id, role, token = owner) {
+    const revision = db.sqlite.prepare('SELECT revision FROM website_members WHERE discord_id = ?').get(id)?.revision || 0
+    return api(`/admin/website/members/${id}/role`, 'PUT', { role, revision }, token)
+  }
+  return { db, config, owner, api, assign }
 }
 
 test('community routes require configured persistent storage and valid sign-in', async () => {
@@ -547,4 +562,151 @@ test('community support forum is public to read, Discord-only to post, and staff
   assert.equal((await call(`/community/forum/${thread.id}`, 'GET')).status, 404)
   assert.equal((await (await call('/community/forum', 'GET')).json()).total, 0)
   assert.equal((await (await call('/community/forum', 'GET', undefined, staff)).json()).items[0].hidden, true)
+})
+
+test('preset roles enforce strict assignment hierarchy, protected owner and current-session roles', async t => {
+  const { api, assign } = await accessFixture(t)
+  const ids = ['223456789012345680', '223456789012345681', '223456789012345682', '223456789012345683']
+  const tokens = await Promise.all(ids.map(id => tokenFor(id, 'Member')))
+  for (const [index, role] of ['support_team', 'developer', 'studio_lead', 'support_team'].entries()) {
+    assert.equal((await assign(ids[index], role)).status, 200)
+  }
+  const access = await (await api('/admin/website/access')).json()
+  assert.deepEqual(access.roles.map(role => role.id), ['guest', 'client', 'support_team', 'developer', 'studio_lead', 'owner'])
+  const target = '223456789012345690'
+  assert.equal((await assign(target, 'client', tokens[0])).status, 200)
+  for (const role of ['support_team', 'developer', 'studio_lead', 'owner']) assert.equal((await assign(target, role, tokens[0])).status, 403)
+  assert.equal((await assign(ids[0], 'client', tokens[0])).status, 403)
+  assert.equal((await assign(ids[3], 'client', tokens[0])).status, 403)
+  assert.equal((await assign(ids[1], 'guest', tokens[0])).status, 403)
+  assert.equal((await assign(target, 'support_team', tokens[1])).status, 200)
+  assert.equal((await assign(target, 'studio_lead', tokens[1])).status, 403)
+  assert.equal((await assign(target, 'developer', tokens[2])).status, 200)
+  assert.equal((await assign(target, 'owner', tokens[2])).status, 403)
+  assert.equal((await assign(target, 'owner')).status, 200)
+  assert.equal((await assign(staffId, 'guest')).status, 403)
+  assert.equal((await assign(target, 'made-up-role')).status, 400)
+  const sameToken = await (await api('/auth/me', 'GET', undefined, tokens[0])).json()
+  assert.equal(sameToken.user.role, 'support_team')
+  assert.equal(sameToken.user.permissions.includes('licenses.grant'), true)
+  const guest = await tokenFor('223456789012345699', 'Guest')
+  assert.equal((await api('/admin/website/members', 'GET', undefined, guest)).status, 403)
+  assert.equal((await api('/auth/me', 'GET', undefined, guest)).status, 200)
+  const members = await (await api('/admin/website/members?query=Guest')).json()
+  assert.equal(members.items[0].role, 'guest')
+})
+
+test('support grants and IP controls honor saved permissions immediately without exposing destructive registry operations', async t => {
+  const { api, assign } = await accessFixture(t)
+  const id = '323456789012345680'
+  const support = await tokenFor(id, 'Support')
+  assert.equal((await assign(id, 'support_team')).status, 200)
+  const actualFetch = globalThis.fetch
+  const forwarded = []
+  globalThis.fetch = async (url, options) => { forwarded.push({ url: String(url), options }); return Response.json({ saved: true }) }
+  t.after(() => { globalThis.fetch = actualFetch })
+  const licenseId = '12345678-1234-1234-1234-123456789012'
+  for (const [path, method, body] of [
+    ['/admin/licenses', 'POST', { productId: 'shards', customerDiscordId: customerId }],
+    [`/admin/licenses/${licenseId}/ips`, 'POST', { ipAddress: '203.0.113.8' }],
+    [`/admin/licenses/${licenseId}/ips?ipAddress=203.0.113.8`, 'DELETE'],
+  ]) assert.equal((await api(path, method, body, support)).status, 200)
+  assert.equal(forwarded[0].options.headers['X-Admin-Actor'], `${id}:support_team`)
+  assert.equal((await api('/admin/plugins/plugin', 'DELETE', undefined, support)).status, 403)
+  assert.equal((await api('/admin/products/product/plugins/plugin', 'DELETE', undefined, support)).status, 403)
+  const preset = ROLES.find(role => role.id === 'support_team')
+  assert.equal((await api('/admin/website/roles/support_team', 'PUT', {
+    permissions: preset.permissions.filter(permission => !['licenses.grant', 'licenses.ips', 'tickets.reply', 'forum.moderate'].includes(permission)), revision: 0,
+  })).status, 200)
+  const before = forwarded.length
+  assert.equal((await api('/admin/licenses', 'POST', {}, support)).status, 403)
+  assert.equal((await api(`/admin/licenses/${licenseId}/ips`, 'POST', {}, support)).status, 403)
+  assert.equal(forwarded.length, before)
+  const current = await (await api('/auth/me', 'GET', undefined, support)).json()
+  assert.equal(current.user.permissions.includes('licenses.grant'), false)
+  assert.equal((await api('/community/staff/forum/12345678-1234-1234-1234-123456789012', 'PUT', {}, support)).status, 403)
+  const ticket = await (await api('/community/tickets', 'POST', { type: 'support', title: 'Private request', body: 'Only authorized support can reply.' }, await tokenFor(customerId, 'Customer'))).json()
+  assert.equal((await api(`/community/tickets/${ticket.ticket.id}/replies`, 'POST', { body: 'Unauthorized staff reply' }, support)).status, 404)
+  const forum = await (await api('/community/forum', 'GET', undefined, support)).json()
+  assert.equal(forum.viewer.staff, false)
+  assert.equal((await api('/admin/website/roles/support_team', 'PUT', {
+    permissions: ['forum.moderate', 'forum.announce'], revision: 1,
+  })).status, 200)
+  const withoutDashboard = await (await api('/community/forum', 'GET', undefined, support)).json()
+  assert.equal(withoutDashboard.viewer.staff, false)
+  assert.equal(withoutDashboard.viewer.canAnnounce, false)
+  assert.equal((await api('/community/forum', 'POST', { channel: 'announcements', title: 'Not authorized', body: 'Dashboard access is also required.' }, support)).status, 403)
+  assert.equal((await assign(id, 'client')).status, 200)
+  assert.equal((await api('/admin/users', 'GET', undefined, support)).status, 403)
+})
+
+test('permission editing cannot escalate privileges and stale or failed writes do not corrupt policy or audit', async t => {
+  const { db, api, assign } = await accessFixture(t)
+  const id = '423456789012345680'
+  const developer = await tokenFor(id, 'Developer')
+  await assign(id, 'developer')
+  const developerPermissions = [...ROLES.find(role => role.id === 'developer').permissions, 'settings.view', 'settings.roles']
+  assert.equal((await api('/admin/website/roles/developer', 'PUT', { permissions: developerPermissions, revision: 0 })).status, 200)
+  for (const role of ['developer', 'studio_lead', 'owner']) assert.equal((await api(`/admin/website/roles/${role}`, 'PUT', { permissions: [], revision: 0 }, developer)).status, 403)
+  assert.equal((await api('/admin/website/roles/support_team', 'PUT', { permissions: ['plugins.delete'], revision: 0 }, developer)).status, 403)
+  assert.equal((await api('/admin/website/roles/support_team', 'PUT', { permissions: ['invented.permission'], revision: 0 })).status, 400)
+  const permissions = ['dashboard.view', 'customers.view']
+  assert.equal((await api('/admin/website/roles/support_team', 'PUT', { permissions, revision: 0 }, developer)).status, 200)
+  const auditCount = db.sqlite.prepare('SELECT COUNT(*) AS n FROM website_access_audit').get().n
+  assert.equal((await api('/admin/website/roles/support_team', 'PUT', { permissions: [], revision: 0 })).status, 409)
+  db.failBatchAt = 1
+  assert.equal((await api('/admin/website/roles/support_team', 'PUT', { permissions: [], revision: 1 })).status, 500)
+  db.failBatchAt = null
+  const policy = await (await api('/admin/website/access')).json()
+  assert.deepEqual(policy.roles.find(role => role.id === 'support_team').permissions, [...permissions].sort())
+  assert.equal(db.sqlite.prepare('SELECT COUNT(*) AS n FROM website_access_audit').get().n, auditCount)
+  assert.equal((await api('/admin/website/roles/owner', 'PUT', { permissions: [], revision: 0 })).status, 403)
+  assert.equal((await api('/admin/website/members/423456789012345699/role', 'PUT', { role: 'guest' })).status, 400)
+  assert.equal((await api('/admin/website/members/423456789012345699/role', 'PUT', { role: 'guest', revision: 5 })).status, 409)
+})
+
+test('website settings persist and pause every customer intake path without blocking existing tickets', async t => {
+  const { api } = await accessFixture(t)
+  const customer = await tokenFor(customerId, 'Customer')
+  const created = await (await api('/community/tickets', 'POST', { type: 'support', title: 'Before pause', body: 'Existing support request' }, customer)).json()
+  const settings = { supportOpen: false, supportClosedMessage: 'Support is paused for maintenance.', forumOpen: false, forumClosedMessage: 'Forum is read-only today.' }
+  assert.equal((await api('/admin/website/settings', 'PUT', { settings, revision: 0 })).status, 200)
+  assert.deepEqual((await (await api('/admin/website/settings')).json()).settings, settings)
+  for (const [path, body] of [
+    ['/community/tickets', { type: 'support', title: 'New ticket', body: 'Another request' }],
+    ['/community/issues', { title: 'New issue', body: 'Another issue' }],
+    ['/reports', { type: 'feature', title: 'New request', description: 'Another feature request' }],
+  ]) {
+    const response = await api(path, 'POST', body, customer)
+    assert.equal(response.status, 503)
+    assert.equal((await response.json()).error, settings.supportClosedMessage)
+  }
+  assert.equal((await api('/community/forum', 'POST', { channel: 'help', title: 'New thread', body: 'Please help me' }, customer)).status, 503)
+  assert.equal((await api(`/community/tickets/${created.ticket.id}/replies`, 'POST', { body: 'Existing tickets still work.' }, customer)).status, 200)
+  assert.equal((await api('/admin/website/settings', 'GET', undefined, customer)).status, 403)
+  assert.equal((await api('/admin/website/settings', 'PUT', { settings: { ...settings, forumOpen: 'yes' }, revision: 1 })).status, 400)
+})
+
+test('registry removals are narrowly permission controlled and configured access database failures fail closed', async t => {
+  const { db, api } = await accessFixture(t)
+  const actualFetch = globalThis.fetch
+  const forwarded = []
+  globalThis.fetch = async (url, options) => { forwarded.push({ url: String(url), options }); return Response.json({ deleted: true }) }
+  t.after(() => { globalThis.fetch = actualFetch })
+  for (const [path, method, body] of [
+    ['/admin/plugins/shards', 'DELETE'],
+    ['/admin/products/shards/plugins/shards', 'DELETE'],
+    ['/admin/products/shards', 'DELETE'],
+    ['/admin/products/shards', 'PATCH', { active: false }],
+    ['/admin/plugins/shards', 'PATCH', { active: false }],
+  ]) assert.equal((await api(path, method, body)).status, 200)
+  assert.equal(forwarded[3].options.body, JSON.stringify({ active: false }))
+  const before = forwarded.length
+  assert.equal((await api('/admin/products/shards', 'PATCH', { active: false, name: 'Unexpected edit' })).status, 400)
+  assert.equal((await api('/admin/plugins/shards/token/rotate', 'POST')).status, 404)
+  assert.equal((await api('/admin/website/settings', 'PATCH')).status, 404)
+  db.sqlite.exec('DROP TABLE website_role_permissions')
+  assert.equal((await api('/admin/plugins/shards', 'DELETE')).status, 500)
+  assert.equal((await api('/auth/me')).status, 503)
+  assert.equal(forwarded.length, before)
 })

@@ -52,8 +52,8 @@ let refreshTimer: ReturnType<typeof setInterval> | undefined
 const current = computed(() => channels.find(item => item.id === channel.value) ?? channels[0])
 const signedIn = computed(() => viewer.value.signedIn || Boolean(safeSession()))
 const postableChannels = computed(() => channels.filter(item =>
-  item.id !== 'all' && item.id !== 'known-issues' && (item.id !== 'announcements' || viewer.value.staff)))
-const canPostHere = computed(() => channel.value !== 'known-issues' && (channel.value !== 'announcements' || viewer.value.staff))
+  item.id !== 'all' && item.id !== 'known-issues' && (item.id !== 'announcements' || viewer.value.canAnnounce)))
+const canPostHere = computed(() => channel.value !== 'known-issues' && (channel.value !== 'announcements' || viewer.value.canAnnounce))
 const pages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
 
 function safeSession() {

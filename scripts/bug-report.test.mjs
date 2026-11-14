@@ -25,7 +25,7 @@ async function tokenFor(id = customerId) {
 
 function createD1() {
   const sqlite = new DatabaseSync(':memory:')
-  const ready = Promise.all(['0001_community.sql', '0002_ticket_routing.sql'].map(
+  const ready = Promise.all(['0001_community.sql', '0002_ticket_routing.sql', '0004_website_access.sql'].map(
     name => readFile(new URL(`../worker/migrations/community/${name}`, import.meta.url), 'utf8'),
   )).then(sqls => sqls.forEach(sql => sqlite.exec(sql)))
   return {

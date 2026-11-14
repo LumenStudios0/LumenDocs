@@ -1,12 +1,10 @@
 import { handleCommunity, runCommunityChecks } from './community.js'
+import { adminPermission, getAdminRole, getStaffMembers, hasPermission, rememberMember, resolveAccess, websiteAdminApi } from './access-control.js'
 
 const jsonHeaders = {
   'Content-Type': 'application/json; charset=utf-8',
   'Cache-Control': 'no-store',
 }
-
-const OWNER_DISCORD_ID = '1400375985211441242'
-const STUDIO_LEAD_DISCORD_ID = '1012053634911064114'
 
 function respond(data, status, origin) {
   const headers = new Headers(jsonHeaders)
@@ -28,19 +26,6 @@ function isAllowedOrigin(origin, env) {
     ...(env.ALLOWED_ORIGINS ?? '').split(',').map(value => value.trim()).filter(Boolean),
   ])
   return allowedOrigins.has(origin)
-}
-
-function getAdminRole(discordId, env) {
-  if (discordId === OWNER_DISCORD_ID) return 'owner'
-  if (discordId === STUDIO_LEAD_DISCORD_ID) return 'studio_lead'
-  const configuredAdmins = (env.ADMIN_DISCORD_IDS ?? '').split(',').map(id => id.trim())
-  return configuredAdmins.includes(discordId) ? 'admin' : null
-}
-
-function getStaffMembers(env) {
-  return [...new Set([OWNER_DISCORD_ID, STUDIO_LEAD_DISCORD_ID,
-    ...(env.ADMIN_DISCORD_IDS || '').split(',').map(id => id.trim()).filter(id => /^\d{5,22}$/.test(id))])]
-    .map(id => ({ id, name: id === OWNER_DISCORD_ID ? 'Studio owner' : id === STUDIO_LEAD_DISCORD_ID ? 'Studio lead' : 'Studio staff' }))
 }
 
 function base64UrlEncode(value) {
@@ -68,7 +53,7 @@ async function importSigningKey(secret) {
 
 async function createLoginToken(user, env) {
   const now = Math.floor(Date.now() / 1000)
-  const role = getAdminRole(user.id, env)
+  const role = await getAdminRole(user.id, env)
   const claims = {
     iss: 'lumen-studios',
     aud: 'lumen-docs',
@@ -832,39 +817,19 @@ async function accountLicenseApi(request, env, origin, path) {
   return licenseServiceUnavailable(origin)
 }
 
-function isAllowedAdminRoute(path, method) {
-  if (path === '/admin/users') return method === 'GET'
-  if (/^\/admin\/users\/\d{5,22}$/.test(path)) return method === 'GET' || method === 'DELETE'
-  if (/^\/admin\/users\/\d{5,22}\/(ban|unban|hold|release|verification-request|verify)$/.test(path)) {
-    return method === 'POST'
-  }
-  if (path === '/admin/licenses' || path === '/admin/products' || path === '/admin/plugins') {
-    return method === 'GET' || method === 'POST'
-  }
-  if (/^\/admin\/products\/[A-Za-z0-9_.-]{1,64}\/plugins\/[A-Za-z0-9_.-]{1,64}$/.test(path)) {
-    return method === 'POST'
-  }
-  if (/^\/admin\/licenses\/[0-9a-f-]{36}$/.test(path)) return method === 'GET'
-  if (/^\/admin\/licenses\/[0-9a-f-]{36}\/(revoke|suspend|activate)$/.test(path)) {
-    return method === 'POST'
-  }
-  if (/^\/admin\/licenses\/[0-9a-f-]{36}\/ips$/.test(path)) {
-    return method === 'POST' || method === 'DELETE'
-  }
-  return path === '/admin/audit' && method === 'GET'
-}
-
 async function adminApi(request, env, origin, path) {
   const authorization = request.headers.get('Authorization') ?? ''
   const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : ''
   const user = await verifyLoginToken(token, env)
   if (!user) return respond({ error: 'Sign in to access the admin dashboard' }, 401, origin)
 
-  const role = getAdminRole(user.id, env)
-  if (!role) return respond({ error: 'Admin dashboard access is not available for this account' }, 403, origin)
-  if (!isAllowedAdminRoute(path, request.method)) {
+  const access = await resolveAccess(user.id, env)
+  if (!hasPermission(access, 'dashboard.view')) return respond({ error: 'Admin dashboard access is not available for this account' }, 403, origin)
+  const permission = adminPermission(path, request.method)
+  if (!path.startsWith('/admin/website/') && !permission) {
     return respond({ error: 'Admin route or method is not allowed' }, 404, origin)
   }
+  if (permission && !hasPermission(access, permission)) return respond({ error: `Permission required: ${permission}` }, 403, origin)
   if (!env.ASSISTANT_LIMITER) {
     return respond({ error: 'Admin service is not configured' }, 503, origin)
   }
@@ -872,6 +837,7 @@ async function adminApi(request, env, origin, path) {
   if (!rateLimit.success) {
     return respond({ error: 'Please wait before using the admin dashboard again' }, 429, origin)
   }
+  if (path.startsWith('/admin/website/')) return websiteAdminApi(request, env, path, user, access, respond, origin)
   if (!env.LICENSE_API_URL || !env.LICENSE_ADMIN_API_TOKEN) {
     return licenseServiceUnavailable(origin)
   }
@@ -891,7 +857,7 @@ async function adminApi(request, env, origin, path) {
   upstreamUrl.search = incomingUrl.search
   const headers = {
     Authorization: 'Bearer ' + env.LICENSE_ADMIN_API_TOKEN,
-    'X-Admin-Actor': `${user.id}:${role}`,
+    'X-Admin-Actor': `${user.id}:${access.role}`,
   }
   const options = { method: request.method, headers, signal: AbortSignal.timeout(10000) }
   if (request.method !== 'GET' && request.method !== 'HEAD') {
@@ -899,7 +865,10 @@ async function adminApi(request, env, origin, path) {
     if (body.length > 8000) return respond({ error: 'Request is too large' }, 413, origin)
     if (body) {
       try {
-        JSON.parse(body)
+        const parsed = JSON.parse(body)
+        if (request.method === 'PATCH' && (!parsed || typeof parsed.active !== 'boolean' || Object.keys(parsed).some(key => key !== 'active'))) {
+          return respond({ error: 'Only an active boolean can be changed through this registry route' }, 400, origin)
+        }
       } catch {
         return respond({ error: 'Expected a JSON request' }, 400, origin)
       }
@@ -988,7 +957,7 @@ export default {
                 : path === '/account/delete'
                   ? 'DELETE, OPTIONS'
                 : path.startsWith('/admin/')
-                  ? 'GET, POST, DELETE, OPTIONS'
+                  ? 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
               : 'POST, OPTIONS',
           'Access-Control-Allow-Headers': 'Authorization, Content-Type',
           'Access-Control-Max-Age': '86400',
@@ -1003,15 +972,16 @@ export default {
       const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : ''
       const user = await verifyLoginToken(token, env)
       if (!user) return respond({ error: 'Sign-in has expired. Please sign in again.' }, 401, origin)
-      const role = getAdminRole(user.id, env)
-      const refreshThreshold = role ? 60 * 60 : 7 * 24 * 60 * 60
-      const sessionToken = user.expiresAt - Math.floor(Date.now() / 1000) < refreshThreshold
-        ? await createLoginToken(user, env)
-        : undefined
-      return respond({
-        user: { ...user, role },
-        ...(sessionToken ? { sessionToken } : {}),
-      }, 200, origin)
+      try {
+        const access = await resolveAccess(user.id, env)
+        await rememberMember(user, env)
+        const refreshThreshold = hasPermission(access, 'dashboard.view') ? 60 * 60 : 7 * 24 * 60 * 60
+        const sessionToken = user.expiresAt - Math.floor(Date.now() / 1000) < refreshThreshold ? await createLoginToken(user, env) : undefined
+        return respond({ user: { ...user, ...access }, ...(sessionToken ? { sessionToken } : {}) }, 200, origin)
+      } catch (error) {
+        console.error('Website access lookup failed:', error)
+        return respond({ error: 'Website access could not be verified. Please try again later.' }, 503, origin)
+      }
     }
 
     if (path.startsWith('/community') || path === '/bug-report' || path === '/reports') {
@@ -1045,7 +1015,7 @@ export default {
       if (response.status >= 500) {
         const authorization = request.headers.get('Authorization') || ''
         const user = await verifyLoginToken(authorization.startsWith('Bearer ') ? authorization.slice(7) : '', env)
-        if (!user || !getAdminRole(user.id, env)) {
+        if (!user || !await getAdminRole(user.id, env)) {
           console.error('Customer licensing request failed:', path, response.status)
           return respond({
             error: 'The license system is temporarily unavailable or being worked on. Please try again later.',

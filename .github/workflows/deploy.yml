@@ -7,6 +7,7 @@ on:
     paths:
       - "docs/**"
       - "worker/**"
+      - "shared/**"
       - "scripts/**"
       - "package.json"
       - "package-lock.json"

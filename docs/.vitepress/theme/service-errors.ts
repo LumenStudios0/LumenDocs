@@ -18,8 +18,8 @@ async function isVerifiedStaff() {
       url.search = ''
       try {
         const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-        const result = await response.json() as { user?: { role?: string } }
-        return response.ok && ['owner', 'studio_lead', 'admin'].includes(result.user?.role || '')
+        const result = await response.json() as { user?: { permissions?: string[] } }
+        return response.ok && Boolean(result.user?.permissions?.includes('dashboard.view'))
       } catch {
         return false
       }
