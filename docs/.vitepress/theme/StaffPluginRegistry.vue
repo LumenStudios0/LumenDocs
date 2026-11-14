@@ -2,6 +2,8 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import pluginData from './plugin-compatibility-data.json'
 import { fetchRegistryItems } from './licensing-utils.mjs'
+import { useSiteDialog } from './site-dialog'
+const { confirm: confirmSiteAction } = useSiteDialog()
 
 interface Plugin { pluginId: string; name: string; active: boolean }
 interface Product { productId: string; name: string; active: boolean; plugins: string[] }
@@ -93,12 +95,12 @@ async function save<T>(path: string, body: Record<string, string | boolean> | un
     }
   } finally { submitting.value = false }
 }
-function registerPlugin() {
+async function registerPlugin() {
   if (!/^[A-Za-z0-9_.-]{1,64}$/.test(pluginId.value.trim()) || !pluginName.value.trim()) {
     error.value = 'Enter a plugin name and an ID using letters, numbers, dots, underscores, or hyphens.'
     return
   }
-  if (token.value && !window.confirm('Save the displayed plugin token first. Register another plugin and replace it?')) return
+  if (token.value && !await confirmSiteAction('Save the displayed plugin token first. Register another plugin and replace it?', { title: 'Save your one-time token', confirmText: 'Register another plugin' })) return
   void save<Plugin & { pluginToken: string }>('/plugins', { pluginId: pluginId.value.trim(), name: pluginName.value.trim() },
     'Plugin registered in the shared website and Discord bot registry. Create or choose a product, then link it below.', result => {
       if (typeof result.pluginToken !== 'string' || !result.pluginToken) throw new Error('No plugin token was returned. Check the registry before retrying.')
@@ -116,15 +118,15 @@ function createProduct() {
   void save<Product>('/products', { productId: productId.value.trim(), name: productName.value.trim() },
     'Product created. Link its plugin below to enable license grants.', result => { linkProductId.value = result.productId })
 }
-function linkPlugin() {
+async function linkPlugin() {
   if (!canLink.value) { error.value = 'Choose an active plugin and product that are not already linked.'; return }
-  if (!window.confirm('Link this plugin to the product? Existing licenses for this product will also gain access to this plugin.')) return
+  if (!await confirmSiteAction('Link this plugin to the product? Existing licenses for this product will also gain access to this plugin.', { title: 'Link plugin to product', confirmText: 'Link plugin' })) return
   void save(`/products/${encodeURIComponent(linkProductId.value)}/plugins/${encodeURIComponent(linkPluginId.value)}`, undefined,
     'Plugin linked. Matching documented products are now available in the customer license dropdown.')
 }
-function setActive(kind: 'plugins' | 'products', item: Plugin | Product) {
+async function setActive(kind: 'plugins' | 'products', item: Plugin | Product) {
   const id = 'pluginId' in item ? item.pluginId : item.productId
-  if (!window.confirm(`${item.active ? 'Deactivate' : 'Activate'} ${item.name}? Deactivation prevents validation for the affected plugin or product.`)) return
+  if (!await confirmSiteAction(`${item.active ? 'Deactivate' : 'Activate'} ${item.name}? Deactivation prevents validation for the affected plugin or product.`, { title: item.active ? 'Deactivate registration' : 'Activate registration', confirmText: item.active ? 'Deactivate' : 'Activate', danger: item.active })) return
   void save(`/${kind}/${encodeURIComponent(id)}`, { active: !item.active }, `${item.name} ${item.active ? 'deactivated' : 'activated'}.`, undefined, 'PATCH')
 }
 async function edit(kind: 'plugins' | 'products', item: Plugin | Product) {
@@ -143,13 +145,13 @@ function saveEdit() {
     editing.value = null
   }, 'PATCH')
 }
-function unlink(product: Product, id: string) {
-  if (!window.confirm(`Remove plugin ${id} from ${product.name}? Licenses for this product will lose access to that plugin.`)) return
+async function unlink(product: Product, id: string) {
+  if (!await confirmSiteAction(`Remove plugin ${id} from ${product.name}? Licenses for this product will lose access to that plugin.`, { title: 'Remove linked plugin', confirmText: 'Remove plugin', danger: true })) return
   void save(`/products/${encodeURIComponent(product.productId)}/plugins/${encodeURIComponent(id)}`, undefined, 'Plugin removed from product.', undefined, 'DELETE')
 }
-function remove(kind: 'plugins' | 'products', item: Plugin | Product) {
+async function remove(kind: 'plugins' | 'products', item: Plugin | Product) {
   const id = 'pluginId' in item ? item.pluginId : item.productId
-  if (window.prompt(`Permanently delete ${item.name}? This cannot be undone. Type ${id} to confirm.`) !== id) return
+  if (!await confirmSiteAction(`Permanently delete ${item.name}? This cannot be undone.`, { title: 'Delete registration', confirmText: 'Permanently delete', requiredText: id, danger: true })) return
   void save(`/${kind}/${encodeURIComponent(id)}`, undefined, `${item.name} permanently deleted.`, () => {
     if (kind === 'plugins' && tokenOwner.value === id) clearToken()
     if (editing.value?.kind === kind && editing.value.id === id) editing.value = null

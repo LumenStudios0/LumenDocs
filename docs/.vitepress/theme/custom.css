@@ -2032,6 +2032,10 @@ html.lumen-track-paper-lanterns .lumen-track-lantern {
   .VPNavBarTitle .title { gap: 6px; font-size: 14px; }
 }
 
+@media (max-width: 360px) {
+  .VPNavBarTitle .title span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .lumen-nav-menu-button span,
   .lumen-nav-menu-panel,

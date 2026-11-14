@@ -343,6 +343,99 @@ test('BuiltByBit claim rejects state issued for another Discord account', async 
   assert.equal(response.status, 400)
 })
 
+test('Discord-linked BuiltByBit claims verify the signed-in buyer across every page without customer OAuth', async t => {
+  const discordId = '123456789012345678'
+  const token = await createSessionToken(t, discordId)
+  const requests = []
+  const now = Math.floor(Date.now() / 1000)
+  globalThis.fetch = async (input, options) => {
+    const url = new URL(input)
+    requests.push(url)
+    if (url.hostname === 'api.builtbybit.com') {
+      assert.equal(url.pathname, '/v2/resources/creator/licenses')
+      assert.equal(options.headers.Authorization, 'Private synthetic-creator-key')
+      assert.equal(url.searchParams.get('with'), 'Buyer')
+      assert.equal(url.searchParams.get('resource_ids'), '7001,7002,7003')
+      const page = Number(url.searchParams.get('page'))
+      const row = { content_type: 'resource', content_id: 7001, buyer_id: 998877, permanent: true, active: true, Buyer: { user_id: '998877', discord_id: discordId } }
+      const rows = page === 1
+        ? Array.from({ length: 100 }, () => ({ ...row, Buyer: { user_id: '998877', discord_id: '987654321098765432' } }))
+        : [
+          row,
+          { ...row, content_id: 7002, permanent: false, start_date: now + 100, end_date: now + 1000 },
+          { ...row, content_id: 7003, permanent: true, active: false },
+          { ...row, content_id: 9001 },
+        ]
+      return Response.json({ result: 'success', data: { licenses: rows, stats: { total: 104, page, per_page: 100, max_page: 2 } } })
+    }
+    assert.equal(url.href, `https://licenses.example/v1/admin/users/${discordId}/builtbybit/claim`)
+    assert.equal(options.headers.Authorization, 'Bearer license-admin-token')
+    const body = JSON.parse(options.body)
+    assert.equal(body.buyerId, '998877')
+    assert.deepEqual(body.licenses.map(row => [row.resourceId, row.active]), [[7001, true], [7002, false], [7003, false]])
+    assert.equal(body.licenses[1].expiresAt, new Date((now + 1000) * 1000).toISOString())
+    return Response.json({ licenseKey: 'synthetic-shared-key' })
+  }
+  const response = await worker.fetch(request('/account/builtbybit/discord', {
+    method: 'POST', origin, authorization: `Bearer ${token}`,
+    body: { discordId: '987654321098765432', buyerId: 'forged', licenses: [{ resourceId: 9001 }] },
+  }), env({
+    BUILDBYBIT_API_AUTHORIZATION: 'Private synthetic-creator-key', BUILDBYBIT_RESOURCE_IDS: '7001,7002,7003',
+    LICENSE_API_URL: 'https://licenses.example', LICENSE_ADMIN_API_TOKEN: 'license-admin-token',
+  }))
+  assert.equal(response.status, 200)
+  assert.equal((await response.json()).licenseKey, 'synthetic-shared-key')
+  assert.equal(requests.length, 3)
+})
+
+test('Discord purchase checks never change licenses after ambiguous identity, invalid data or incomplete upstream results', async t => {
+  const token = await createSessionToken(t)
+  const row = { content_type: 'resource', content_id: 7001, buyer_id: 998877, permanent: true, active: true, Buyer: { user_id: '998877', discord_id: '123456789' } }
+  const cases = [
+    { rows: [{ ...row, Buyer: { user_id: '998877', discord_id: 'other-user' } }], status: 403 },
+    { rows: [{ ...row, Buyer: undefined }], status: 502 },
+    { rows: [{ ...row, Buyer: { user_id: '123', discord_id: '123456789' } }], status: 502 },
+    { rows: [{ ...row, active: undefined }], status: 502 },
+    { rows: [{ ...row, permanent: false, start_date: 100, end_date: 'invalid' }], status: 502 },
+    { rows: [row, { ...row, buyer_id: 123, Buyer: { user_id: '123', discord_id: '123456789' } }], status: 409 },
+    { rows: [], status: 403 },
+    { rows: [row], stats: { total: 101, page: 1, per_page: 100, max_page: 2 }, status: 502 },
+    { rows: [row], stats: { total: 2501, page: 1, per_page: 100, max_page: 26 }, status: 413 },
+    { rows: [row], upstreamStatus: 429, status: 429 },
+    { rows: Array.from({ length: 100 }, () => row), stats: { total: 101, page: 1, per_page: 100, max_page: 2 }, failSecondPage: true, status: 502 },
+  ]
+  for (const fixture of cases) {
+    let calls = 0
+    globalThis.fetch = async input => {
+      const url = new URL(input)
+      assert.equal(url.hostname, 'api.builtbybit.com', 'No licensing mutation is allowed for unverified purchases')
+      calls++
+      if (fixture.failSecondPage && calls === 2) throw new Error('Synthetic page failure')
+      return Response.json({ result: 'success', data: { licenses: fixture.rows, stats: fixture.stats || { total: fixture.rows.length, page: 1, per_page: 100, max_page: Math.ceil(fixture.rows.length / 100) } } }, { status: fixture.upstreamStatus || 200 })
+    }
+    const response = await worker.fetch(request('/account/builtbybit/discord', {
+      method: 'POST', origin, authorization: `Bearer ${token}`,
+    }), env({
+      BUILDBYBIT_API_AUTHORIZATION: 'Private synthetic-creator-key', BUILDBYBIT_RESOURCE_IDS: '7001',
+      LICENSE_API_URL: 'https://licenses.example', LICENSE_ADMIN_API_TOKEN: 'license-admin-token',
+    }))
+    assert.equal(response.status, fixture.status, JSON.stringify(fixture))
+    assert.equal(calls, fixture.failSecondPage ? 2 : 1)
+  }
+})
+
+test('Discord purchase checks require authentication, POST and configured creator credentials', async t => {
+  const token = await createSessionToken(t)
+  globalThis.fetch = async () => { throw new Error('No external call is expected') }
+  const call = (options, config = {}) => worker.fetch(request('/account/builtbybit/discord', { origin, ...options }), env(config))
+  assert.equal((await call({ method: 'POST' })).status, 401)
+  assert.equal((await call({ authorization: `Bearer ${token}` })).status, 405)
+  assert.equal((await call({ method: 'POST', authorization: `Bearer ${token}` })).status, 503)
+  const preflight = await call({ method: 'OPTIONS' })
+  assert.equal(preflight.status, 204)
+  assert.equal(preflight.headers.get('Access-Control-Allow-Methods'), 'POST, OPTIONS')
+})
+
 test('account license endpoints require a valid Discord session', async () => {
   const response = await worker.fetch(
     request('/account/servers', { origin }),

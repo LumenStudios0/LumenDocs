@@ -4,6 +4,8 @@ import { accountRequest, LicenseApiError } from './licensing-api'
 import { visibleServiceError, licenseServiceNotice } from './service-errors'
 import { getDiscordSession } from './discord-session'
 import { normalizeIpAddress, parseIpAllowlist } from './licensing-utils.mjs'
+import { useSiteDialog } from './site-dialog'
+const { confirm: confirmSiteAction } = useSiteDialog()
 
 const addresses = ref<string[]>([])
 const newAddress = ref('')
@@ -71,7 +73,7 @@ function addAddress() {
 
 async function saveAddresses(next: string[]) {
   if (!loaded.value || loading.value || saving.value) return
-  if (!next.length && !window.confirm('Remove all allowed IPs? Your plugins will no longer be able to validate this license.')) return
+  if (!next.length && !await confirmSiteAction('Remove all allowed IPs? Your plugins will no longer be able to validate this license.', { title: 'Remove all server IPs', confirmText: 'Remove all IPs', danger: true })) return
   const requestId = generation
   saving.value = true
   notice.value = ''

@@ -5,6 +5,8 @@ import { communityRequest, communityDate, type CommunityPage, type Issue, type N
 import { staffReplyTemplates } from './staff-reply-templates'
 import pluginData from './plugin-compatibility-data.json'
 import { CommunityUnavailableError } from './community-errors.mjs'
+import { useSiteDialog } from './site-dialog'
+const { confirm: confirmSiteAction } = useSiteDialog()
 
 type Tab = 'tickets' | 'issues' | 'notifications' | 'status'
 const props = defineProps<{ permissions: string[] }>()
@@ -153,10 +155,10 @@ function sendReply() {
   const id = selected.value.id
   void write(`/tickets/${id}/replies`, 'POST', { body: reply.value }, () => open(id), 'Staff reply saved on the website.')
 }
-function updateTicket() {
+async function updateTicket() {
   if (!selected.value) return
   const id = selected.value.id
-  if (statusDraft.value === 'closed' && !window.confirm('Close this website ticket? The customer will no longer be able to reply until staff reopen it.')) return
+  if (statusDraft.value === 'closed' && !await confirmSiteAction('Close this website ticket? The customer will no longer be able to reply until staff reopen it.', { title: 'Close ticket', confirmText: 'Close ticket' })) return
   void write(`/staff/tickets/${id}`, 'PUT', {
     status: statusDraft.value, title: titleDraft.value, assigneeId: assigneeDraft.value || null,
     labels: labelsDraft.value.split(',').map(label => label.trim()).filter(Boolean),
@@ -167,10 +169,10 @@ function retryAlert() {
   const id = selected.value.id
   void write(`/staff/tickets/${id}/alert`, 'POST', {}, () => open(id), 'Alert delivery checked. See its delivery status below.')
 }
-function insertTemplate() {
+async function insertTemplate() {
   const template = staffReplyTemplates[Number(templateIndex.value)]
   if (templateIndex.value === '' || !template) return
-  if (reply.value.trim() && !window.confirm('Replace your current draft with this reply template?')) return
+  if (reply.value.trim() && !await confirmSiteAction('Replace your current draft with this reply template?', { title: 'Replace reply draft', confirmText: 'Replace draft' })) return
   reply.value = template.body
 }
 function editIssue(issue?: Issue) {
@@ -178,14 +180,14 @@ function editIssue(issue?: Issue) {
   title.value = issue?.title || ''; body.value = issue?.body || ''; productId.value = issue?.productId || ''
   issueStatus.value = issue?.status || 'open'; published.value = issue?.published ?? true
 }
-function saveIssue() {
-  if (published.value && !window.confirm('Publish this sanitized issue on the public website? Check that it contains no customer details or secrets.')) return
+async function saveIssue() {
+  if (published.value && !await confirmSiteAction('Publish this sanitized issue on the public website? Check that it contains no customer details or secrets.', { title: 'Publish known issue', confirmText: 'Publish issue' })) return
   void write(`/staff/issues${issueId.value ? `/${issueId.value}` : ''}`, issueId.value ? 'PUT' : 'POST',
     { title: title.value, body: body.value, productId: productId.value || undefined, status: issueStatus.value, published: published.value },
     async () => { editIssue(); await load(page.value) }, 'Known issue saved.')
 }
-function publishNotification() {
-  if (!window.confirm(`Publish this ${kind.value} to ${audience.value === 'product' ? productId.value : audience.value} subscribers?`)) return
+async function publishNotification() {
+  if (!await confirmSiteAction(`Publish this ${kind.value} to ${audience.value === 'product' ? productId.value : audience.value} subscribers?`, { title: 'Publish notification', confirmText: 'Publish notification' })) return
   void write('/staff/notifications', 'POST', {
     title: title.value, body: body.value, kind: kind.value, productId: productId.value || undefined, audience: audience.value,
   }, async () => { title.value = ''; body.value = ''; await load(1) }, 'Notification published in the website notification center.')

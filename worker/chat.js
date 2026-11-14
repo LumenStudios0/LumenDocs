@@ -1,5 +1,6 @@
 import { handleCommunity, runCommunityChecks } from './community.js'
 import { adminPermission, getAdminRole, getStaffMembers, hasPermission, rememberMember, resolveAccess, websiteAdminApi } from './access-control.js'
+import { claimDiscordPurchases, submitBuiltByBitClaim } from './builtbybit.js'
 
 const jsonHeaders = {
   'Content-Type': 'application/json; charset=utf-8',
@@ -440,11 +441,15 @@ async function accountLicenseApi(request, env, origin, path) {
   if (path === '/account/builtbybit/authorize' && request.method !== 'POST') {
     return respond({ error: 'Method not allowed' }, 405, origin)
   }
-  if (path === '/account/builtbybit/claim' && request.method !== 'POST') {
+  if ((path === '/account/builtbybit/claim' || path === '/account/builtbybit/discord') && request.method !== 'POST') {
     return respond({ error: 'Method not allowed' }, 405, origin)
   }
   if (path === '/account/license-key' && request.method !== 'GET') {
     return respond({ error: 'Method not allowed' }, 405, origin)
+  }
+
+  if (path === '/account/builtbybit/discord') {
+    return claimDiscordPurchases(user, env, origin, respond)
   }
 
   if (path === '/account/builtbybit/authorize') {
@@ -620,45 +625,7 @@ async function accountLicenseApi(request, env, origin, path) {
       return respond({ error: 'Too many BuiltByBit licenses to safely verify in one claim. Contact support.' }, 413, origin)
     }
 
-    let licenseApiBase
-    try {
-      licenseApiBase = new URL(env.LICENSE_API_URL)
-    } catch {
-      return respond({ error: 'The licensing service URL is invalid' }, 503, origin)
-    }
-    if (licenseApiBase.protocol !== 'https:' || licenseApiBase.username || licenseApiBase.password) {
-      return respond({ error: 'The licensing service URL must use HTTPS' }, 503, origin)
-    }
-
-    try {
-      const upstream = await fetch(
-        new URL(`/v1/admin/users/${encodeURIComponent(user.id)}/builtbybit/claim`, licenseApiBase),
-        {
-          method: 'POST',
-          headers: {
-            Authorization: 'Bearer ' + env.LICENSE_ADMIN_API_TOKEN,
-            'X-Admin-Actor': `customer:${user.id}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ buyerId, licenses }),
-          signal: AbortSignal.timeout(10000),
-        },
-      )
-      const responseText = await upstream.text()
-      if (responseText.length > 50000) {
-        return respond({ error: 'The licensing service returned an oversized response' }, 502, origin)
-      }
-      let responsePayload
-      try {
-        responsePayload = JSON.parse(responseText)
-      } catch {
-        return respond({ error: 'The licensing service returned an invalid response' }, 502, origin)
-      }
-      return respond(responsePayload, upstream.status, origin)
-    } catch (error) {
-      console.error('BuiltByBit license claim failed:', error)
-      return respond({ error: 'Automatic licensing is temporarily unavailable' }, 503, origin)
-    }
+    return submitBuiltByBitClaim(user, buyerId, licenses, env, origin, respond)
   }
 
   if (path === '/account/license-key') {
@@ -953,6 +920,7 @@ export default {
       path !== '/account/license-key' &&
       path !== '/account/builtbybit/authorize' &&
       path !== '/account/builtbybit/claim' &&
+      path !== '/account/builtbybit/discord' &&
       path !== '/account/profile' &&
       path !== '/account/delete' &&
       !path.startsWith('/admin/')
@@ -973,7 +941,7 @@ export default {
               ? 'GET, OPTIONS'
               : path === '/account/license-ips'
                 ? 'GET, PUT, OPTIONS'
-                : path === '/account/builtbybit/authorize' || path === '/account/builtbybit/claim'
+                : path === '/account/builtbybit/authorize' || path === '/account/builtbybit/claim' || path === '/account/builtbybit/discord'
                   ? 'POST, OPTIONS'
                   : path === '/account/license-key'
                     ? 'GET, OPTIONS'
@@ -1033,6 +1001,7 @@ export default {
       path === '/account/license-key' ||
       path === '/account/builtbybit/authorize' ||
       path === '/account/builtbybit/claim' ||
+      path === '/account/builtbybit/discord' ||
       path === '/account/profile' ||
       path === '/account/delete'
     ) {

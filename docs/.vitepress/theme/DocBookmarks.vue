@@ -2,6 +2,8 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useData, useRoute } from 'vitepress'
 import { clearBookmarks, readBookmarks, toggleBookmark } from './doc-bookmarks.mjs'
+import { useSiteDialog } from './site-dialog'
+const { confirm: confirmSiteAction } = useSiteDialog()
 const props = defineProps<{ list?: boolean }>()
 const route = useRoute()
 const { page } = useData()
@@ -21,8 +23,8 @@ function toggle(path = route.path, title = page.value.title) {
     window.dispatchEvent(new Event('lumen-bookmarks-updated'))
   } catch (storageError) { error.value = storageError instanceof Error ? storageError.message : 'This browser could not save bookmarks.' }
 }
-function clear() {
-  if (!window.confirm('Clear all documentation bookmarks saved in this browser?')) return
+async function clear() {
+  if (!await confirmSiteAction('Clear all documentation bookmarks saved in this browser?', { title: 'Clear bookmarks', confirmText: 'Clear bookmarks', danger: true })) return
   try { clearBookmarks(localStorage); bookmarks.value = []; error.value = ''; window.dispatchEvent(new Event('lumen-bookmarks-updated')) }
   catch (storageError) { error.value = storageError instanceof Error ? storageError.message : 'Could not clear bookmarks.' }
 }

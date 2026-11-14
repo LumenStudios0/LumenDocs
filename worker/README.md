@@ -112,6 +112,22 @@ If the dashboard says `LICENSE_SERVICE_UNAVAILABLE`, one or both Worker settings
 
 The customer portal can verify BuiltByBit purchases, issue one shared key across mapped Lumen products, and manage its server IP allowlist. It requires the updated licensing backend and a separately deployed Worker; GitHub Pages deployment alone does not enable these controls.
 
+### Recommended: linked Discord purchase checks
+
+Customers sign in here with Discord, open their [BuiltByBit account settings](https://builtbybit.com/account/), choose **Link Discord account**, and connect that same Discord identity. They then select **Check Discord & claim key** on My licenses. Discord linking alone does not grant anything: the Worker verifies the creator's actual purchase-license records, including the buyer's linked Discord ID.
+
+Configure these server-side prerequisites before this flow can work:
+
+- Store `BUILDBYBIT_API_AUTHORIZATION` as a **Worker secret** containing the complete Authorization header value issued for the studio's BuiltByBit creator API access, including its required scheme. Never put it in a `VITE_` variable, source file, browser, or chat. BuiltByBit API access may require Ultimate or explicitly granted permissions.
+- Set `BUILDBYBIT_RESOURCE_IDS` to the studio's comma-separated resource IDs (up to 50). Keep these consistent with the licensing backend's `BUILDBYBIT_RESOURCE_PRODUCTS` resource-to-product mapping below.
+- Keep `LICENSE_API_URL` and `LICENSE_ADMIN_API_TOKEN` configured, with the backend migration and stable customer-license secret described below.
+
+`POST /account/builtbybit/discord` derives the Discord ID from the signed session, never the request body. It reads `/v2/resources/creator/licenses?with=Buyer`, checks every page (maximum 25 pages / 30 seconds), and matches the exact string `Buyer.discord_id`. Only configured resources and a single verified buyer reach the existing backend claim endpoint. Incomplete pages, ambiguous buyers, API errors, and missing buyer details never submit a partial entitlement refresh. No creator credentials or other buyers' data are returned to the customer.
+
+This uses the [official V2 schema](https://github.com/BuiltByBit/api-openapi-spec/blob/main/spec.yaml), including the License `Buyer` hint and Member `discord_id`. It does not depend on the older V1 Discord lookup. A buyer without any matching Lumen license record cannot be verified through this flow and must use the optional buyer OAuth flow or contact support. There is no background marketplace revocation sync; inactive license records are applied on the next successful complete check.
+
+### Optional: buyer OAuth
+
 - `GET /account/servers` — connected servers for the signed-in Discord account.
 - `GET /account/license-key` — retrieve the customer's shared key.
 - `GET /account/license-ips` — retrieve the shared key's allowed IP addresses.
@@ -137,7 +153,7 @@ Customer routes require a valid `Authorization: Bearer <session>` header and are
 
    Set `BUILDBYBIT_RESOURCE_IDS` as a comma-separated Worker variable containing only the resource IDs configured on the backend, such as `7001,7002`. Optionally set `BUILDBYBIT_REDIRECT_URI` to the exact registered callback; by default the Worker uses `https://lumenstudio.fyi/account/licenses/`.
 4. Configure `LICENSE_API_URL` and `LICENSE_ADMIN_API_TOKEN` as Worker secrets following the licensing-service section above. The API must be reachable over HTTPS, and the token must match the backend's administrator token.
-5. Deploy the Worker with `npx wrangler deploy`, then publish the documentation changes through the GitHub Pages workflow. Sign in with Discord, visit **My licenses**, connect the matching BuiltByBit buyer account, claim the key, and add the public IP address of each server.
+5. Deploy the Worker with `npx wrangler deploy`, then publish the documentation changes through the GitHub Pages workflow. Sign in with Discord, visit **My licenses**, choose **Use BuiltByBit sign-in instead**, connect the matching BuiltByBit buyer account, claim the key, and add the public IP address of each server.
 
 **Important migration behavior:** the first claim revokes that customer's existing active per-product licenses. Customers must replace old keys in every plugin config and add the public server IPs again under **My licenses**. A key with no allowed IP does not validate. Reconnecting BuiltByBit refreshes entitlements; ended purchases are removed on the next customer refresh, because the integration does not receive marketplace webhooks. Back up the database and communicate this behavior before enabling claims for existing customers.
 

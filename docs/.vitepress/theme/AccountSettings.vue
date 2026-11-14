@@ -2,6 +2,8 @@
 import { visibleServiceError, licenseServiceNotice } from './service-errors'
 import { onMounted, ref } from 'vue'
 import { clearDiscordSession, getDiscordSession, storeDiscordSession } from './discord-session'
+import { useSiteDialog } from './site-dialog'
+const { confirm: confirmSiteAction } = useSiteDialog()
 
 interface DiscordUser {
   id: string
@@ -176,8 +178,8 @@ async function copyDiscordId() {
   }
 }
 
-function clearPreviewData() {
-  if (!window.confirm('Clear the IP addresses saved only in this browser? This cannot be undone.')) return
+async function clearPreviewData() {
+  if (!await confirmSiteAction('Clear the IP addresses saved only in this browser? This cannot be undone.', { title: 'Clear browser preview data', confirmText: 'Clear data', danger: true })) return
   try {
     localStorage.removeItem('lumen-account-license-ips')
     notice.value = 'Browser-only license IP preview data was cleared.'
@@ -202,7 +204,7 @@ function signOut() {
 
 async function deleteAccount() {
   if (!user.value || deleteConfirmation.value !== 'DELETE') return
-  if (!window.confirm('Delete your Lumen Studios customer account and revoke its active licenses? This cannot be undone.')) return
+  if (!await confirmSiteAction('Delete your Lumen Studios customer account and revoke its active licenses? This cannot be undone.', { title: 'Delete your account', confirmText: 'Delete account', danger: true })) return
   const endpoint = getWorkerEndpoint('/account/delete')
   if (!endpoint) {
     notice.value = 'Account deletion is not configured in this environment.'

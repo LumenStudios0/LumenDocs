@@ -16,12 +16,15 @@ import CommunityForum from './CommunityForum.vue'
 import CompatibilityChecker from './CompatibilityChecker.vue'
 import ErrorGuides from './ErrorGuides.vue'
 import DocBookmarks from './DocBookmarks.vue'
+import SiteDialog from './SiteDialog.vue'
+import { createSiteDialog, siteDialogKey } from './site-dialog'
 import './custom.css'
 import './website-tools.css'
 
 export default {
   ...DefaultTheme,
   enhanceApp({ app }) {
+    app.provide(siteDialogKey, createSiteDialog())
     app.component('AccountLicenseIps', AccountLicenseIps)
     app.component('AccountLicenseClaim', AccountLicenseClaim)
     app.component('AccountProductCatalog', AccountProductCatalog)
@@ -646,7 +649,7 @@ export default {
             }, '->'),
           ]),
         ]),
-        'layout-bottom': () => h(DocsAssistant),
+        'layout-bottom': () => [h(DocsAssistant), h(SiteDialog)],
       })
     },
   }),

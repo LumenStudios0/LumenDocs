@@ -7,6 +7,8 @@ import { clearAdminTestData, createAdminTestStore, TEST_OWNER_ID } from './admin
 import StaffCommunity from './StaffCommunity.vue'
 import StaffPluginRegistry from './StaffPluginRegistry.vue'
 import StaffAccessSettings from './StaffAccessSettings.vue'
+import { useSiteDialog } from './site-dialog'
+const { confirm: confirmSiteAction } = useSiteDialog()
 
 interface AdminLicense {
   licenseId: string
@@ -241,7 +243,7 @@ function exitTestMode() {
 }
 
 async function resetTestMode() {
-  if (!window.confirm('Reset all local test changes and restore the owner test account? Real customer data is not affected.')) return
+  if (!await confirmSiteAction('Reset all local test changes and restore the owner test account? Real customer data is not affected.', { title: 'Reset local practice data', confirmText: 'Reset practice data' })) return
   await enterTestMode(true)
 }
 
@@ -414,21 +416,21 @@ async function mutate<T>(path: string, init: RequestInit, success: string, accep
 function perform(path: string, payload: Record<string, unknown> | undefined, success: string) {
   return mutate(path, { method: 'POST', ...(payload ? { body: JSON.stringify(payload) } : {}) }, success)
 }
-function confirmAction(message: string, path: string, success: string) {
-  if (window.confirm(message)) void perform(path, { reason: reason.value.trim() || undefined }, success)
+async function confirmAction(message: string, path: string, success: string) {
+  if (await confirmSiteAction(message, { danger: true })) void perform(path, { reason: reason.value.trim() || undefined }, success)
 }
 async function grantLicense() {
   if (!user.value || !grantProductId.value) return
   const selectedProduct = grantOptions.value.find(option => option.productId === grantProductId.value && !option.reason)
   if (!selectedProduct) { error.value = 'Select an available, registered plugin before granting a license.'; return }
   const discordId = user.value.discordId
-  if (licenseKey.value && !window.confirm('Another one-time key is still displayed. Have you saved it? Creating another license will replace the displayed key.')) return
+  if (licenseKey.value && !await confirmSiteAction('Another one-time key is still displayed. Have you saved it? Creating another license will replace the displayed key.', { title: 'Save your one-time key', confirmText: 'Key saved, continue' })) return
   const expiry = grantExpiresAt.value ? new Date(grantExpiresAt.value) : null
   if (expiry && (!Number.isFinite(expiry.getTime()) || expiry.getTime() <= Date.now())) {
     error.value = 'Choose a future expiry date, or leave it blank for a lifetime license.'
     return
   }
-  if (!window.confirm(`Grant ${selectedProduct.name} to ${user.value.globalName || user.value.username} (${user.value.discordId})${expiry ? ` until ${expiry.toLocaleString()}` : ' with lifetime access'}?`)) return
+  if (!await confirmSiteAction(`Grant ${selectedProduct.name} to ${user.value.globalName || user.value.username} (${user.value.discordId})${expiry ? ` until ${expiry.toLocaleString()}` : ' with lifetime access'}?`, { title: 'Grant customer license', confirmText: 'Grant license' })) return
   await mutate<{ licenseKey: string }>('/licenses', {
     method: 'POST', body: JSON.stringify({
       productId: grantProductId.value, customerDiscordId: user.value.discordId,
@@ -454,14 +456,14 @@ function addIp() {
     method: 'POST', body: JSON.stringify({ ipAddress: address }),
   }, 'IP address added.', () => { ipAddress.value = '' })
 }
-function removeIp(address: string) {
-  if (!selectedLicense.value || !window.confirm(`Remove ${address}? Servers using this address may lose license validation.`)) return
+async function removeIp(address: string) {
+  if (!selectedLicense.value || !await confirmSiteAction(`Remove ${address}? Servers using this address may lose license validation.`, { title: 'Remove server IP', confirmText: 'Remove IP', danger: true })) return
   void mutate(`/licenses/${selectedLicense.value.licenseId}/ips?ipAddress=${encodeURIComponent(address)}`, { method: 'DELETE' }, 'IP address removed.')
 }
 async function deleteCustomer() {
   if (!user.value || busy.value) return
   const discordId = user.value.discordId
-  if (window.prompt(`Permanently delete this account, revoke active licenses, and erase its IP/server bindings? Type ${discordId} to confirm.`) !== discordId) return
+  if (!await confirmSiteAction('Permanently delete this account, revoke active licenses, and erase its IP/server bindings?', { title: 'Delete customer account', confirmText: 'Delete account', requiredText: discordId, danger: true })) return
   clearMessages()
   submitting.value = true
   let committed = false

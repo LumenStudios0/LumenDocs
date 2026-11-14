@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ROLES } from '../../../shared/permissions.mjs'
+import { useSiteDialog } from './site-dialog'
+const { confirm: confirmSiteAction } = useSiteDialog()
 
 interface Access { role: string; rank: number; permissions: string[] }
 interface Role { id: string; name: string; rank: number; permissions: string[]; revision: number }
@@ -88,14 +90,14 @@ async function save(path: string, body: object, message: string) {
   } catch (requestError) { error.value = `${committed ? 'Saved, but refresh failed. Refresh before retrying. ' : ''}${messageOf(requestError)}` }
   finally { saving.value = false }
 }
-function assign() {
+async function assign() {
   if (!/^\d{5,22}$/.test(targetId.value) || !assignedRole.value) { error.value = 'Enter a Discord user ID and choose a role.'; return }
-  if (!window.confirm(`Assign ${roles.value.find(role => role.id === assignedRole.value)?.name} to Discord user ${targetId.value}? Their website permissions change immediately.`)) return
+  if (!await confirmSiteAction(`Assign ${roles.value.find(role => role.id === assignedRole.value)?.name} to Discord user ${targetId.value}? Their website permissions change immediately.`, { title: 'Change user role', confirmText: 'Save role' })) return
   void save(`/website/members/${targetId.value}/role`, { role: assignedRole.value, revision: selectedMember.value?.revision ?? 0 }, 'User role saved. Existing sign-in sessions now use the new permissions.')
 }
-function saveRole() {
+async function saveRole() {
   if (!editableRole.value || !selectedRole.value) return
-  if (!window.confirm(`Save permissions for every ${selectedRole.value.name} account? Existing sessions are affected immediately.`)) return
+  if (!await confirmSiteAction(`Save permissions for every ${selectedRole.value.name} account? Existing sessions are affected immediately.`, { title: 'Change role permissions', confirmText: 'Save permissions' })) return
   void save(`/website/roles/${selectedRole.value.id}`, { permissions: permissionDraft.value, revision: selectedRole.value.revision }, 'Role permissions saved.')
 }
 function restorePreset() { permissionDraft.value = [...(ROLES.find(role => role.id === selectedRoleId.value)?.permissions || [])] }

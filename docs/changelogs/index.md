@@ -4,6 +4,8 @@
 
 ### November 14, 2026
 
+- Replaced browser confirmation boxes with purple in-site dialogs, including typed confirmation for permanent deletions.
+- Added BuiltByBit purchase checks through the Discord account linked on BuiltByBit. Actual purchase verification still requires configured studio API access; linking Discord by itself does not grant a license.
 - Shortened the account menu; licenses, purchases and settings remain in My account.
 - Added a notification bell with an unread count across all pages, recent alerts and links to notification preferences. Counts refresh while the site is open and after alerts are read.
 - Added separate Login and Signup tabs using secure Discord verification. Verified accounts are saved to the staff user directory with registration and last-seen dates; repeat sign-ins do not create duplicates.

@@ -3,6 +3,9 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import { getDiscordSession } from './discord-session'
 import { accountRequest, LicenseApiError } from './licensing-api'
 import { visibleServiceError, licenseServiceNotice } from './service-errors'
+import { useSiteDialog } from './site-dialog'
+
+const { confirm: confirmSiteAction } = useSiteDialog()
 
 interface LicenseInfo {
   licenseKey?: string
@@ -108,11 +111,7 @@ async function claimFromCallback(token: string) {
       return true
     }
     if (token !== getDiscordSession()) return true
-    licenseKey.value = result.licenseKey
-    productIds.value = result.claimedProductIds ?? result.license?.productIds ?? []
-    keyVisible.value = false
-    message.value = 'Purchase verified. Your shared Lumen license is ready.'
-    window.dispatchEvent(new Event('lumen-license-claimed'))
+    showClaim(result)
   } catch (error) {
     console.error('Unable to claim the BuiltByBit license:', error)
     errorMessage.value = 'Could not verify the purchase right now. Please try again later.'
@@ -122,7 +121,16 @@ async function claimFromCallback(token: string) {
   return true
 }
 
-async function startClaim() {
+function showClaim(result: LicenseInfo) {
+  if (typeof result.licenseKey !== 'string' || !result.licenseKey) throw new Error('The service did not return your shared license key. Refresh before retrying.')
+  licenseKey.value = result.licenseKey
+  productIds.value = result.claimedProductIds ?? result.license?.productIds ?? []
+  keyVisible.value = false
+  message.value = 'Purchase verified. Your shared Lumen license is ready.'
+  window.dispatchEvent(new Event('lumen-license-claimed'))
+}
+
+async function startClaim(mode: 'discord' | 'oauth' = 'discord') {
   errorMessage.value = ''
   message.value = ''
   const token = readSession()
@@ -130,9 +138,9 @@ async function startClaim() {
     errorMessage.value = 'Sign in with Discord before connecting a BuiltByBit purchase.'
     return
   }
-  if (!licenseKey.value && !window.confirm('Claiming your first shared key replaces old per-product keys. You will need to update your plugins and add your server IPs again. Continue to BuiltByBit?')) return
+  if (!licenseKey.value && !await confirmSiteAction('Claiming your first shared key replaces old per-product keys. You will need to update your plugins and add your server IPs again.', { title: 'Verify BuiltByBit purchases', confirmText: mode === 'discord' ? 'Check linked Discord' : 'Continue to BuiltByBit' })) return
 
-  const endpoint = endpointFor('/account/builtbybit/authorize')
+  const endpoint = endpointFor(mode === 'discord' ? '/account/builtbybit/discord' : '/account/builtbybit/authorize')
   if (!endpoint) {
     errorMessage.value = 'Automatic licensing is not connected yet.'
     return
@@ -140,6 +148,11 @@ async function startClaim() {
 
   connecting.value = true
   try {
+    if (mode === 'discord') {
+      const result = await accountRequest<LicenseInfo>('/account/builtbybit/discord', { method: 'POST' })
+      if (token === getDiscordSession()) showClaim(result)
+      return
+    }
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
@@ -149,11 +162,12 @@ async function startClaim() {
       errorMessage.value = await visibleServiceError(result.error ?? 'Could not start BuiltByBit sign-in.', response.status, 'licensing')
       return
     }
+    if (token !== getDiscordSession()) return
     sessionStorage.setItem('lumen-builtbybit-state', result.state)
     window.location.assign(result.authorizeUrl)
   } catch (error) {
     console.error('Unable to start BuiltByBit purchase linking:', error)
-    errorMessage.value = 'Could not connect to BuiltByBit. Please try again later.'
+    errorMessage.value = error instanceof Error ? error.message : 'Could not connect to BuiltByBit. Please try again later.'
   } finally {
     connecting.value = false
   }
@@ -203,17 +217,20 @@ onUnmounted(() => window.removeEventListener('lumen-discord-user', handleSession
     <div class="claim-copy">
       <span class="claim-eyebrow"><i /> BUILTBYBIT PURCHASE LINK</span>
       <h2 id="builtbybit-claim-title">Your purchase.<br><span>Your Lumen key.</span></h2>
-      <p>Connect your BuiltByBit account to verify your Lumen purchases and get one shared license key for your eligible plugins.</p>
+      <p>Link Discord in your BuiltByBit account, then check your purchases here to get one shared Lumen license key.</p>
       <ul>
-        <li>Sign in securely with BuiltByBit.</li>
-        <li>We check your own resource licenses; we never ask for your password.</li>
+        <li>On BuiltByBit, choose Link Discord account.</li>
+        <li>Use the same Discord account you use on this website.</li>
+        <li>We verify the linked account and its Lumen purchases; we never ask for your password.</li>
         <li>Keep the same Lumen key for your eligible plugins.</li>
       </ul>
-      <button class="claim-button" type="button" :disabled="loading || connecting" @click="startClaim">
-        {{ connecting ? 'Connecting…' : loading ? 'Checking your account…' : licenseKey ? 'Reconnect BuiltByBit & refresh purchases' : 'Connect BuiltByBit & claim key' }}
+      <a class="claim-link-discord" href="https://builtbybit.com/account/" target="_blank" rel="noopener noreferrer">Link Discord on BuiltByBit <span aria-hidden="true">↗</span></a>
+      <button class="claim-button" type="button" :disabled="loading || connecting" @click="startClaim('discord')">
+        {{ connecting ? 'Checking purchases…' : loading ? 'Checking your account…' : licenseKey ? 'Refresh purchases with Discord' : 'Check Discord & claim key' }}
         <span aria-hidden="true">↗</span>
       </button>
-      <p class="claim-refresh-note">New purchases require reconnecting. Your first shared-key claim replaces legacy per-product keys; update your plugin configs and re-add your IPs.</p>
+      <button class="claim-oauth" type="button" :disabled="loading || connecting" @click="startClaim('oauth')">Use BuiltByBit sign-in instead</button>
+      <p class="claim-refresh-note">New purchases require another check. Your first shared-key claim replaces legacy per-product keys; update your plugin configs and re-add your IPs.</p>
       <p v-if="message" class="claim-message" role="status">{{ message }}</p>
       <p v-if="errorMessage" :class="errorMessage === licenseServiceNotice ? 'claim-message' : 'claim-error'" :role="errorMessage === licenseServiceNotice ? 'status' : 'alert'">{{ errorMessage }}</p>
     </div>
@@ -234,13 +251,17 @@ onUnmounted(() => window.removeEventListener('lumen-discord-user', handleSession
         <span class="claim-empty-orbit" aria-hidden="true" />
         <span class="claim-empty-key" aria-hidden="true">⌁</span>
         <b>{{ loading ? 'Checking for your key…' : 'Your key will appear here' }}</b>
-        <small>Connect BuiltByBit to verify your purchases.</small>
+        <small>Link Discord on BuiltByBit, then check your purchases.</small>
       </div>
     </div>
   </section>
 </template>
 
 <style scoped>
+.claim-link-discord { display: inline-block; margin-bottom: 14px; color: var(--vp-c-brand-1); font-size: 13px; font-weight: 600; }
+.claim-oauth { display: block; margin-top: 12px; color: var(--vp-c-text-2); font-size: 11px; text-decoration: underline; cursor: pointer; }
+.claim-oauth:disabled { opacity: .5; cursor: not-allowed; }
+.claim-oauth:focus-visible, .claim-link-discord:focus-visible { outline: 2px solid var(--vp-c-brand-1); outline-offset: 3px; }
 .builtbybit-claim {
   position: relative;
   display: grid;
