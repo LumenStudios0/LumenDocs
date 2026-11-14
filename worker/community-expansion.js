@@ -1,4 +1,5 @@
 import { hasPermission, resolveAccess } from './access-control.js'
+import { trialProducts as trialCatalog } from '../shared/trial-products.mjs'
 
 export function validImageUrl(value) {
   if (value == null) return true
@@ -29,13 +30,7 @@ export async function expansionRoute(request, env, suffix, user, access, deps, h
     return parsed.error ? { response: reply({ error: parsed.error }, parsed.status) } : parsed
   }
   if (suffix === '/trial-products' && method === 'GET') {
-    try {
-      return reply({ items: (await trialProducts(env, user, access)).map(product => ({
-        productId: product.productId, name: typeof product.name === 'string' ? product.name : product.productId,
-      })) })
-    } catch {
-      return reply({ error: 'Trial products are temporarily unavailable. The active licensing registry could not be verified.' }, 503)
-    }
+    return reply({ items: trialCatalog })
   }
   if (method === 'GET' && ['/incidents', '/updates', '/staff/scheduled'].includes(suffix)) {
     const page = parsePage(url)
@@ -141,18 +136,19 @@ export async function expansionRoute(request, env, suffix, user, access, deps, h
       if (parsed.response) return parsed.response
       const body = parsed.value ?? {}
       if (!validText(body.productId, 1, 100) || !validText(body.reason, 5, 2000)) return reply({ error: 'Provide a product and a reason of 5–2000 characters' }, 400)
-      try {
-        const available = await trialProducts(env, user, access)
-        if (!available.some(product => product.productId === body.productId.trim())) {
-          return reply({ error: 'Choose an available trial product from the licensing registry' }, 400)
-        }
-      } catch {
-        return reply({ error: 'Trial products are temporarily unavailable. The active licensing registry could not be verified.' }, 503)
+      if (!trialCatalog.some(product => product.productId === body.productId.trim())) {
+        return reply({ error: 'Choose a product from the trial list' }, 400)
       }
       const row = { id: crypto.randomUUID(), product_id: body.productId.trim(), reason: body.reason.trim(),
         status: 'pending', created_at: new Date().toISOString(), review_note: '', expires_at: null }
-      const result = await db.prepare(`INSERT OR IGNORE INTO community_trials (id,user_id,product_id,reason,created_at) VALUES (?,?,?,?,?)`)
-        .bind(row.id, user.id, row.product_id, row.reason, row.created_at).run()
+      const [result] = await db.batch([
+        db.prepare(`INSERT OR IGNORE INTO community_trials (id,user_id,product_id,reason,created_at) VALUES (?,?,?,?,?)`)
+          .bind(row.id, user.id, row.product_id, row.reason, row.created_at),
+        db.prepare(`INSERT INTO community_notifications (id,title,body,kind,audience,link,created_at)
+          SELECT ?,'New trial request','A product trial request is ready for review.','ticket','staff','/admin/',?
+          WHERE EXISTS (SELECT 1 FROM community_trials WHERE id = ?)`)
+          .bind(crypto.randomUUID(), row.created_at, row.id),
+      ])
       return result.meta?.changes ? reply({ item: trialView(row, false) }, 201) : reply({ error: 'A request already awaits review for this product' }, 409)
     }
   }

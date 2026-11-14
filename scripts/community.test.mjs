@@ -1211,21 +1211,21 @@ test('trial review grants once only after verifying active linked product and no
   globalThis.fetch = async (input, options) => {
     const url = new URL(input)
     assert.equal(options.headers.Authorization, `Bearer ${config.LICENSE_ADMIN_API_TOKEN}`)
-    if (url.pathname === '/v1/admin/products') return Response.json({ items: [{ productId: 'shards', active: true, plugins: ['shards-plugin'] }], page: 1, pageSize: 100, total: 1 })
+    if (url.pathname === '/v1/admin/products') return Response.json({ items: [{ productId: '1', active: true, plugins: ['shards-plugin'] }], page: 1, pageSize: 100, total: 1 })
     if (url.pathname === `/v1/admin/customers/${customerId}`) return Response.json({ customerDiscordId: customerId, status: 'active', products: [] })
     assert.equal(url.pathname, '/v1/admin/licenses')
     const body = JSON.parse(options.body)
     assert.equal(body.customerDiscordId, customerId)
-    assert.equal(body.productId, 'shards')
+    assert.equal(body.productId, '1')
     assert.ok(Math.abs(Date.parse(body.expiresAt) - Date.now() - 9 * 86400000) < 10000)
     grants++
     return Response.json({ licenseId: 'license-1', licenseKey: 'secret-license-key' }, { status: 201 })
   }
-  const created = await (await api('/community/trials', 'POST', { productId: 'shards', reason: 'I want to evaluate this plugin.' }, customer)).json()
+  const created = await (await api('/community/trials', 'POST', { productId: '1', reason: 'I want to evaluate this plugin.' }, customer)).json()
   const id = created.item.id
   assert.equal(created.item.status, 'pending')
-  assert.equal((await api('/community/trials', 'POST', { productId: 'shards', reason: 'Duplicate request' }, customer)).status, 409)
-  assert.equal((await api('/community/trials', 'POST', { productId: 'shards', reason: 'x'.repeat(13000) }, customer)).status, 413)
+  assert.equal((await api('/community/trials', 'POST', { productId: '1', reason: 'Duplicate request' }, customer)).status, 409)
+  assert.equal((await api('/community/trials', 'POST', { productId: '1', reason: 'x'.repeat(13000) }, customer)).status, 413)
   assert.equal((await (await api('/community/trials', 'GET', undefined, other)).json()).total, 0)
   assert.equal((await api(`/community/staff/trials/${id}`, 'PUT', { status: 'approved' }, customer)).status, 403)
   const statuses = await Promise.all([1, 2].map(() => api(`/community/staff/trials/${id}`, 'PUT', { status: 'approved', durationDays: 9, reviewNote: 'Approved after review' }).then(response => response.status)))
@@ -1239,38 +1239,56 @@ test('trial review grants once only after verifying active linked product and no
   assert.doesNotMatch(JSON.stringify(inbox), /secret-license-key/)
 })
 
-test('trial catalog exposes only exact active linked registry IDs across verified pages', async t => {
+test('customers can select and submit trial requests during a licensing outage', async t => {
   const { db, api } = await accessFixture(t)
   const customer = await tokenFor(customerId, 'Customer')
   const originalFetch = globalThis.fetch
   t.after(() => { globalThis.fetch = originalFetch })
-  const first = Array.from({ length: 100 }, (_, index) => ({
-    productId: index === 0 ? '1' : `inactive-${index}`, name: index === 0 ? 'LumenShards' : 'Inactive',
-    active: index === 0, plugins: ['shards'], token: 'server-only-token',
-  }))
-  const last = [
-    { productId: 'gladiator', name: 'Gladiator', active: true, plugins: ['gladiator'], token: 'server-only-token' },
-    { productId: 'unlinked', name: 'Not grantable', active: true, plugins: [] },
-  ]
-  let incomplete = false
-  globalThis.fetch = async (input, options) => {
-    assert.equal(options.headers['X-Admin-Actor'], `customer:${customerId}`)
-    const page = Number(new URL(input).searchParams.get('page'))
-    return Response.json({ items: page === 1 ? first : incomplete ? [] : last, page, pageSize: 100, total: 102 })
-  }
+  globalThis.fetch = async () => { throw new Error('Licensing is offline') }
   assert.equal((await api('/community/trial-products', 'GET', undefined, null)).status, 401)
   const catalog = await (await api('/community/trial-products', 'GET', undefined, customer)).json()
-  assert.deepEqual(catalog.items, [{ productId: '1', name: 'LumenShards' }, { productId: 'gladiator', name: 'Gladiator' }])
-  assert.doesNotMatch(JSON.stringify(catalog), /server-only-token|inactive-|unlinked/)
-  for (const productId of ['lumen-shards', 'bogus', 'unlinked', 'inactive-1', '../licenses']) {
+  assert.ok(catalog.items.some(product => product.productId === '1' && product.name === 'LumenShards'))
+  assert.ok(catalog.items.some(product => product.productId === 'lumenduels'))
+  for (const productId of ['lumen-shards', 'bogus', 'unlinked', '../licenses']) {
     assert.equal((await api('/community/trials', 'POST', { productId, reason: 'Evaluate the product' }, customer)).status, 400)
   }
   assert.equal(db.sqlite.prepare('SELECT COUNT(*) AS n FROM community_trials').get().n, 0)
-  assert.equal((await api('/community/trials', 'POST', { productId: '1', reason: 'Evaluate the product' }, customer)).status, 201)
-  incomplete = true
-  assert.equal((await api('/community/trial-products', 'GET', undefined, customer)).status, 503)
-  assert.equal((await api('/community/trials', 'POST', { productId: 'gladiator', reason: 'Evaluate the product' }, customer)).status, 503)
+  const submitted = await api('/community/trials', 'POST', { productId: '1', reason: 'Evaluate the product' }, customer)
+  assert.equal(submitted.status, 201)
+  const { item } = await submitted.json()
+  assert.equal(item.status, 'pending')
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM community_notifications WHERE audience = 'staff' AND title = 'New trial request'").get().n, 1)
+  assert.equal((await api('/community/trials', 'POST', { productId: '1', reason: 'Try again' }, customer)).status, 409)
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM community_notifications WHERE audience = 'staff'").get().n, 1)
+  assert.equal((await api(`/community/staff/trials/${item.id}`, 'PUT', { status: 'approved' })).status, 503)
+  assert.equal(db.sqlite.prepare('SELECT status FROM community_trials WHERE id = ?').get(item.id).status, 'pending')
   assert.equal(db.sqlite.prepare('SELECT COUNT(*) AS n FROM community_trials').get().n, 1)
+})
+
+test('trial approval verifies every registry page before granting', async t => {
+  const { db, api } = await accessFixture(t)
+  const customer = await tokenFor(customerId, 'Customer')
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  const first = Array.from({ length: 100 }, (_, index) => ({ productId: `other-${index}`, active: false, plugins: [] }))
+  let incomplete = true, grants = 0
+  globalThis.fetch = async input => {
+    const url = new URL(input)
+    if (url.pathname === '/v1/admin/products') {
+      const page = Number(url.searchParams.get('page'))
+      return Response.json({ items: page === 1 ? first : incomplete ? [] : [{ productId: '1', active: true, plugins: ['shards'] }], page, pageSize: 100, total: 101 })
+    }
+    if (url.pathname.includes('/customers/')) return Response.json({ customerDiscordId: customerId, status: 'active', products: [] })
+    grants++
+    return Response.json({ licenseId: 'trial-license' }, { status: 201 })
+  }
+  const created = await (await api('/community/trials', 'POST', { productId: '1', reason: 'Evaluate the product' }, customer)).json()
+  assert.equal((await api(`/community/staff/trials/${created.item.id}`, 'PUT', { status: 'approved' })).status, 503)
+  assert.equal(grants, 0)
+  assert.equal(db.sqlite.prepare('SELECT status FROM community_trials WHERE id = ?').get(created.item.id).status, 'pending')
+  incomplete = false
+  assert.equal((await api(`/community/staff/trials/${created.item.id}`, 'PUT', { status: 'approved' })).status, 200)
+  assert.equal(grants, 1)
 })
 
 test('new licensing customers can receive trials only after confirmed customer lookup 404', async t => {
@@ -1341,12 +1359,12 @@ test('trial approvals protect paid ownership, require grants permission, and loc
   let grants = 0
   globalThis.fetch = async input => {
     const url = new URL(input)
-    if (url.pathname === '/v1/admin/products') return Response.json({ items: [{ productId: 'shards', active, plugins: ['shards'] }], page: 1, pageSize: 100, total: 1 })
-    if (url.pathname.includes('/customers/')) return Response.json({ customerDiscordId: customerId, status: 'active', products: owned ? [{ productId: 'shards', status: 'active', expiresAt: null }] : [] })
+    if (url.pathname === '/v1/admin/products') return Response.json({ items: [{ productId: '1', active, plugins: ['shards'] }], page: 1, pageSize: 100, total: 1 })
+    if (url.pathname.includes('/customers/')) return Response.json({ customerDiscordId: customerId, status: 'active', products: owned ? [{ productId: '1', status: 'active', expiresAt: null }] : [] })
     grants++
     throw new Error('Timeout after grant may have committed')
   }
-  const id = (await (await api('/community/trials', 'POST', { productId: 'shards', reason: 'Please evaluate my trial request' }, customer)).json()).item.id
+  const id = (await (await api('/community/trials', 'POST', { productId: '1', reason: 'Please evaluate my trial request' }, customer)).json()).item.id
   assert.equal((await api('/community/staff/trials', 'GET', undefined, support)).status, 403)
   assert.equal((await api(`/community/staff/trials/${id}`, 'PUT', { status: 'declined' }, support)).status, 403)
   assert.equal((await api(`/community/staff/trials/${id}`, 'PUT', { status: 'approved' }, support)).status, 403)
@@ -1361,7 +1379,7 @@ test('trial approvals protect paid ownership, require grants permission, and loc
   assert.equal((await api(`/community/staff/trials/${id}`, 'PUT', { status: 'approved' })).status, 409)
   assert.equal(grants, 1)
   assert.equal(db.sqlite.prepare('SELECT status FROM community_trials WHERE id = ?').get(id).status, 'grant_failed')
-  assert.equal((await api('/community/trials', 'POST', { productId: 'shards', reason: 'Retrying is not safe' }, customer)).status, 409)
+  assert.equal((await api('/community/trials', 'POST', { productId: '1', reason: 'Retrying is not safe' }, customer)).status, 409)
 })
 
 test('staff with license-grant permission can list and approve trials without ticket-management permission', async t => {
@@ -1395,12 +1413,12 @@ test('confirmed trial grants are never replayed when local finalization fails', 
   let grants = 0
   globalThis.fetch = async input => {
     const url = new URL(input)
-    if (url.pathname === '/v1/admin/products') return Response.json({ items: [{ productId: 'shards', active: true, plugins: ['shards'] }], page: 1, pageSize: 100, total: 1 })
+    if (url.pathname === '/v1/admin/products') return Response.json({ items: [{ productId: '1', active: true, plugins: ['shards'] }], page: 1, pageSize: 100, total: 1 })
     if (url.pathname.includes('/customers/')) return Response.json({ customerDiscordId: customerId, status: 'active', products: [] })
     grants++
     return Response.json({ licenseKey: 'key-must-stay-private' }, { status: 201 })
   }
-  const id = (await (await api('/community/trials', 'POST', { productId: 'shards', reason: 'Evaluate the product' }, customer)).json()).item.id
+  const id = (await (await api('/community/trials', 'POST', { productId: '1', reason: 'Evaluate the product' }, customer)).json()).item.id
   db.failBatchAt = 1
   const result = await api(`/community/staff/trials/${id}`, 'PUT', { status: 'approved' })
   assert.equal(result.status, 502)
@@ -1411,7 +1429,7 @@ test('confirmed trial grants are never replayed when local finalization fails', 
   assert.equal((await api(`/community/staff/trials/${id}`, 'PUT', { status: 'approved' })).status, 409)
   assert.equal(grants, 1)
   assert.equal(db.sqlite.prepare('SELECT status FROM community_trials WHERE id = ?').get(id).status, 'processing')
-  assert.equal(db.sqlite.prepare('SELECT COUNT(*) AS n FROM community_notifications').get().n, 0)
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM community_notifications WHERE kind = 'license'").get().n, 0)
 })
 
 test('follow-up cron bounds each batch and honors per-ticket configured delay', async t => {
