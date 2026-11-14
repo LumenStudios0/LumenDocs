@@ -12,7 +12,7 @@ export function validImageUrl(value) {
 
 function trialView(row, staff) {
   return {
-    id: row.id, productId: row.product_id, reason: row.reason, status: row.status,
+    id: row.id, productId: row.product_id, reason: row.reason, status: row.status, requestedDurationDays: row.requested_duration_days,
     createdAt: row.created_at, reviewNote: row.review_note, expiresAt: row.expires_at,
     ...(staff ? { customerDiscordId: row.user_id } : {}),
   }
@@ -136,14 +136,16 @@ export async function expansionRoute(request, env, suffix, user, access, deps, h
       if (parsed.response) return parsed.response
       const body = parsed.value ?? {}
       if (!validText(body.productId, 1, 100) || !validText(body.reason, 5, 2000)) return reply({ error: 'Provide a product and a reason of 5–2000 characters' }, 400)
+      const requestedDurationDays = body.requestedDurationDays === undefined ? 7 : body.requestedDurationDays
+      if (![1, 3, 7, 30].includes(requestedDurationDays)) return reply({ error: 'Choose a trial duration of 1, 3, 7, or 30 days' }, 400)
       if (!trialCatalog.some(product => product.productId === body.productId.trim())) {
         return reply({ error: 'Choose a product from the trial list' }, 400)
       }
       const row = { id: crypto.randomUUID(), product_id: body.productId.trim(), reason: body.reason.trim(),
-        status: 'pending', created_at: new Date().toISOString(), review_note: '', expires_at: null }
+        status: 'pending', created_at: new Date().toISOString(), review_note: '', expires_at: null, requested_duration_days: requestedDurationDays }
       const [result] = await db.batch([
-        db.prepare(`INSERT OR IGNORE INTO community_trials (id,user_id,product_id,reason,created_at) VALUES (?,?,?,?,?)`)
-          .bind(row.id, user.id, row.product_id, row.reason, row.created_at),
+        db.prepare(`INSERT OR IGNORE INTO community_trials (id,user_id,product_id,reason,created_at,requested_duration_days) VALUES (?,?,?,?,?,?)`)
+          .bind(row.id, user.id, row.product_id, row.reason, row.created_at, requestedDurationDays),
         db.prepare(`INSERT INTO community_notifications (id,title,body,kind,audience,link,created_at)
           SELECT ?,'New trial request','A product trial request is ready for review.','ticket','staff','/admin/',?
           WHERE EXISTS (SELECT 1 FROM community_trials WHERE id = ?)`)
@@ -157,13 +159,13 @@ export async function expansionRoute(request, env, suffix, user, access, deps, h
     const parsed = await parsedBody(3000)
     if (parsed.response) return parsed.response
     const body = parsed.value ?? {}
-    const durationDays = body.durationDays ?? 7
     if (!['approved', 'declined'].includes(body.status) || !validText(body.reviewNote ?? '', 0, 2000) ||
-        !Number.isInteger(durationDays) || durationDays < 1 || durationDays > 30) return reply({ error: 'Invalid trial review or duration (1–30 days)' }, 400)
+        (body.durationDays !== undefined && (!Number.isInteger(body.durationDays) || body.durationDays < 1 || body.durationDays > 30))) return reply({ error: 'Invalid trial review or duration (1–30 days)' }, 400)
     if (body.status === 'approved' && !hasPermission(access, 'licenses.grant')) return reply({ error: 'Permission required: licenses.grant' }, 403)
     const row = await db.prepare('SELECT * FROM community_trials WHERE id = ?').bind(match[1]).first()
     if (!row) return reply({ error: 'Trial request not found' }, 404)
     if (row.status !== 'pending') return reply({ error: 'This request has already been reviewed or requires manual grant verification' }, 409)
+    const durationDays = body.durationDays ?? row.requested_duration_days
     if (body.status === 'declined') {
       const saved = await db.prepare("UPDATE community_trials SET status = 'declined', review_note = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ? AND status = 'pending'")
         .bind((body.reviewNote ?? '').trim(), user.id, new Date().toISOString(), row.id).run()

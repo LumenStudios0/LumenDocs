@@ -67,7 +67,7 @@ export interface Notification {
   link: string
   imageUrl?: string | null
 }
-export interface TrialRequest { id: string; productId: string; reason: string; status: 'pending' | 'processing' | 'approved' | 'declined' | 'failed' | 'grant_failed'; createdAt: string; reviewNote?: string; customerDiscordId?: string; expiresAt?: string | null }
+export interface TrialRequest { id: string; productId: string; reason: string; requestedDurationDays: number; status: 'pending' | 'processing' | 'approved' | 'declined' | 'failed' | 'grant_failed'; createdAt: string; reviewNote?: string; customerDiscordId?: string; expiresAt?: string | null }
 export interface Incident { id: string; serviceId: string; status: string; previousStatus: string; startedAt: string; resolvedAt: string | null; message: string }
 export interface Preferences { updates: boolean; announcements: boolean; ticketReplies: boolean; products: string[] }
 export type ServiceStatus = 'operational' | 'degraded' | 'outage' | 'maintenance' | 'unknown'

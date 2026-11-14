@@ -29,7 +29,7 @@ async function tokenFor(id, name) {
 
 function createD1() {
   const sqlite = new DatabaseSync(':memory:')
-  const migrations = Promise.all(['0001_community.sql', '0002_ticket_routing.sql', '0003_community_forum.sql', '0004_website_access.sql', '0005_member_registration.sql', '0006_community_expansion.sql', '0007_product_tools.sql'].map(
+  const migrations = Promise.all(['0001_community.sql', '0002_ticket_routing.sql', '0003_community_forum.sql', '0004_website_access.sql', '0005_member_registration.sql', '0006_community_expansion.sql', '0007_product_tools.sql', '0010_trial_duration.sql'].map(
     name => readFile(new URL(`../worker/migrations/community/${name}`, import.meta.url), 'utf8'),
   ))
   const database = {
@@ -1221,9 +1221,10 @@ test('trial review grants once only after verifying active linked product and no
     grants++
     return Response.json({ licenseId: 'license-1', licenseKey: 'secret-license-key' }, { status: 201 })
   }
-  const created = await (await api('/community/trials', 'POST', { productId: '1', reason: 'I want to evaluate this plugin.' }, customer)).json()
+  const created = await (await api('/community/trials', 'POST', { productId: '1', reason: 'I want to evaluate this plugin.', requestedDurationDays: 3 }, customer)).json()
   const id = created.item.id
   assert.equal(created.item.status, 'pending')
+  assert.equal(created.item.requestedDurationDays, 3)
   assert.equal((await api('/community/trials', 'POST', { productId: '1', reason: 'Duplicate request' }, customer)).status, 409)
   assert.equal((await api('/community/trials', 'POST', { productId: '1', reason: 'x'.repeat(13000) }, customer)).status, 413)
   assert.equal((await (await api('/community/trials', 'GET', undefined, other)).json()).total, 0)
@@ -1237,6 +1238,38 @@ test('trial review grants once only after verifying active linked product and no
   assert.equal(inbox.total, 1)
   assert.equal(inbox.items[0].kind, 'license')
   assert.doesNotMatch(JSON.stringify(inbox), /secret-license-key/)
+})
+
+test('trial requests preserve selected durations and default approval to the requested length', async t => {
+  const { db, api } = await accessFixture(t)
+  const customer = await tokenFor(customerId, 'Customer')
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  let expiresAt
+  globalThis.fetch = async (input, options) => {
+    const url = new URL(input)
+    if (url.pathname === '/v1/admin/products') return Response.json({ items: [{ productId: '1', active: true, plugins: ['shards'] }], page: 1, pageSize: 100, total: 1 })
+    if (url.pathname.includes('/customers/')) return Response.json({ customerDiscordId: customerId, status: 'active', products: [] })
+    expiresAt = JSON.parse(options.body).expiresAt
+    return Response.json({ licenseId: 'trial-license' }, { status: 201 })
+  }
+  for (const invalid of [null, 0, 2, 31, '7']) {
+    assert.equal((await api('/community/trials', 'POST', { productId: '1', reason: 'Evaluate plugin', requestedDurationDays: invalid }, customer)).status, 400)
+  }
+  const products = ['lumenduels', 'lumenduels-premium', 'lumeneconomy', '1']
+  for (const [index, days] of [1, 3, 7, 30].entries()) {
+    const response = await api('/community/trials', 'POST', { productId: products[index], reason: 'Evaluate plugin', requestedDurationDays: days }, customer)
+    assert.equal(response.status, 201)
+    assert.equal((await response.json()).item.requestedDurationDays, days)
+  }
+  const listed = (await (await api('/community/staff/trials')).json()).items
+  assert.deepEqual(listed.map(item => item.requestedDurationDays).sort((a, b) => a - b), [1, 3, 7, 30])
+  const month = listed.find(item => item.productId === '1')
+  assert.equal((await api(`/community/staff/trials/${month.id}`, 'PUT', { status: 'approved' })).status, 200)
+  assert.ok(Math.abs(Date.parse(expiresAt) - Date.now() - 30 * 86400000) < 10000)
+  assert.equal(db.sqlite.prepare('SELECT requested_duration_days FROM community_trials WHERE id = ?').get(month.id).requested_duration_days, 30)
+  const legacy = await api('/community/trials', 'POST', { productId: 'gladiator', reason: 'Evaluate plugin' }, customer)
+  assert.equal((await legacy.json()).item.requestedDurationDays, 7)
 })
 
 test('customers can select and submit trial requests during a licensing outage', async t => {
