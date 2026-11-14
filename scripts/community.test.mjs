@@ -643,6 +643,8 @@ test('BuiltByBit status distinguishes unavailable and invalid API responses and 
     [() => new Response('<html>Challenge</html>', { status: 401 }), 'degraded'],
     [() => Response.json({}), 'degraded'],
     [() => Response.json({ error: 'unauthenticated' }, { status: 401 }), 'operational'],
+    [() => Response.json({ error: { code: 'HeaderMissingError' } }, { status: 400 }), 'operational'],
+    [() => Response.json({ error: { code: 'OtherError' } }, { status: 400 }), 'outage'],
     [() => { throw new Error('Connection refused') }, 'outage'],
   ]) {
     globalThis.fetch = async input => String(input).startsWith('https://api.builtbybit.com/')
@@ -660,6 +662,26 @@ test('BuiltByBit status distinguishes unavailable and invalid API responses and 
   const automatic = (await (await api('/community/status')).json()).services.find(service => service.id === 'builtbybit')
   assert.equal(automatic.status, 'outage')
   assert.equal(automatic.overrideStatus, null)
+})
+
+test('website status accepts large HTML pages but rejects empty or invalid responses', async t => {
+  const { api, config } = await accessFixture(t)
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  for (const [response, expected] of [
+    [() => new Response('<html>' + 'x'.repeat(53000) + '</html>', { headers: { 'Content-Type': 'text/html' } }), 'operational'],
+    [() => new Response('', { headers: { 'Content-Type': 'text/html' } }), 'degraded'],
+    [() => new Response('not html', { headers: { 'Content-Type': 'application/json' } }), 'degraded'],
+    [() => new Response('Unavailable', { status: 503 }), 'outage'],
+  ]) {
+    globalThis.fetch = async input => String(input) === 'https://lumenstudio.fyi/'
+      ? response() : new Response(null, { status: 503 })
+    let pending
+    await worker.scheduled({}, config, { waitUntil: promise => { pending = promise } })
+    await pending
+    const website = (await (await api('/community/status')).json()).services.find(service => service.id === 'website')
+    assert.equal(website.automaticStatus, expected)
+  }
 })
 
 test('community support forum is public to read, Discord-only to post, and staff-moderated', async () => {

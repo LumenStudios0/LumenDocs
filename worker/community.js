@@ -570,8 +570,9 @@ async function updateStatus(request, env, deps, id) {
 async function checkedStatus(url, options = {}) {
   const response = await fetch(url, { redirect: options.redirect ?? 'follow', signal: AbortSignal.timeout(6000), ...options })
   const expectedAuthFailure = options.builtbybit && response.status === 401
+  const missingAuthHeader = options.builtbybit && response.status === 400
   if (options.builtbybit && response.status === 429) return 'degraded'
-  if (!expectedAuthFailure && (response.status < 200 || response.status >= 400)) return 'outage'
+  if (!expectedAuthFailure && !missingAuthHeader && (response.status < 200 || response.status >= 400)) return 'outage'
   if (options.discord) {
     const location = response.headers.get('location')
     if (response.status !== 302 || !location) return 'degraded'
@@ -580,8 +581,24 @@ async function checkedStatus(url, options = {}) {
       return target.origin === 'https://discord.com' && target.pathname === '/oauth2/authorize' ? 'operational' : 'degraded'
     } catch { return 'degraded' }
   }
+  const pathname = new URL(url).pathname
+  const contentType = (response.headers.get('content-type') ?? '').toLowerCase()
   const reader = response.body?.getReader()
   if (!reader) return 'degraded'
+  if (pathname === '/' && !options.builtbybit) {
+    if (!contentType.includes('text/html')) {
+      await reader.cancel()
+      return 'degraded'
+    }
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) return 'degraded'
+      if (value.byteLength) {
+        await reader.cancel()
+        return 'operational'
+      }
+    }
+  }
   let bytes = 0
   const chunks = []
   while (true) {
@@ -594,8 +611,6 @@ async function checkedStatus(url, options = {}) {
     }
     chunks.push(value)
   }
-  const pathname = new URL(url).pathname
-  const contentType = (response.headers.get('content-type') ?? '').toLowerCase()
   if (pathname === '/v1/admin/products' || options.builtbybit) {
     if (!contentType.includes('json')) return 'degraded'
     try {
@@ -605,11 +620,9 @@ async function checkedStatus(url, options = {}) {
       for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.length }
       const payload = JSON.parse(new TextDecoder().decode(body))
       if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return 'degraded'
+      if (missingAuthHeader) return payload.error?.code === 'HeaderMissingError' ? 'operational' : 'outage'
       if (options.builtbybit && (!expectedAuthFailure || !(payload.error || payload.errors || payload.result === 'error'))) return 'degraded'
     } catch { return 'degraded' }
-  } else if (pathname === '/') {
-    const length = chunks.reduce((total, chunk) => total + chunk.length, 0)
-    if (!contentType.includes('text/html') || length === 0) return 'degraded'
   }
   return 'operational'
 }
