@@ -12,6 +12,7 @@ ALLOWED_ORIGIN = "https://lumenstudio.fyi"
 ALLOWED_ORIGINS = "https://www.lumenstudio.fyi,https://lumenstudios0.github.io"
 DISCORD_CALLBACK_URL = "https://lumen-docs-assistant.lumennetwork0.workers.dev/auth/callback"
 ADMIN_DISCORD_IDS = ""
+BUILDBYBIT_RESOURCE_IDS = "132519,116897"
 
 [[ratelimits]]
 name = "ASSISTANT_LIMITER"

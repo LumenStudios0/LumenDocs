@@ -119,7 +119,7 @@ Customers sign in here with Discord, open their [BuiltByBit account settings](ht
 Configure these server-side prerequisites before this flow can work:
 
 - Store `BUILDBYBIT_API_AUTHORIZATION` as a **Worker secret** in the format `Token YOUR_TOKEN`, using the token from the studio's BuiltByBit API credentials. The [V2 API](https://builtbybit.com/help/developers/v2-api/authentication/) uses `Token`, not the V1 `Private` scheme. Never put the actual token in a `VITE_` variable, source file, browser, or chat. BuiltByBit API access may require Ultimate or explicitly granted permissions.
-- Set `BUILDBYBIT_RESOURCE_IDS` to the studio's comma-separated resource IDs (up to 50). Keep these consistent with the licensing backend's `BUILDBYBIT_RESOURCE_PRODUCTS` resource-to-product mapping below.
+- Set `BUILDBYBIT_RESOURCE_IDS` in `wrangler.toml` to the studio's comma-separated resource IDs (up to 50), so deployments preserve it. Keep these consistent with the licensing backend's `BUILDBYBIT_RESOURCE_PRODUCTS` resource-to-product mapping below.
 - Keep `LICENSE_API_URL` and `LICENSE_ADMIN_API_TOKEN` configured, with the backend migration and stable customer-license secret described below.
 
 `POST /account/builtbybit/discord` derives the Discord ID from the signed session, never the request body. It reads `/v2/resources/creator/licenses?with=Buyer`, checks every page (maximum 25 pages / 30 seconds), and matches the exact string `Buyer.discord_id`. Only configured resources and a single verified buyer reach the existing backend claim endpoint. Incomplete pages, ambiguous buyers, API errors, and missing buyer details never submit a partial entitlement refresh. No creator credentials or other buyers' data are returned to the customer.
