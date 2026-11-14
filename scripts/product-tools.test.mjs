@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile, readdir } from 'node:fs/promises'
 import { DatabaseSync } from 'node:sqlite'
 import { handleProductTools, runProductChecks } from '../worker/product-tools.js'
+import worker from '../worker/chat.js'
 
 async function fixture(t) {
   const sqlite = new DatabaseSync(':memory:')
@@ -76,6 +77,25 @@ test('release manager keeps drafts private and publishes updates without exposin
   await call('/studio/staff/releases/' + release.id, 'PUT', body)
   assert.equal((await (await call('/studio/releases')).json()).total, 0)
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM community_notifications').get().n, 0)
+})
+
+test('Worker routes product tools and preflights scheduled cancellation', async t => {
+  const { env } = await fixture(t)
+  const origin = 'https://lumenstudio.fyi'
+  env.ALLOWED_ORIGIN = origin
+  for (const prefix of ['', '/api']) {
+    const response = await worker.fetch(new Request(`https://worker.example${prefix}/studio/releases`, { headers: { Origin: origin } }), env)
+    assert.equal(response.status, 200)
+    assert.deepEqual((await response.json()).items, [])
+  }
+  for (const [path, methods] of [
+    ['/studio/staff/releases', ['GET', 'POST', 'PUT']],
+    ['/community/staff/scheduled/' + crypto.randomUUID(), ['DELETE']],
+  ]) {
+    const response = await worker.fetch(new Request('https://worker.example' + path, { method: 'OPTIONS', headers: { Origin: origin } }), env)
+    assert.equal(response.status, 204)
+    for (const method of methods) assert.ok(response.headers.get('Access-Control-Allow-Methods').includes(method))
+  }
 })
 
 test('bulk grants preserve existing access, notify recipients and never repeat a submitted batch', async t => {

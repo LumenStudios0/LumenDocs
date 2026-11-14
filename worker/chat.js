@@ -1000,6 +1000,7 @@ export default {
       path !== '/reports' &&
       path !== '/dinosaur-discoveries' &&
       !path.startsWith('/community') &&
+      !path.startsWith('/studio/') &&
       path !== '/auth/me' &&
       path !== '/account/servers' &&
       path !== '/account/license-ips' &&
@@ -1020,6 +1021,8 @@ export default {
         headers: {
           'Access-Control-Allow-Origin': origin,
           'Access-Control-Allow-Methods': path.startsWith('/community')
+            ? 'GET, POST, PUT, DELETE, OPTIONS'
+            : path.startsWith('/studio/')
             ? 'GET, POST, PUT, OPTIONS'
             : path === '/dinosaur-discoveries'
             ? 'GET, POST, OPTIONS'
