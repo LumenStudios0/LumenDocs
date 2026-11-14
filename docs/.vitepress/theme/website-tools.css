@@ -47,7 +47,19 @@
 .ticket-filters form { display: flex; align-items: end; gap: 8px; min-width: 0; }
 .ticket-filters form label { flex: 1; min-width: 0; }
 .ticket-filters form button { margin-bottom: 14px; }
-.website-badge[data-status=open] { color: var(--vp-c-brand-1); border-color: var(--vp-c-brand-2); }
-.website-badge[data-status=waiting] { color: var(--vp-c-warning-1); background: var(--vp-c-warning-soft); }
-.website-badge[data-status=closed] { color: var(--vp-c-text-3); }
+.website-badge[data-status] { color: var(--status-color); background: var(--status-background); border-color: currentColor; }
+.website-badge[data-status=operational], .website-badge[data-status=resolved] { --status-color: #166534; --status-background: #dcfce7; }
+.website-badge[data-status=degraded], .website-badge[data-status=waiting] { --status-color: #854d0e; --status-background: #fef9c3; }
+.website-badge[data-status=outage] { --status-color: #991b1b; --status-background: #fee2e2; }
+.website-badge[data-status=maintenance] { --status-color: #6b21a8; --status-background: #f3e8ff; }
+.website-badge[data-status=unknown], .website-badge[data-status=closed] { --status-color: #475569; --status-background: #f1f5f9; }
+.website-badge[data-status=open] { --status-color: #1e40af; --status-background: #dbeafe; }
+.website-badge[data-status=investigating] { --status-color: #9a3412; --status-background: #ffedd5; }
+.dark .website-badge[data-status=operational], .dark .website-badge[data-status=resolved] { --status-color: #86efac; --status-background: #14532d; }
+.dark .website-badge[data-status=degraded], .dark .website-badge[data-status=waiting] { --status-color: #fde047; --status-background: #713f12; }
+.dark .website-badge[data-status=outage] { --status-color: #fca5a5; --status-background: #7f1d1d; }
+.dark .website-badge[data-status=maintenance] { --status-color: #d8b4fe; --status-background: #581c87; }
+.dark .website-badge[data-status=unknown], .dark .website-badge[data-status=closed] { --status-color: #cbd5e1; --status-background: #334155; }
+.dark .website-badge[data-status=open] { --status-color: #93c5fd; --status-background: #1e3a8a; }
+.dark .website-badge[data-status=investigating] { --status-color: #fdba74; --status-background: #7c2d12; }
 @media (max-width: 640px) { .ticket-cards, .ticket-filters { grid-template-columns: minmax(0, 1fr); } }

@@ -76,4 +76,6 @@ An older Worker returns `Not found` for new `/community/*` routes. The website t
 
 `/status` shows reachability probes and staff maintenance overrides. Automatic checks run every five minutes, within the requested 1–10-minute window; the status page refreshes every five minutes while visible. Manual overrides remain until staff switch back to Automatic. Probes check website reachability, the Discord OAuth redirect, and licensing availability—not every plugin or customer's Minecraft server.
 
+Status badges keep text labels and use light/dark palettes: operational/resolved green, degraded/waiting amber, outage red, maintenance purple, unknown/closed slate, open blue, and investigating orange. Effective and automatic service results are colored separately so overrides do not hide the probe result.
+
 The compatibility checker at `/getting-started/compatibility` covers identified studio plugins and upcoming/unverified projects using pinned repository manifest evidence. It distinguishes declared Java/API/dependency requirements from actual runtime testing. `/error-guides` searches known messages locally, without uploading logs. Documentation bookmarks at `/bookmarks` also remain in local browser storage and need no sign-in. Run `npm run test:website`, `npm run test:licensing`, and `npm run test:worker` before publishing.
