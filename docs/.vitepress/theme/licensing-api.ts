@@ -37,17 +37,19 @@ export async function accountRequest<T>(path: string, init: RequestInit = {}): P
       console.error('Unable to reach the licensing API:', error)
       throw new LicenseApiError('Could not reach the licensing service. Check your connection and try again.')
     }
-    let result: T & { error?: string; detail?: string }
+    let result: T & { error?: string; detail?: string; diagnostic?: string }
     try { result = await response.json() }
     catch (error) {
       console.error('Invalid licensing API response:', error)
       throw new LicenseApiError(await visibleServiceError(`The licensing service returned an invalid response (${response.status}).`, 0, 'licensing'), response.status)
     }
     if (!response.ok) {
-      throw new LicenseApiError(
-        await visibleServiceError(typeof result?.detail === 'string' ? result.detail : result?.error ?? `License request failed (${response.status}).`, response.status, 'licensing'),
-        response.status,
-      )
+      const message = await visibleServiceError(typeof result?.detail === 'string' ? result.detail : result?.error ?? `License request failed (${response.status}).`, response.status, 'licensing')
+      const diagnostic = path === '/account/builtbybit/discord' && response.status >= 500 &&
+        ['BBB_CONFIG', 'BBB_NETWORK', 'BBB_API', 'BBB_FORMAT', 'BBB_BUYER', 'BBB_VALIDITY', 'BBB_BACKEND'].includes(result?.diagnostic ?? '')
+        ? ` (Reference: ${result.diagnostic})`
+        : ''
+      throw new LicenseApiError(message + diagnostic, response.status)
     }
     return result
   })()

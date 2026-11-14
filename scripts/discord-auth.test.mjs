@@ -481,12 +481,45 @@ test('BuiltByBit upstream diagnostics are limited to verified staff and safe err
   assert.equal(staffResponse.status, 502)
   assert.match((await staffResponse.json()).error, /HTTP 403, TokenScopeNotEnabled/)
   const customerResponse = await call(customer)
-  assert.doesNotMatch((await customerResponse.json()).error, /403|TokenScopeNotEnabled|synthetic-creator-key/)
+  const customerResult = await customerResponse.json()
+  assert.doesNotMatch(customerResult.error, /403|TokenScopeNotEnabled|synthetic-creator-key/)
+  assert.equal(customerResult.diagnostic, 'BBB_API')
   globalThis.fetch = async () => Response.json({ error: { code: 'synthetic-creator-key' } }, { status: 401 })
   const unknownCodeResponse = await call(staff)
   const error = (await unknownCodeResponse.json()).error
   assert.match(error, /HTTP 401/)
   assert.doesNotMatch(error, /synthetic-creator-key/)
+})
+
+test('purchase failures provide safe diagnostics without leaking backend or customer data', async t => {
+  const token = await createSessionToken(t)
+  const config = env({
+    BUILDBYBIT_API_AUTHORIZATION: 'Token synthetic-creator-key', BUILDBYBIT_RESOURCE_IDS: '7001',
+    LICENSE_API_URL: 'https://licenses.example', LICENSE_ADMIN_API_TOKEN: 'license-admin-token',
+  })
+  const row = { content_type: 'resource', content_id: 7001, buyer_id: 123, permanent: true, active: true, Buyer: { user_id: 123, discord_id: '123456789' } }
+  const run = async (fixture, backendStatus) => {
+    globalThis.fetch = async input => {
+      if (new URL(input).hostname === 'api.builtbybit.com') {
+        return Response.json({ result: 'success', data: { licenses: [fixture], stats: { total: 1, page: 1, per_page: 100, max_page: 1 } } })
+      }
+      return Response.json({ error: 'private backend detail', diagnostic: 'private data' }, { status: backendStatus })
+    }
+    return worker.fetch(request('/account/builtbybit/discord', {
+      method: 'POST', origin, authorization: `Bearer ${token}`,
+    }), config)
+  }
+  const cases = [
+    [{ ...row, Buyer: undefined }, undefined, 'BBB_BUYER'],
+    [{ ...row, active: undefined }, undefined, 'BBB_VALIDITY'],
+    [row, 503, 'BBB_BACKEND'],
+  ]
+  for (const [fixture, backendStatus, expected] of cases) {
+    const response = await run(fixture, backendStatus)
+    const result = await response.json()
+    assert.equal(result.diagnostic, expected)
+    assert.doesNotMatch(JSON.stringify(result), /private backend detail|private data|123456789|license-admin-token/)
+  }
 })
 
 test('account license endpoints require a valid Discord session', async () => {

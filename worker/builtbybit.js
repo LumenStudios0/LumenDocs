@@ -9,9 +9,9 @@ function normalizeBuyerId(value) {
 export async function submitBuiltByBitClaim(user, buyerId, licenses, env, origin, respond) {
   let base
   try { base = new URL(env.LICENSE_API_URL) }
-  catch { return respond({ error: 'The licensing service URL is invalid' }, 503, origin) }
+  catch { return respond({ error: 'The licensing service URL is invalid', diagnostic: 'BBB_CONFIG' }, 503, origin) }
   if (base.protocol !== 'https:' || base.username || base.password) {
-    return respond({ error: 'The licensing service URL must use HTTPS' }, 503, origin)
+    return respond({ error: 'The licensing service URL must use HTTPS', diagnostic: 'BBB_CONFIG' }, 503, origin)
   }
   try {
     const upstream = await fetch(new URL(`/v1/admin/users/${encodeURIComponent(user.id)}/builtbybit/claim`, base), {
@@ -25,27 +25,27 @@ export async function submitBuiltByBitClaim(user, buyerId, licenses, env, origin
       signal: AbortSignal.timeout(10000),
     })
     const text = await upstream.text()
-    if (text.length > 50000) return respond({ error: 'The licensing service returned an oversized response' }, 502, origin)
+    if (text.length > 50000) return respond({ error: 'The licensing service returned an oversized response', diagnostic: 'BBB_BACKEND' }, 502, origin)
     let payload
     try { payload = JSON.parse(text) }
-    catch { return respond({ error: 'The licensing service returned an invalid response' }, 502, origin) }
-    return respond(payload, upstream.status, origin)
+    catch { return respond({ error: 'The licensing service returned an invalid response', diagnostic: 'BBB_BACKEND' }, 502, origin) }
+    return respond(upstream.status >= 500 ? { ...payload, diagnostic: 'BBB_BACKEND' } : payload, upstream.status, origin)
   } catch (error) {
     console.error('BuiltByBit license claim failed:', error)
-    return respond({ error: 'Automatic licensing is temporarily unavailable' }, 503, origin)
+    return respond({ error: 'Automatic licensing is temporarily unavailable', diagnostic: 'BBB_BACKEND' }, 503, origin)
   }
 }
 
 export async function claimDiscordPurchases(user, env, origin, respond) {
   if (!env.BUILDBYBIT_API_AUTHORIZATION || !env.BUILDBYBIT_RESOURCE_IDS) {
-    return respond({ error: 'Discord purchase verification needs the BuiltByBit creator API authorization and resource IDs configured on the Worker.' }, 503, origin)
+    return respond({ error: 'Discord purchase verification needs the BuiltByBit creator API authorization and resource IDs configured on the Worker.', diagnostic: 'BBB_CONFIG' }, 503, origin)
   }
   if (!env.LICENSE_API_URL || !env.LICENSE_ADMIN_API_TOKEN) {
-    return respond({ error: 'The licensing backend is not configured on this Worker.' }, 503, origin)
+    return respond({ error: 'The licensing backend is not configured on this Worker.', diagnostic: 'BBB_CONFIG' }, 503, origin)
   }
   const ids = env.BUILDBYBIT_RESOURCE_IDS.split(',').map(id => id.trim())
   if (!ids.length || ids.length > 50 || ids.some(id => !/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(Number(id)))) {
-    return respond({ error: 'Configure between 1 and 50 valid BuiltByBit resource IDs.' }, 503, origin)
+    return respond({ error: 'Configure between 1 and 50 valid BuiltByBit resource IDs.', diagnostic: 'BBB_CONFIG' }, 503, origin)
   }
   const mappedIds = new Set(ids)
   const licenses = []
@@ -64,7 +64,7 @@ export async function claimDiscordPurchases(user, env, origin, respond) {
         signal: AbortSignal.timeout(Math.min(10000, deadline - Date.now())),
       })
     } catch {
-      return respond({ error: 'BuiltByBit purchase verification timed out or is unavailable. Please try again.' }, 502, origin)
+      return respond({ error: 'BuiltByBit purchase verification timed out or is unavailable. Please try again.', diagnostic: 'BBB_NETWORK' }, 502, origin)
     }
     if (!response.ok) {
       if (response.status === 429) {
@@ -81,11 +81,11 @@ export async function claimDiscordPurchases(user, env, origin, respond) {
           console.warn('BuiltByBit returned an unreadable authorization error response')
         }
       }
-      return respond({ error: `BuiltByBit could not verify purchases (HTTP ${response.status}${code}). Check the creator API authorization and required API access.` }, 502, origin)
+      return respond({ error: `BuiltByBit could not verify purchases (HTTP ${response.status}${code}). Check the creator API authorization and required API access.`, diagnostic: 'BBB_API' }, 502, origin)
     }
     let payload
     try { payload = await response.json() }
-    catch { return respond({ error: 'BuiltByBit returned an invalid purchase response.' }, 502, origin) }
+    catch { return respond({ error: 'BuiltByBit returned an invalid purchase response.', diagnostic: 'BBB_FORMAT' }, 502, origin) }
     const rows = payload?.data?.licenses
     const stats = payload?.data?.stats
     if (payload?.result !== 'success' || !Array.isArray(rows) || !stats ||
@@ -93,7 +93,7 @@ export async function claimDiscordPurchases(user, env, origin, respond) {
         stats.page !== page || !Number.isSafeInteger(stats.per_page) || stats.per_page < 1 || stats.per_page > 100 ||
         !(stats.max_page === Math.ceil(stats.total / stats.per_page) || (stats.total === 0 && stats.max_page === 1)) ||
         rows.length > stats.per_page || (total !== undefined && total !== stats.total)) {
-      return respond({ error: 'BuiltByBit returned incomplete or changing purchase data. Please retry the check.' }, 502, origin)
+      return respond({ error: 'BuiltByBit returned incomplete or changing purchase data. Please retry the check.', diagnostic: 'BBB_FORMAT' }, 502, origin)
     }
     if (stats.max_page > 25) return respond({ error: 'Too many purchase pages to verify safely in one check. Contact support.' }, 413, origin)
     total = stats.total
@@ -103,7 +103,7 @@ export async function claimDiscordPurchases(user, env, origin, respond) {
       const buyer = row.Buyer
       const verifiedBuyerId = normalizeBuyerId(buyer?.user_id)
       if (!verifiedBuyerId || verifiedBuyerId !== normalizeBuyerId(row.buyer_id)) {
-        return respond({ error: 'BuiltByBit did not include the verified buyer details required for Discord linking.' }, 502, origin)
+        return respond({ error: 'BuiltByBit did not include the verified buyer details required for Discord linking.', diagnostic: 'BBB_BUYER' }, 502, origin)
       }
       if (buyer.discord_id !== user.id) continue
       if (buyer.banned === true) {
@@ -116,7 +116,7 @@ export async function claimDiscordPurchases(user, env, origin, respond) {
       if (typeof row.permanent !== 'boolean' || (row.permanent && typeof row.active !== 'boolean') ||
           (!row.permanent && (!Number.isSafeInteger(row.start_date) || !Number.isSafeInteger(row.end_date) ||
             row.start_date < 0 || row.end_date <= row.start_date || !Number.isFinite(new Date(row.end_date * 1000).getTime())))) {
-        return respond({ error: 'BuiltByBit returned invalid license validity information.' }, 502, origin)
+        return respond({ error: 'BuiltByBit returned invalid license validity information.', diagnostic: 'BBB_VALIDITY' }, 502, origin)
       }
       licenses.push({
         resourceId: Number(row.content_id),
@@ -126,13 +126,13 @@ export async function claimDiscordPurchases(user, env, origin, respond) {
       })
     }
     if (page >= stats.max_page) {
-      if (seen !== total) return respond({ error: 'BuiltByBit returned an incomplete purchase list. No licenses were changed.' }, 502, origin)
+      if (seen !== total) return respond({ error: 'BuiltByBit returned an incomplete purchase list. No licenses were changed.', diagnostic: 'BBB_FORMAT' }, 502, origin)
       if (!buyerId) {
         return respond({ error: 'No Lumen purchase was found linked to your Discord account. In BuiltByBit account settings, choose Link Discord account using the same Discord account as this website, then check again.' }, 403, origin)
       }
       return submitBuiltByBitClaim(user, buyerId, licenses, env, origin, respond)
     }
-    if (rows.length !== stats.per_page) return respond({ error: 'BuiltByBit returned an incomplete purchase page. No licenses were changed.' }, 502, origin)
+    if (rows.length !== stats.per_page) return respond({ error: 'BuiltByBit returned an incomplete purchase page. No licenses were changed.', diagnostic: 'BBB_FORMAT' }, 502, origin)
   }
   return respond({ error: 'Purchase verification could not finish safely. No licenses were changed.' }, 413, origin)
 }

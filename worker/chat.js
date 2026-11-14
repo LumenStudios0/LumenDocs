@@ -1011,9 +1011,17 @@ export default {
         const user = await verifyLoginToken(authorization.startsWith('Bearer ') ? authorization.slice(7) : '', env)
         if (!user || !await getAdminRole(user.id, env)) {
           console.error('Customer licensing request failed:', path, response.status)
+          let diagnostic
+          if (path === '/account/builtbybit/discord') {
+            const result = await response.clone().json()
+            if (['BBB_CONFIG', 'BBB_NETWORK', 'BBB_API', 'BBB_FORMAT', 'BBB_BUYER', 'BBB_VALIDITY', 'BBB_BACKEND'].includes(result?.diagnostic)) {
+              diagnostic = result.diagnostic
+            }
+          }
           return respond({
             error: 'The license system is temporarily unavailable or being worked on. Please try again later.',
             code: 'LICENSE_SERVICE_UNAVAILABLE',
+            ...(diagnostic ? { diagnostic } : {}),
           }, response.status, origin)
         }
       }
