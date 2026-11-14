@@ -33,6 +33,25 @@ export interface Issue {
   createdAt: string
   updatedAt: string
 }
+export type ForumChannel = 'announcements' | 'general' | 'help' | 'bugs' | 'suggestions' | 'showcase'
+export interface ForumThread {
+  id: string
+  channel: ForumChannel
+  title: string
+  body: string
+  productId?: string | null
+  status: 'open' | 'answered' | 'resolved'
+  pinned: boolean
+  locked: boolean
+  hidden?: boolean
+  replyCount: number
+  author: { name: string; staff: boolean }
+  mine: boolean
+  createdAt: string
+  lastActivityAt: string
+}
+export interface ForumPost { id: string; body: string; authorName: string; staff: boolean; hidden?: boolean; createdAt: string }
+export interface ForumViewer { signedIn: boolean; staff: boolean }
 export interface Notification {
   id: string
   title: string

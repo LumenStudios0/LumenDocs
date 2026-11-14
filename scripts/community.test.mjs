@@ -27,7 +27,7 @@ async function tokenFor(id, name) {
 
 function createD1() {
   const sqlite = new DatabaseSync(':memory:')
-  const migrations = Promise.all(['0001_community.sql', '0002_ticket_routing.sql'].map(
+  const migrations = Promise.all(['0001_community.sql', '0002_ticket_routing.sql', '0003_community_forum.sql'].map(
     name => readFile(new URL(`../worker/migrations/community/${name}`, import.meta.url), 'utf8'),
   ))
   const database = {
@@ -484,4 +484,67 @@ test('manual service overrides persist while automatic checks update independent
     status: 'healthy', message: '',
   }, staff)
   assert.equal(invalidStatus.status, 400)
+})
+
+test('community support forum is public to read, Discord-only to post, and staff-moderated', async () => {
+  const customer = await tokenFor(customerId, 'Customer')
+  const other = await tokenFor('123456789012345679', 'Other')
+  const staff = await tokenFor(staffId, 'Staff')
+
+  const anonymous = await call('/community/forum', 'POST', { channel: 'help', title: 'Anon post', body: 'Hello' })
+  assert.equal(anonymous.status, 401)
+  const announcement = await call('/community/forum', 'POST', { channel: 'announcements', title: 'Fake news', body: 'Not staff' }, customer)
+  assert.equal(announcement.status, 403)
+  const badChannel = await call('/community/forum', 'POST', { channel: 'secret', title: 'Bad channel', body: 'Nope' }, customer)
+  assert.equal(badChannel.status, 400)
+
+  const created = await call('/community/forum', 'POST', {
+    channel: 'help', title: 'Crates not opening 100%', body: 'Clicking the crate does nothing.', productId: 'lumencrates',
+  }, customer)
+  assert.equal(created.status, 201)
+  const { thread } = await created.json()
+  assert.equal(thread.author.name, 'Customer')
+  assert.equal(thread.author.staff, false)
+  assert.equal(JSON.stringify(thread).includes(customerId), false)
+
+  const list = await (await call('/community/forum?channel=help&q=100%25', 'GET')).json()
+  assert.equal(list.total, 1)
+  assert.equal(list.items[0].id, thread.id)
+  assert.equal((await (await call('/community/forum?q=0%25%25', 'GET')).json()).total, 0)
+  assert.equal((await call('/community/forum?channel=nope', 'GET')).status, 400)
+
+  assert.equal((await call(`/community/forum/${thread.id}/posts`, 'POST', { body: 'Same issue here.' }, other)).status, 201)
+  const staffReply = await call(`/community/forum/${thread.id}/posts`, 'POST', { body: 'Update to 2.1.' }, staff)
+  const { post: staffPost } = await staffReply.json()
+  assert.equal(staffPost.staff, true)
+
+  let detail = await (await call(`/community/forum/${thread.id}`, 'GET')).json()
+  assert.equal(detail.thread.status, 'answered')
+  assert.equal(detail.thread.replyCount, 2)
+  assert.deepEqual(detail.posts.map(post => post.staff), [false, true])
+  assert.equal(JSON.stringify(detail).includes(customerId), false)
+  assert.equal('hidden' in detail.thread, false)
+
+  assert.equal((await call(`/community/forum/${thread.id}`, 'PUT', { status: 'resolved' }, other)).status, 404)
+  assert.equal((await call(`/community/forum/${thread.id}`, 'PUT', { status: 'resolved' }, customer)).status, 200)
+
+  assert.equal((await call(`/community/staff/forum/${thread.id}`, 'PUT', { locked: true }, customer)).status, 403)
+  assert.equal((await call(`/community/staff/forum/${thread.id}`, 'PUT', { locked: true, pinned: true }, staff)).status, 200)
+  assert.equal((await call(`/community/forum/${thread.id}/posts`, 'POST', { body: 'Locked?' }, other)).status, 409)
+  assert.equal((await call(`/community/forum/${thread.id}/posts`, 'POST', { body: 'Staff can still reply.' }, staff)).status, 201)
+
+  const hidePost = await call(`/community/staff/forum/posts/${detail.posts[0].id}`, 'PUT', { hidden: true }, staff)
+  assert.equal(hidePost.status, 200)
+  detail = await (await call(`/community/forum/${thread.id}`, 'GET')).json()
+  assert.equal(detail.posts.length, 2)
+  assert.equal(detail.thread.replyCount, 2)
+  assert.equal(detail.thread.pinned, true)
+  const staffDetail = await (await call(`/community/forum/${thread.id}`, 'GET', undefined, staff)).json()
+  assert.equal(staffDetail.posts.length, 3)
+  assert.equal(staffDetail.posts[0].hidden, true)
+
+  assert.equal((await call(`/community/staff/forum/${thread.id}`, 'PUT', { hidden: true }, staff)).status, 200)
+  assert.equal((await call(`/community/forum/${thread.id}`, 'GET')).status, 404)
+  assert.equal((await (await call('/community/forum', 'GET')).json()).total, 0)
+  assert.equal((await (await call('/community/forum', 'GET', undefined, staff)).json()).items[0].hidden, true)
 })

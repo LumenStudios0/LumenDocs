@@ -106,7 +106,7 @@ export default defineConfig({
           items: [
             { text: 'Release notes', link: '/changelogs/' },
             { text: 'Support & requests', link: '/reports/' },
-            { text: 'Known issues', link: '/known-issues' },
+            { text: 'Community Support', link: '/known-issues' },
             { text: 'Service status', link: '/status' },
           ],
         },

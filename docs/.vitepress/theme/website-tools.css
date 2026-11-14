@@ -60,6 +60,7 @@
 .website-badge[data-status=unknown], .website-badge[data-status=closed] { --status-color: #475569; --status-background: #f1f5f9; }
 .website-badge[data-status=open] { --status-color: #1e40af; --status-background: #dbeafe; }
 .website-badge[data-status=investigating] { --status-color: #9a3412; --status-background: #ffedd5; }
+.website-badge[data-status=answered] { --status-color: #115e59; --status-background: #ccfbf1; }
 .dark .website-badge[data-status=operational], .dark .website-badge[data-status=resolved] { --status-color: #86efac; --status-background: #14532d; }
 .dark .website-badge[data-status=degraded], .dark .website-badge[data-status=waiting] { --status-color: #fde047; --status-background: #713f12; }
 .dark .website-badge[data-status=outage] { --status-color: #fca5a5; --status-background: #7f1d1d; }
@@ -67,4 +68,8 @@
 .dark .website-badge[data-status=unknown], .dark .website-badge[data-status=closed] { --status-color: #cbd5e1; --status-background: #334155; }
 .dark .website-badge[data-status=open] { --status-color: #93c5fd; --status-background: #1e3a8a; }
 .dark .website-badge[data-status=investigating] { --status-color: #fdba74; --status-background: #7c2d12; }
+.dark .website-badge[data-status=answered] { --status-color: #5eead4; --status-background: #134e4a; }
 @media (max-width: 640px) { .ticket-cards, .ticket-filters { grid-template-columns: minmax(0, 1fr); } }
+
+.community-support-page .VPDoc .container, .community-support-page .VPDoc .content-container { max-width: 1120px; }
+.forum .website-badge { padding: 2px 8px; line-height: 1.5; }

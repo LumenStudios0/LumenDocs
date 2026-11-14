@@ -13,6 +13,8 @@ test('missing Worker routes are connection failures, not missing user tickets', 
   const id = '12345678-1234-1234-1234-123456789012'
   assert.equal(communityAvailabilityError(`/tickets/${id}`, 404, { error: 'Ticket not found' }), null)
   assert.ok(communityAvailabilityError(`/tickets/${id}`, 404, { error: 'Not found' }) instanceof CommunityUnavailableError)
+  assert.equal(communityAvailabilityError(`/forum/${id}`, 404, { error: 'Thread not found' }), null)
+  assert.ok(communityAvailabilityError(`/forum/${id}`, 404, { error: 'Not found' }) instanceof CommunityUnavailableError)
   assert.ok(communityAvailabilityError('/status', 503, { code: 'COMMUNITY_SERVICE_UNAVAILABLE' }) instanceof CommunityUnavailableError)
   assert.equal(communityAvailabilityError('/tickets', 400, { error: 'Invalid ticket title' }), null)
   assert.equal(communityAvailabilityError('/tickets', 401, { error: 'Sign in' }), null)

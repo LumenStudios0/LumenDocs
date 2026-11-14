@@ -42,7 +42,7 @@ let deepLinkHandled = false
 let timer: ReturnType<typeof setInterval> | undefined
 const headers = {
   tickets: ['YOUR SUPPORT WORKSPACE', 'Your tickets, on the website.', 'Create a private ticket and follow staff replies here. Do not include license keys, passwords, or access tokens.'],
-  issues: ['KNOWN ISSUES', 'Confirmed issues. Clear workarounds.', 'Published issues are reviewed by staff. Connect Discord to submit a bug; your submission stays private until staff publish a sanitized issue.'],
+  issues: ['COMMUNITY SUPPORT', 'Confirmed issues. Clear workarounds.', 'Published issues are reviewed by staff. Connect Discord to submit a bug; your submission stays private until staff publish a sanitized issue.'],
   notifications: ['YOUR NOTIFICATION CENTER', 'Updates you choose to receive.', 'In-app announcements, plugin updates, and ticket replies. Preferences do not send email or Discord messages.'],
   status: ['SERVICE HEALTH', 'Lumen service status.', 'When the website service is connected, automatic probes run every five minutes. Staff can add a maintenance notice or override a status.'],
 }

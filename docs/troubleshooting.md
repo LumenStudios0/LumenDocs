@@ -1,6 +1,6 @@
 # Something not working?
 
-Try the [searchable error guides](/error-guides), [compatibility checker](/getting-started/compatibility), and [known-issue board](/known-issues) before opening a [website support ticket](/account/tickets). Website submissions require Discord sign-in.
+Try the [searchable error guides](/error-guides), [compatibility checker](/getting-started/compatibility), and [Community Support forum](/known-issues) before opening a [website support ticket](/account/tickets). Website submissions require Discord sign-in.
 
 Start with the server console; the first error is usually more useful than the last one. If you ask for help, include the plugin version, server software and version, Java version, and the full error as text. Remove player data and private credentials before sharing logs.
 

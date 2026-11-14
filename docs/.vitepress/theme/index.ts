@@ -12,6 +12,7 @@ import AdminDashboard from './AdminDashboard.vue'
 import DocsAssistant from './DocsAssistant.vue'
 import HomeExperience from './HomeExperience.vue'
 import CommunityWorkspace from './CommunityWorkspace.vue'
+import CommunityForum from './CommunityForum.vue'
 import CompatibilityChecker from './CompatibilityChecker.vue'
 import ErrorGuides from './ErrorGuides.vue'
 import DocBookmarks from './DocBookmarks.vue'
@@ -31,6 +32,7 @@ export default {
     app.component('AdminDashboard', AdminDashboard)
     app.component('HomeExperience', HomeExperience)
     app.component('CommunityWorkspace', CommunityWorkspace)
+    app.component('CommunityForum', CommunityForum)
     app.component('CompatibilityChecker', CompatibilityChecker)
     app.component('ErrorGuides', ErrorGuides)
     app.component('DocBookmarks', DocBookmarks)

@@ -639,6 +639,201 @@ export async function runCommunityChecks(env) {
   return { services: results, checkedAt }
 }
 
+const FORUM_CHANNELS = new Set(['announcements', 'general', 'help', 'bugs', 'suggestions', 'showcase'])
+const FORUM_STATUSES = new Set(['open', 'answered', 'resolved'])
+const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+
+function threadView(row, staff = false, viewerId = null) {
+  return {
+    id: row.id,
+    channel: row.channel,
+    title: row.title,
+    body: row.body,
+    productId: row.product_id,
+    status: row.status,
+    pinned: Boolean(row.pinned),
+    locked: Boolean(row.locked),
+    replyCount: Number(row.reply_count ?? 0),
+    author: { name: row.author_name, staff: Boolean(row.author_staff) },
+    mine: Boolean(viewerId && row.author_id === viewerId),
+    createdAt: row.created_at,
+    lastActivityAt: row.last_activity_at,
+    ...(staff ? { hidden: Boolean(row.hidden) } : {}),
+  }
+}
+
+function postView(row, staff = false) {
+  return {
+    id: row.id,
+    body: row.body,
+    authorName: row.author_name,
+    staff: Boolean(row.staff),
+    createdAt: row.created_at,
+    ...(staff ? { hidden: Boolean(row.hidden) } : {}),
+  }
+}
+
+async function forumList(request, env, url, deps, staff, viewerId) {
+  const page = parsePage(url)
+  const filters = staff ? [] : ['hidden = 0']
+  const values = []
+  const channel = url.searchParams.get('channel')
+  if (channel && channel !== 'all') {
+    if (!FORUM_CHANNELS.has(channel)) return json(request, { error: 'Unknown channel' }, 400, deps.respond)
+    filters.push('channel = ?')
+    values.push(channel)
+  }
+  const status = url.searchParams.get('status')
+  if (status && status !== 'all') {
+    if (!FORUM_STATUSES.has(status)) return json(request, { error: 'Unknown status' }, 400, deps.respond)
+    filters.push('status = ?')
+    values.push(status)
+  }
+  const query = (url.searchParams.get('q') ?? '').trim().slice(0, 100)
+  if (query) {
+    const pattern = `%${query.replace(/[\\%_]/g, match => `\\${match}`)}%`
+    filters.push("(title LIKE ? ESCAPE '\\' OR body LIKE ? ESCAPE '\\' OR product_id LIKE ? ESCAPE '\\')")
+    values.push(pattern, pattern, pattern)
+  }
+  const where = filters.length ? `WHERE ${filters.join(' AND ')}` : ''
+  const result = await paginate(
+    env.COMMUNITY_DB,
+    `SELECT COUNT(*) AS total FROM community_threads ${where}`,
+    `SELECT * FROM community_threads ${where} ORDER BY pinned DESC, last_activity_at DESC LIMIT ? OFFSET ?`,
+    values,
+    page,
+  )
+  return json(request, {
+    ...result, items: result.items.map(row => threadView(row, staff, viewerId)), viewer: { signedIn: Boolean(viewerId), staff },
+  }, 200, deps.respond)
+}
+
+async function forumThread(request, env, deps, id, staff, viewerId) {
+  const row = await env.COMMUNITY_DB.prepare('SELECT * FROM community_threads WHERE id = ?').bind(id).first()
+  if (!row || (row.hidden && !staff)) return json(request, { error: 'Thread not found' }, 404, deps.respond)
+  const posts = await env.COMMUNITY_DB.prepare(
+    `SELECT * FROM community_thread_posts WHERE thread_id = ? ${staff ? '' : 'AND hidden = 0'} ORDER BY created_at ASC LIMIT 500`,
+  ).bind(id).all()
+  return json(request, {
+    thread: threadView(row, staff, viewerId),
+    posts: (posts.results ?? []).map(post => postView(post, staff)),
+    viewer: { signedIn: Boolean(viewerId), staff },
+  }, 200, deps.respond)
+}
+
+async function createThread(request, env, user, role, deps) {
+  const parsed = await bodyJson(request)
+  if (parsed.error) return json(request, { error: parsed.error }, parsed.status, deps.respond)
+  const input = parsed.value ?? {}
+  if (!FORUM_CHANNELS.has(input.channel)) return json(request, { error: 'Choose a valid channel' }, 400, deps.respond)
+  if (input.channel === 'announcements' && !role) {
+    return json(request, { error: 'Only staff can post announcements' }, 403, deps.respond)
+  }
+  if (!validText(input.title, 3, 160) || !validText(input.body, 2, 8000) ||
+      (input.productId != null && input.productId !== '' && !validText(input.productId, 1, 100))) {
+    return json(request, { error: 'Title must be 3–160 characters and the message 2–8000 characters' }, 400, deps.respond)
+  }
+  const now = new Date().toISOString()
+  const row = {
+    id: crypto.randomUUID(), channel: input.channel, author_id: user.id, author_name: user.globalName || user.username,
+    author_staff: role ? 1 : 0, title: cleanText(input.title), body: cleanText(input.body),
+    product_id: input.productId ? cleanText(input.productId) : null, status: 'open', pinned: 0, locked: 0, hidden: 0,
+    reply_count: 0, created_at: now, updated_at: now, last_activity_at: now,
+  }
+  await env.COMMUNITY_DB.prepare(
+    `INSERT INTO community_threads
+      (id, channel, author_id, author_name, author_staff, title, body, product_id, created_at, updated_at, last_activity_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(row.id, row.channel, row.author_id, row.author_name, row.author_staff, row.title, row.body, row.product_id, now, now, now).run()
+  return json(request, { thread: threadView(row, Boolean(role), user.id) }, 201, deps.respond)
+}
+
+async function createPost(request, env, user, role, deps, id) {
+  const parsed = await bodyJson(request)
+  if (parsed.error) return json(request, { error: parsed.error }, parsed.status, deps.respond)
+  if (!validText(parsed.value?.body, 1, 4000)) {
+    return json(request, { error: 'Replies must be 1–4000 characters' }, 400, deps.respond)
+  }
+  const thread = await env.COMMUNITY_DB.prepare('SELECT * FROM community_threads WHERE id = ?').bind(id).first()
+  if (!thread || (thread.hidden && !role)) return json(request, { error: 'Thread not found' }, 404, deps.respond)
+  if (thread.locked && !role) return json(request, { error: 'This thread is locked' }, 409, deps.respond)
+  const now = new Date().toISOString()
+  const post = {
+    id: crypto.randomUUID(), author_name: user.globalName || user.username, staff: role ? 1 : 0,
+    body: cleanText(parsed.value.body), hidden: 0, created_at: now,
+  }
+  await env.COMMUNITY_DB.batch([
+    env.COMMUNITY_DB.prepare(
+      `INSERT INTO community_thread_posts (id, thread_id, author_id, author_name, staff, body, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(post.id, id, user.id, post.author_name, post.staff, post.body, now),
+    env.COMMUNITY_DB.prepare(
+      `UPDATE community_threads SET reply_count = reply_count + 1, last_activity_at = ?, updated_at = ?,
+       status = CASE WHEN ? = 1 AND status = 'open' THEN 'answered' ELSE status END WHERE id = ?`,
+    ).bind(now, now, post.staff, id),
+  ])
+  return json(request, { post: postView(post, Boolean(role)) }, 201, deps.respond)
+}
+
+async function updateOwnThread(request, env, user, deps, id) {
+  const parsed = await bodyJson(request, 2000)
+  if (parsed.error) return json(request, { error: parsed.error }, parsed.status, deps.respond)
+  if (!['open', 'resolved'].includes(parsed.value?.status)) {
+    return json(request, { error: 'You can mark your thread open or resolved' }, 400, deps.respond)
+  }
+  const result = await env.COMMUNITY_DB.prepare(
+    'UPDATE community_threads SET status = ?, updated_at = ? WHERE id = ? AND author_id = ? AND hidden = 0',
+  ).bind(parsed.value.status, new Date().toISOString(), id, user.id).run()
+  if (!result.meta?.changes) return json(request, { error: 'Thread not found' }, 404, deps.respond)
+  return json(request, { ok: true }, 200, deps.respond)
+}
+
+async function moderateThread(request, env, deps, id) {
+  const parsed = await bodyJson(request, 2000)
+  if (parsed.error) return json(request, { error: parsed.error }, parsed.status, deps.respond)
+  const input = parsed.value ?? {}
+  const sets = []
+  const values = []
+  for (const key of ['pinned', 'locked', 'hidden']) {
+    if (input[key] === undefined) continue
+    if (typeof input[key] !== 'boolean') return json(request, { error: `${key} must be true or false` }, 400, deps.respond)
+    sets.push(`${key} = ?`)
+    values.push(input[key] ? 1 : 0)
+  }
+  if (input.status !== undefined) {
+    if (!FORUM_STATUSES.has(input.status)) return json(request, { error: 'Choose a valid status' }, 400, deps.respond)
+    sets.push('status = ?')
+    values.push(input.status)
+  }
+  if (input.channel !== undefined) {
+    if (!FORUM_CHANNELS.has(input.channel)) return json(request, { error: 'Choose a valid channel' }, 400, deps.respond)
+    sets.push('channel = ?')
+    values.push(input.channel)
+  }
+  if (!sets.length) return json(request, { error: 'Nothing to update' }, 400, deps.respond)
+  const result = await env.COMMUNITY_DB.prepare(
+    `UPDATE community_threads SET ${sets.join(', ')}, updated_at = ? WHERE id = ?`,
+  ).bind(...values, new Date().toISOString(), id).run()
+  if (!result.meta?.changes) return json(request, { error: 'Thread not found' }, 404, deps.respond)
+  return json(request, { ok: true }, 200, deps.respond)
+}
+
+async function moderatePost(request, env, deps, id) {
+  const parsed = await bodyJson(request, 2000)
+  if (parsed.error) return json(request, { error: parsed.error }, parsed.status, deps.respond)
+  if (typeof parsed.value?.hidden !== 'boolean') return json(request, { error: 'hidden must be true or false' }, 400, deps.respond)
+  const post = await env.COMMUNITY_DB.prepare('SELECT thread_id, hidden FROM community_thread_posts WHERE id = ?').bind(id).first()
+  if (!post) return json(request, { error: 'Post not found' }, 404, deps.respond)
+  if (Boolean(post.hidden) !== parsed.value.hidden) {
+    await env.COMMUNITY_DB.batch([
+      env.COMMUNITY_DB.prepare('UPDATE community_thread_posts SET hidden = ? WHERE id = ?').bind(parsed.value.hidden ? 1 : 0, id),
+      env.COMMUNITY_DB.prepare('UPDATE community_threads SET reply_count = MAX(0, reply_count + ?) WHERE id = ?')
+        .bind(parsed.value.hidden ? -1 : 1, post.thread_id),
+    ])
+  }
+  return json(request, { ok: true }, 200, deps.respond)
+}
+
 export async function handleCommunity(request, env, origin, path, deps) {
   const legacyAlias = path === '/bug-report' || path === '/reports'
   if (!path.startsWith('/community') && !legacyAlias) return null
@@ -647,13 +842,18 @@ export async function handleCommunity(request, env, origin, path, deps) {
   }
   const url = new URL(request.url)
   const suffix = legacyAlias ? path : path.slice('/community'.length) || '/'
-  const isPublic = !legacyAlias && request.method === 'GET' && (suffix === '/status' || suffix === '/issues')
+  const threadMatch = suffix.match(new RegExp(`^/forum/(${UUID})$`, 'i'))
+  const isPublic = !legacyAlias && request.method === 'GET' &&
+    (suffix === '/status' || suffix === '/issues' || suffix === '/forum' || Boolean(threadMatch))
   if (isPublic) {
     const authorization = request.headers.get('Authorization') || ''
     const viewer = authorization.startsWith('Bearer ') ? await deps.verifyLoginToken(authorization.slice(7), env) : null
-    const dbFailure = await requireDb(request, env, deps, Boolean(viewer && deps.getAdminRole(viewer.id, env)))
+    const viewerStaff = Boolean(viewer && deps.getAdminRole(viewer.id, env))
+    const dbFailure = await requireDb(request, env, deps, viewerStaff)
     if (dbFailure) return dbFailure
     try {
+      if (suffix === '/forum') return await forumList(request, env, url, deps, viewerStaff, viewer?.id)
+      if (threadMatch) return await forumThread(request, env, deps, threadMatch[1], viewerStaff, viewer?.id)
       return suffix === '/status' ? await statusResponse(request, env, deps) : await issueList(request, env, url, deps)
     } catch {
       return json(request, { error: 'The community database is temporarily unavailable' }, 503, deps.respond)
@@ -798,6 +998,14 @@ export async function handleCommunity(request, env, origin, path, deps) {
     if (suffix === '/staff/issues' && request.method === 'POST') return saveIssue(request, env, deps)
     match = suffix.match(/^\/staff\/issues\/([0-9a-f-]{36})$/i)
     if (match && request.method === 'PUT') return saveIssue(request, env, deps, match[1])
+    if (suffix === '/forum' && request.method === 'POST') return createThread(request, env, user, role, deps)
+    match = suffix.match(new RegExp(`^/forum/(${UUID})(?:/(posts))?$`, 'i'))
+    if (match && request.method === 'POST' && match[2]) return createPost(request, env, user, role, deps, match[1])
+    if (match && request.method === 'PUT' && !match[2]) return updateOwnThread(request, env, user, deps, match[1])
+    match = suffix.match(new RegExp(`^/staff/forum/(${UUID})$`, 'i'))
+    if (match && request.method === 'PUT') return moderateThread(request, env, deps, match[1])
+    match = suffix.match(new RegExp(`^/staff/forum/posts/(${UUID})$`, 'i'))
+    if (match && request.method === 'PUT') return moderatePost(request, env, deps, match[1])
     if (suffix === '/staff/notifications' && request.method === 'GET') return notifications(request, env, url, user, deps, true)
     if (suffix === '/staff/notifications' && request.method === 'POST') return createNotification(request, env, user, deps)
     match = suffix.match(/^\/staff\/status\/([a-z]+)$/)

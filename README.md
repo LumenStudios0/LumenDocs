@@ -58,7 +58,9 @@ Commands and supported versions can vary by release, so check the notes that cam
 
 ## Website support and operations
 
-The **Staff Dashboard** retains `/admin/` and adds **Tickets, updates & status**, independently of the licensing backend. Customers create private website tickets at `/reports/` or `/account/tickets`; both submissions and replies require a verified Discord session. Staff can reply using reviewed presets, change ticket status, publish sanitized issues at `/known-issues`, and send in-app updates or announcements to all subscribers, a selected plugin topic, or staff. Customers choose notification topics and preferences at `/account/notifications`. Notification delivery is on the website, not email or Discord.
+**Community Support** (`/known-issues`, URL kept for old links) is a Discord-style forum. Anyone can read. Signed-in Discord users can start threads in #general, #help, #bug-reports, #suggestions, and #showcase, and reply to any thread; only staff post in #announcements. Posts show the author's Discord display name, never the Discord ID. Staff replies get the purple **Support** tag and move open threads to *answered*. Authors can mark their own threads resolved. Staff see moderation tools on each thread: pin, lock, hide/restore threads and replies, and change status. Forum data lives in D1 migration `0003_community_forum.sql`.
+
+The **Staff Dashboard** retains `/admin/` and adds **Tickets, updates & status**, independently of the licensing backend. Customers create private website tickets at `/reports/` or `/account/tickets`; both submissions and replies require a verified Discord session. Staff can reply using reviewed presets, change ticket status, publish sanitized known issues to the **#known-issues** channel of **Community Support** (`/known-issues`), and send in-app updates or announcements to all subscribers, a selected plugin topic, or staff. Customers choose notification topics and preferences at `/account/notifications`. Notification delivery is on the website, not email or Discord.
 
 Persistent tickets, replies, preferences, announcements, and service status use the Worker's `COMMUNITY_DB` D1 binding. The Worker workflow provisions the `lumen-community` database and applies migrations before deployment; the Cloudflare deployment token needs D1 edit permission in addition to Worker edit permission. Missing storage or denied access is reported explicitly rather than shown as an empty successful result. Public known-issue posts require staff moderation, and public views do not expose customer identities or private tickets.
 
@@ -68,7 +70,7 @@ An older Worker returns `Not found` for new `/community/*` routes. The website t
 | --- | --- |
 | Documentation, navigation, compatibility checker, local error search, bookmarks, music and paper lanterns | No Worker |
 | Discord sign-in and verified staff/owner access | OAuth Worker and Discord credentials |
-| Website tickets, replies, edits, assignment/labels, known issues, in-app notifications/preferences | Updated website Worker and migrated D1 database |
+| Website tickets, replies, edits, assignment/labels, Community Support forum and known issues, in-app notifications/preferences | Updated website Worker and migrated D1 database |
 | Live service status, automatic probes and staff overrides | Updated website Worker, D1 and five-minute cron |
 | New-ticket Discord alerts | Website Worker/D1 plus `DISCORD_BUG_REPORT_WEBHOOK` secret |
 | Licenses, purchase linking, product ownership, IPs, connected servers, account directory/deletion and staff license controls | Worker plus HTTPS licensing API and its server-only credentials; purchase linking also needs BuiltByBit OAuth |
