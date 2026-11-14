@@ -51,7 +51,32 @@ jobs:
         run: |
           curl -s -m 15 -H "Origin: https://lumenstudio.fyi" \
             https://lumen-docs-assistant.lumennetwork0.workers.dev/community/status \
-            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{for(const x of JSON.parse(s).services)console.log(x.id, x.automaticStatus, x.checkedAt)})'
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{for(const x of JSON.parse(s).services)console.log(x.id, "automatic:", x.automaticStatus, "override:", x.overrideStatus ?? "none", "checked:", x.checkedAt)})'
+      - name: Inspect public health probe responses
+        run: |
+          node --input-type=module <<'NODE'
+          for (const [name, url] of [
+            ['website', 'https://lumenstudio.fyi/'],
+            ['discord', 'https://lumen-docs-assistant.lumennetwork0.workers.dev/auth/login'],
+            ['builtbybit', 'https://api.builtbybit.com/v2/members/self'],
+          ]) {
+            try {
+              const response = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(10000) })
+              const contentType = response.headers.get('content-type') || ''
+              const body = await response.text()
+              let code = ''
+              if (name === 'builtbybit' && contentType.includes('json')) {
+                try {
+                  const value = JSON.parse(body)?.error?.code
+                  if (typeof value === 'string' && /^[A-Za-z0-9_.-]{1,80}$/.test(value)) code = value
+                } catch { code = 'invalid JSON' }
+              }
+              console.log(name, 'HTTP', response.status, 'content type:', contentType.split(';')[0], 'bytes:', Buffer.byteLength(body), code ? `error code: ${code}` : '')
+            } catch (error) {
+              console.log(name, 'probe failed:', error.name)
+            }
+          }
+          NODE
       - name: Inspect deployed licensing API capabilities
         env:
           HOST: ${{ inputs.api_hostname }}
