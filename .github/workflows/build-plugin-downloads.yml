@@ -1,0 +1,87 @@
+name: Build private plugin downloads
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: private-plugin-downloads
+  cancel-in-progress: false
+
+jobs:
+  configure:
+    runs-on: ubuntu-latest
+    outputs:
+      products: ${{ steps.config.outputs.products }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test scripts/plugin-build.test.mjs
+      - id: config
+        run: node scripts/build-plugin-downloads.mjs matrix >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: configure
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        product: ${{ fromJSON(needs.configure.outputs.products) }}
+    name: ${{ matrix.product.name }}
+    env:
+      PRODUCT_KEY: ${{ matrix.product.product_key }}
+      SOURCE_DIR: ${{ runner.temp }}/plugin-source
+      BUILD_MANIFEST: ${{ runner.temp }}/plugin-build.json
+    steps:
+      - name: Checkout build tooling only
+        uses: actions/checkout@v4
+        with:
+          path: tooling
+          persist-credentials: false
+      # checkout normally restricts paths to GITHUB_WORKSPACE. Give this action a
+      # separate workspace so paid source never enters the documentation checkout.
+      - name: Checkout private plugin into runner temporary storage
+        id: source
+        uses: actions/checkout@v4
+        env:
+          GITHUB_WORKSPACE: ${{ runner.temp }}
+        with:
+          repository: ${{ matrix.product.repository }}
+          token: ${{ secrets.LUMEN_SOURCE_READ_TOKEN }}
+          path: plugin-source
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Compile, test, package and validate paid plugin
+        id: compile
+        run: node tooling/scripts/build-plugin-downloads.mjs build
+      - name: Upload privately to existing Cloudflare D1
+        id: upload
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: node tooling/scripts/build-plugin-downloads.mjs upload
+      - name: Record safe failure status without replacing published versions
+        if: ${{ failure() }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          FAILURE_STAGE: ${{ steps.source.outcome != 'success' && 'checkout' || steps.compile.outcome != 'success' && 'maven-or-validation' || 'private-upload' }}
+        run: node tooling/scripts/build-plugin-downloads.mjs failure
+      - name: Remove private source, Maven cache and JARs
+        if: ${{ always() }}
+        run: rm -rf -- "$SOURCE_DIR" "$BUILD_MANIFEST" "$RUNNER_TEMP/plugin-maven.log" "$HOME/.m2/repository"

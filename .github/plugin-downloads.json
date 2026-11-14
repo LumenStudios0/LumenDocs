@@ -1,0 +1,16 @@
+{
+  "database": "lumen-community",
+  "products": [
+    { "repository": "LumenStudios0/GLADIATOR", "product_id": "gladiator", "product_key": "gladiator", "name": "GLADIATOR" },
+    { "repository": "LumenStudios0/LumenShards", "product_id": "1", "product_key": "lumenshards", "name": "LumenShards" },
+    { "repository": "LumenStudios0/LumenEconomy", "product_id": "lumeneconomy", "product_key": "lumeneconomy", "name": "LumenEconomy" },
+    { "repository": "LumenStudios0/LumenDuels", "product_id": "lumenduels", "product_key": "lumenduels", "name": "LumenDuels" },
+    { "repository": "LumenStudios0/LumenDuels-Premium", "product_id": "lumenduels-premium", "product_key": "lumenduels-premium", "name": "LumenDuels Premium" },
+    { "repository": "LumenStudios0/LumenAuction", "product_id": "lumenauction", "product_key": "lumenauction", "name": "LumenAuction" },
+    { "repository": "LumenStudios0/LumenEssentials", "product_id": "lumenessentials", "product_key": "lumenessentials", "name": "LumenEssentials" },
+    { "repository": "LumenStudios0/LumenOrders", "product_id": "lumenorder", "product_key": "lumenorder", "name": "LumenOrders" },
+    { "repository": "LumenStudios0/LumenSpawners", "product_id": "lumenspawners", "product_key": "lumenspawners", "name": "LumenSpawners" },
+    { "repository": "LumenStudios0/LumenSpoofer", "product_id": "lumenspoofer", "product_key": "lumenspoofer", "name": "LumenSpoofer" },
+    { "repository": "LumenStudios0/LumenCosmetics", "product_id": "lumencosmetics", "product_key": "lumencosmetics", "name": "LumenCosmetics" }
+  ]
+}
