@@ -118,7 +118,7 @@ Customers sign in here with Discord, open their [BuiltByBit account settings](ht
 
 Configure these server-side prerequisites before this flow can work:
 
-- Store `BUILDBYBIT_API_AUTHORIZATION` as a **Worker secret** containing the complete Authorization header value issued for the studio's BuiltByBit creator API access, including its required scheme. Never put it in a `VITE_` variable, source file, browser, or chat. BuiltByBit API access may require Ultimate or explicitly granted permissions.
+- Store `BUILDBYBIT_API_AUTHORIZATION` as a **Worker secret** in the format `Token YOUR_TOKEN`, using the token from the studio's BuiltByBit API credentials. The [V2 API](https://builtbybit.com/help/developers/v2-api/authentication/) uses `Token`, not the V1 `Private` scheme. Never put the actual token in a `VITE_` variable, source file, browser, or chat. BuiltByBit API access may require Ultimate or explicitly granted permissions.
 - Set `BUILDBYBIT_RESOURCE_IDS` to the studio's comma-separated resource IDs (up to 50). Keep these consistent with the licensing backend's `BUILDBYBIT_RESOURCE_PRODUCTS` resource-to-product mapping below.
 - Keep `LICENSE_API_URL` and `LICENSE_ADMIN_API_TOKEN` configured, with the backend migration and stable customer-license secret described below.
 

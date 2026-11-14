@@ -353,7 +353,7 @@ test('Discord-linked BuiltByBit claims verify the signed-in buyer across every p
     requests.push(url)
     if (url.hostname === 'api.builtbybit.com') {
       assert.equal(url.pathname, '/v2/resources/creator/licenses')
-      assert.equal(options.headers.Authorization, 'Private synthetic-creator-key')
+      assert.equal(options.headers.Authorization, 'Token synthetic-creator-key')
       assert.equal(url.searchParams.get('with'), 'Buyer')
       assert.equal(url.searchParams.get('resource_ids'), '7001,7002,7003')
       const page = Number(url.searchParams.get('page'))
@@ -380,7 +380,7 @@ test('Discord-linked BuiltByBit claims verify the signed-in buyer across every p
     method: 'POST', origin, authorization: `Bearer ${token}`,
     body: { discordId: '987654321098765432', buyerId: 'forged', licenses: [{ resourceId: 9001 }] },
   }), env({
-    BUILDBYBIT_API_AUTHORIZATION: 'Private synthetic-creator-key', BUILDBYBIT_RESOURCE_IDS: '7001,7002,7003',
+    BUILDBYBIT_API_AUTHORIZATION: 'Token synthetic-creator-key', BUILDBYBIT_RESOURCE_IDS: '7001,7002,7003',
     LICENSE_API_URL: 'https://licenses.example', LICENSE_ADMIN_API_TOKEN: 'license-admin-token',
   }))
   assert.equal(response.status, 200)
@@ -416,7 +416,7 @@ test('Discord purchase checks never change licenses after ambiguous identity, in
     const response = await worker.fetch(request('/account/builtbybit/discord', {
       method: 'POST', origin, authorization: `Bearer ${token}`,
     }), env({
-      BUILDBYBIT_API_AUTHORIZATION: 'Private synthetic-creator-key', BUILDBYBIT_RESOURCE_IDS: '7001',
+      BUILDBYBIT_API_AUTHORIZATION: 'Token synthetic-creator-key', BUILDBYBIT_RESOURCE_IDS: '7001',
       LICENSE_API_URL: 'https://licenses.example', LICENSE_ADMIN_API_TOKEN: 'license-admin-token',
     }))
     assert.equal(response.status, fixture.status, JSON.stringify(fixture))
