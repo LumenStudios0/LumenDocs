@@ -52,6 +52,12 @@ jobs:
           curl -s -m 15 -H "Origin: https://lumenstudio.fyi" \
             https://lumen-docs-assistant.lumennetwork0.workers.dev/community/status \
             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{for(const x of JSON.parse(s).services)console.log(x.id, x.automaticStatus, x.checkedAt)})'
+      - name: Inspect deployed licensing API capabilities
+        env:
+          HOST: ${{ inputs.api_hostname }}
+        run: |
+          curl --fail --silent --show-error --max-time 15 "https://$HOST/openapi.json" \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const p=JSON.parse(s).paths;for(const [path,methods] of Object.entries(p))if(/^\/v1\/admin\/(users|licenses|products)(\/|$)/.test(path))console.log(Object.keys(methods).join(",").toUpperCase(),path)})'
       - name: Create DNS-only A record for the licensing API
         if: inputs.action == 'create-dns'
         env:
