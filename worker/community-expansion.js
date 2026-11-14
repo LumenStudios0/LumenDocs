@@ -221,7 +221,8 @@ async function licensingRequest(env, path, user, access, body) {
   if (base.protocol !== 'https:' || base.username || base.password || !env.LICENSE_ADMIN_API_TOKEN) throw new Error('Licensing is unavailable')
   const response = await fetch(new URL(path, base), {
     method: body ? 'POST' : 'GET', redirect: 'error',
-    headers: { Authorization: `Bearer ${env.LICENSE_ADMIN_API_TOKEN}`, 'X-Admin-Actor': `${user.id}:${access.role}`,
+    headers: { Authorization: `Bearer ${env.LICENSE_ADMIN_API_TOKEN}`,
+      'X-Admin-Actor': hasPermission(access, 'dashboard.view') ? `${user.id}:${access.role}` : `customer:${user.id}`,
       ...(body ? { 'Content-Type': 'application/json' } : {}) },
     ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(10000),
   })

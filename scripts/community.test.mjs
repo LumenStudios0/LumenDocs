@@ -1253,7 +1253,8 @@ test('trial catalog exposes only exact active linked registry IDs across verifie
     { productId: 'unlinked', name: 'Not grantable', active: true, plugins: [] },
   ]
   let incomplete = false
-  globalThis.fetch = async input => {
+  globalThis.fetch = async (input, options) => {
+    assert.equal(options.headers['X-Admin-Actor'], `customer:${customerId}`)
     const page = Number(new URL(input).searchParams.get('page'))
     return Response.json({ items: page === 1 ? first : incomplete ? [] : last, page, pageSize: 100, total: 102 })
   }
