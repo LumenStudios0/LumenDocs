@@ -25,6 +25,8 @@ function env(overrides = {}) {
     DISCORD_CLIENT_SECRET: 'discord-client-secret',
     AUTH_SIGNING_SECRET: signingSecret,
     ASSISTANT_LIMITER: { limit: async () => ({ success: true }) },
+    ADMIN_READ_LIMITER: { limit: async () => ({ success: true }) },
+    ADMIN_WRITE_LIMITER: { limit: async () => ({ success: true }) },
     ...overrides,
   }
 }
@@ -920,7 +922,7 @@ test('admin worker failures return a CORS-enabled JSON error instead of a browse
   const response = await worker.fetch(
     request('/admin/users', { origin, authorization: `Bearer ${token}` }),
     env({
-      ASSISTANT_LIMITER: {
+      ADMIN_READ_LIMITER: {
         limit: async () => { throw new Error('rate limiter unavailable') },
       },
     }),

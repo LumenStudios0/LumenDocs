@@ -859,12 +859,14 @@ async function adminApi(request, env, origin, path) {
     return respond({ error: 'Admin route or method is not allowed' }, 404, origin)
   }
   if (permission && !hasPermission(access, permission)) return respond({ error: `Permission required: ${permission}` }, 403, origin)
-  if (!env.ASSISTANT_LIMITER) {
+  const isRead = request.method === 'GET' || request.method === 'HEAD'
+  const limiter = isRead ? env.ADMIN_READ_LIMITER : env.ADMIN_WRITE_LIMITER
+  if (!limiter) {
     return respond({ error: 'Admin service is not configured' }, 503, origin)
   }
-  const rateLimit = await env.ASSISTANT_LIMITER.limit({ key: `admin:${user.id}` })
+  const rateLimit = await limiter.limit({ key: `admin:${user.id}` })
   if (!rateLimit.success) {
-    return respond({ error: 'Please wait before using the admin dashboard again' }, 429, origin)
+    return respond({ error: `Too many admin ${isRead ? 'requests' : 'changes'}. Please wait a minute and try again.` }, 429, origin)
   }
   if (path.startsWith('/admin/website/')) return websiteAdminApi(request, env, path, user, access, respond, origin)
   if (!env.LICENSE_API_URL || !env.LICENSE_ADMIN_API_TOKEN) {

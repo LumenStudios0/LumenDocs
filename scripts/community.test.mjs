@@ -78,6 +78,8 @@ const env = {
   ALLOWED_ORIGIN: origin,
   AUTH_SIGNING_SECRET: secret,
   ASSISTANT_LIMITER: { limit: async () => ({ success: true }) },
+  ADMIN_READ_LIMITER: { limit: async () => ({ success: true }) },
+  ADMIN_WRITE_LIMITER: { limit: async () => ({ success: true }) },
   COMMUNITY_DB: database,
 }
 
@@ -885,6 +887,41 @@ test('registry name edits validate fields, enforce permissions and report incomp
   assert.match((await ignored.json()).error, /did not apply/)
   globalThis.fetch = async () => Response.json({ detail: 'Product still has licenses' }, { status: 409 })
   assert.equal((await api('/admin/products/stable-id', 'DELETE')).status, 409)
+})
+
+test('admin reads and changes have independent per-user limits', async t => {
+  const { config, api } = await accessFixture(t)
+  const quota = limit => {
+    const counts = new Map()
+    return { limit: async ({ key }) => {
+      const count = (counts.get(key) || 0) + 1
+      counts.set(key, count)
+      return { success: count <= limit }
+    } }
+  }
+  config.ADMIN_READ_LIMITER = quota(120)
+  config.ADMIN_WRITE_LIMITER = quota(30)
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => Response.json({ deleted: true })
+  t.after(() => { globalThis.fetch = originalFetch })
+
+  for (let i = 0; i < 30; i++) {
+    assert.equal((await api('/admin/products/shards', 'DELETE')).status, 200)
+    assert.equal((await api('/admin/website/access')).status, 200)
+    assert.equal((await api('/admin/website/access')).status, 200)
+  }
+  const blockedWrite = await api('/admin/products/shards', 'DELETE')
+  assert.equal(blockedWrite.status, 429)
+  assert.match((await blockedWrite.json()).error, /admin changes/)
+  for (let i = 0; i < 60; i++) assert.equal((await api('/admin/website/access')).status, 200)
+  const blockedRead = await api('/admin/website/access')
+  assert.equal(blockedRead.status, 429)
+  assert.match((await blockedRead.json()).error, /admin requests/)
+  const lead = await tokenFor('1012053634911064114', 'Lead')
+  assert.equal((await api('/admin/website/access', 'GET', undefined, lead)).status, 200)
+
+  delete config.ADMIN_WRITE_LIMITER
+  assert.equal((await api('/admin/products/shards', 'DELETE')).status, 503)
 })
 
 test('registry removals are narrowly permission controlled and configured access database failures fail closed', async t => {
