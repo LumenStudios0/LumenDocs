@@ -1,3 +1,11 @@
+function normalizeBuyerId(value) {
+  if (typeof value === 'number') {
+    if (!Number.isSafeInteger(value) || value <= 0) return null
+    value = String(value)
+  }
+  return typeof value === 'string' && /^[1-9]\d{0,31}$/.test(value) ? value : null
+}
+
 export async function submitBuiltByBitClaim(user, buyerId, licenses, env, origin, respond) {
   let base
   try { base = new URL(env.LICENSE_API_URL) }
@@ -93,17 +101,18 @@ export async function claimDiscordPurchases(user, env, origin, respond) {
     for (const row of rows) {
       if (row?.content_type !== 'resource' || !mappedIds.has(String(row.content_id))) continue
       const buyer = row.Buyer
-      if (!buyer || typeof buyer.user_id !== 'string' || buyer.user_id !== String(row.buyer_id)) {
+      const verifiedBuyerId = normalizeBuyerId(buyer?.user_id)
+      if (!verifiedBuyerId || verifiedBuyerId !== normalizeBuyerId(row.buyer_id)) {
         return respond({ error: 'BuiltByBit did not include the verified buyer details required for Discord linking.' }, 502, origin)
       }
       if (buyer.discord_id !== user.id) continue
-      if (!/^[1-9]\d{0,31}$/.test(buyer.user_id) || buyer.banned === true) {
+      if (buyer.banned === true) {
         return respond({ error: 'This BuiltByBit buyer account cannot be linked. Contact support.' }, 403, origin)
       }
-      if (buyerId && buyerId !== buyer.user_id) {
+      if (buyerId && buyerId !== verifiedBuyerId) {
         return respond({ error: 'More than one BuiltByBit account matches this Discord account. Contact support.' }, 409, origin)
       }
-      buyerId = buyer.user_id
+      buyerId = verifiedBuyerId
       if (typeof row.permanent !== 'boolean' || (row.permanent && typeof row.active !== 'boolean') ||
           (!row.permanent && (!Number.isSafeInteger(row.start_date) || !Number.isSafeInteger(row.end_date) ||
             row.start_date < 0 || row.end_date <= row.start_date || !Number.isFinite(new Date(row.end_date * 1000).getTime())))) {

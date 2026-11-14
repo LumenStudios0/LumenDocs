@@ -388,6 +388,34 @@ test('Discord-linked BuiltByBit claims verify the signed-in buyer across every p
   assert.equal(requests.length, 3)
 })
 
+test('Discord purchase checks accept matching numeric BuiltByBit buyer IDs', async t => {
+  const discordId = '123456789012345678'
+  const token = await createSessionToken(t, discordId)
+  globalThis.fetch = async (input, options) => {
+    const url = new URL(input)
+    if (url.hostname === 'api.builtbybit.com') {
+      return Response.json({
+        result: 'success',
+        data: {
+          licenses: [{ content_type: 'resource', content_id: 7001, buyer_id: 998877, permanent: true, active: true, Buyer: { user_id: 998877, discord_id: discordId } }],
+          stats: { total: 1, page: 1, per_page: 100, max_page: 1 },
+        },
+      })
+    }
+    assert.equal(url.href, `https://licenses.example/v1/admin/users/${discordId}/builtbybit/claim`)
+    assert.equal(JSON.parse(options.body).buyerId, '998877')
+    return Response.json({ licenseKey: 'synthetic-shared-key' })
+  }
+  const response = await worker.fetch(request('/account/builtbybit/discord', {
+    method: 'POST', origin, authorization: `Bearer ${token}`,
+  }), env({
+    BUILDBYBIT_API_AUTHORIZATION: 'Token synthetic-creator-key', BUILDBYBIT_RESOURCE_IDS: '7001',
+    LICENSE_API_URL: 'https://licenses.example', LICENSE_ADMIN_API_TOKEN: 'license-admin-token',
+  }))
+  assert.equal(response.status, 200)
+  assert.equal((await response.json()).licenseKey, 'synthetic-shared-key')
+})
+
 test('Discord purchase checks never change licenses after ambiguous identity, invalid data or incomplete upstream results', async t => {
   const token = await createSessionToken(t)
   const row = { content_type: 'resource', content_id: 7001, buyer_id: 998877, permanent: true, active: true, Buyer: { user_id: '998877', discord_id: '123456789' } }
@@ -395,6 +423,8 @@ test('Discord purchase checks never change licenses after ambiguous identity, in
     { rows: [{ ...row, Buyer: { user_id: '998877', discord_id: 'other-user' } }], status: 403 },
     { rows: [{ ...row, Buyer: undefined }], status: 502 },
     { rows: [{ ...row, Buyer: { user_id: '123', discord_id: '123456789' } }], status: 502 },
+    { rows: [{ ...row, Buyer: { user_id: 123, discord_id: '123456789' } }], status: 502 },
+    { rows: [{ ...row, buyer_id: 9007199254740992, Buyer: { user_id: 9007199254740992, discord_id: '123456789' } }], status: 502 },
     { rows: [{ ...row, active: undefined }], status: 502 },
     { rows: [{ ...row, permanent: false, start_date: 100, end_date: 'invalid' }], status: 502 },
     { rows: [row, { ...row, buyer_id: 123, Buyer: { user_id: '123', discord_id: '123456789' } }], status: 409 },
