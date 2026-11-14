@@ -93,13 +93,13 @@ async function build(product) {
   console.log(`Validated ${product.name}: ${details.version}, ${details.size} bytes, source ${sourceCommit}`)
 }
 
-async function database() {
+export async function database(fetcher = fetch) {
   const token = process.env.CLOUDFLARE_API_TOKEN
   const account = process.env.CLOUDFLARE_ACCOUNT_ID
   if (!token || !account) throw new Error('Cloudflare D1 credentials are not configured')
   const base = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(account)}/d1/database`
   async function api(url, body) {
-    const response = await fetch(url, {
+    const response = await fetcher(url, {
       method: body ? 'POST' : 'GET',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(60000),
@@ -108,14 +108,21 @@ async function database() {
     try { payload = await response.json() } catch { throw new Error('Cloudflare D1 returned an invalid response') }
     if (!response.ok || !payload.success || payload.result?.some?.(item => item.success === false)) {
       // Never print response bodies, request headers, or credential-bearing URLs.
-      throw new Error(`Cloudflare D1 request failed (HTTP ${response.status}); check D1:Edit access and account configuration`)
+      const codes = (payload.errors ?? []).map(error => error.code).filter(Number.isInteger).join(',')
+      throw new Error(`Cloudflare D1 request failed (HTTP ${response.status}${codes ? `; codes ${codes}` : ''}); check D1:Edit access and account configuration`)
     }
     return payload.result
   }
   const databases = await api(`${base}?per_page=100`)
   const db = databases.find(item => item.name === 'lumen-community')
   if (!db?.uuid) throw new Error('Existing lumen-community D1 database not found; no database was created')
-  const query = statements => api(`${base}/${encodeURIComponent(db.uuid)}/query`, statements)
+  // The REST endpoint accepts one {sql, params} object, unlike binding.batch().
+  // Multi-row chunk inserts below keep each request bounded to five chunks.
+  const query = async statements => {
+    const results = []
+    for (const statement of statements) results.push(...await api(`${base}/${encodeURIComponent(db.uuid)}/query`, statement))
+    return results
+  }
   await query([
     { sql: 'CREATE TABLE IF NOT EXISTS studio_downloads (id TEXT PRIMARY KEY,product_id TEXT NOT NULL,product_key TEXT NOT NULL,name TEXT NOT NULL,version TEXT NOT NULL,filename TEXT NOT NULL,sha256 TEXT NOT NULL,size INTEGER NOT NULL,chunk_count INTEGER NOT NULL,source_commit TEXT NOT NULL,created_at TEXT NOT NULL,published INTEGER NOT NULL DEFAULT 0)', params: [] },
     { sql: 'CREATE TABLE IF NOT EXISTS studio_download_chunks (download_id TEXT NOT NULL REFERENCES studio_downloads(id) ON DELETE CASCADE,chunk_index INTEGER NOT NULL,data TEXT NOT NULL,PRIMARY KEY(download_id,chunk_index))', params: [] },
@@ -127,6 +134,9 @@ async function database() {
 async function status(query, product, state, message) {
   await query([{ sql: 'INSERT INTO studio_build_results (product_key,repository,state,message,updated_at) VALUES (?,?,?,?,?) ON CONFLICT(product_key) DO UPDATE SET repository=excluded.repository,state=excluded.state,message=excluded.message,updated_at=excluded.updated_at',
     params: [product.product_key, product.repository, state, message, new Date().toISOString()] }])
+  const result = await query([{ sql: 'SELECT repository,state FROM studio_build_results WHERE product_key=?', params: [product.product_key] }])
+  if (result[0]?.results?.[0]?.state !== state || result[0]?.results?.[0]?.repository !== product.repository) throw new Error('D1 build status verification failed')
+  console.log(`Verified private D1 build status: ${product.name} ${state}`)
 }
 
 async function upload(product) {
@@ -146,14 +156,19 @@ async function upload(product) {
   await query([{ sql: 'INSERT INTO studio_downloads (id,product_id,product_key,name,version,filename,sha256,size,chunk_count,source_commit,created_at,published) VALUES (?,?,?,?,?,?,?,?,?,?,?,0)',
     params: [id, product.product_id, product.product_key, product.name, manifest.version, manifest.filename, digest, data.length, parts.length, manifest.source_commit, new Date().toISOString()] }])
   for (let offset = 0; offset < parts.length; offset += 5) {
-    await query(parts.slice(offset, offset + 5).map((part, index) => ({
-      sql: 'INSERT INTO studio_download_chunks (download_id,chunk_index,data) VALUES (?,?,?)', params: [id, offset + index, part],
-    })))
+    const batch = parts.slice(offset, offset + 5)
+    await query([{
+      sql: `INSERT INTO studio_download_chunks (download_id,chunk_index,data) VALUES ${batch.map(() => '(?,?,?)').join(',')}`,
+      params: batch.flatMap((part, index) => [id, offset + index, part]),
+    }])
   }
   const result = await query([{ sql: 'SELECT COUNT(*) AS count FROM studio_download_chunks WHERE download_id=?', params: [id] }])
   if (Number(result[0]?.results?.[0]?.count) !== parts.length) throw new Error('D1 chunk count verification failed; version remains unpublished')
   await query([{ sql: 'UPDATE studio_downloads SET published=1 WHERE id=? AND sha256=? AND size=? AND chunk_count=?',
     params: [id, digest, data.length, parts.length] }])
+  const published = await query([{ sql: 'SELECT published,sha256,size,chunk_count FROM studio_downloads WHERE id=?', params: [id] }])
+  const stored = published[0]?.results?.[0]
+  if (stored?.published !== 1 || stored.sha256 !== digest || stored.size !== data.length || stored.chunk_count !== parts.length) throw new Error('D1 publication metadata verification failed')
   await status(query, product, 'ready', `Built and privately stored ${manifest.version} (${data.length} bytes); tests were not skipped.`)
   console.log(`Privately published ${product.name} ${manifest.version}: ${data.length} bytes, ${parts.length} chunks, SHA-256 ${digest}`)
   if (process.env.GITHUB_STEP_SUMMARY) await writeFile(process.env.GITHUB_STEP_SUMMARY,
