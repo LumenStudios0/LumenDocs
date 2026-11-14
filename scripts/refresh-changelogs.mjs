@@ -169,6 +169,70 @@ export async function fetchProductUpdates(product) {
   return [...new Map(pages.map(entry => [`${entry.date}|${entry.title}`, entry])).values()]
 }
 
+export async function fetchCreatorUpdates(product, authorization) {
+  const resourceId = new URL(product.url).pathname.match(/\.(\d+)\/$/)?.[1]
+  if (!resourceId) throw new Error(`${product.name}: invalid BuiltByBit resource URL`)
+  const entries = []
+  let total
+  for (let page = 1; page <= 25; page++) {
+    const url = new URL('https://api.builtbybit.com/v2/resources/creator/updates')
+    url.search = new URLSearchParams({ resource_ids: resourceId, with: 'Description', page: String(page), per_page: '100' }).toString()
+    let response
+    try {
+      response = await fetch(url, {
+        headers: { Authorization: authorization, Accept: 'application/json', 'User-Agent': userAgent },
+        signal: AbortSignal.timeout(20000),
+      })
+    } catch {
+      console.warn(`${product.name}: BuiltByBit updates API could not be reached`)
+      return []
+    }
+    if (!response.ok) {
+      console.warn(`${product.name}: BuiltByBit updates API returned HTTP ${response.status}`)
+      return []
+    }
+    let payload
+    try { payload = await response.json() } catch {
+      console.warn(`${product.name}: BuiltByBit updates API returned invalid JSON`)
+      return []
+    }
+    const rows = payload?.data?.updates
+    const stats = payload?.data?.stats
+    if (payload?.result !== 'success' || !Array.isArray(rows) || !stats ||
+        !Number.isSafeInteger(stats.total) || stats.total < 0 ||
+        stats.page !== page || !Number.isSafeInteger(stats.per_page) || stats.per_page < 1 || stats.per_page > 100 ||
+        !(stats.max_page === Math.ceil(stats.total / stats.per_page) || (stats.total === 0 && stats.max_page === 1)) ||
+        stats.max_page > 25 || (total !== undefined && total !== stats.total) ||
+        rows.length !== Math.min(stats.per_page, stats.total - entries.length)) {
+      console.warn(`${product.name}: BuiltByBit updates API returned incomplete or changing results`)
+      return []
+    }
+    total = stats.total
+    for (const row of rows) {
+      if (String(row.resource_id) !== resourceId || !Number.isSafeInteger(row.update_id) || row.update_id < 1 ||
+          !Number.isSafeInteger(row.created_at) || row.created_at < 0 || !Number.isFinite(new Date(row.created_at * 1000).getTime()) ||
+          typeof row.title !== 'string' || !row.title.trim() || typeof row.Description?.html !== 'string') {
+        console.warn(`${product.name}: BuiltByBit updates API returned an invalid update`)
+        return []
+      }
+      const text = textContent(parseHtml(row.Description.html))
+      if (!text) {
+        console.warn(`${product.name}: BuiltByBit updates API returned an empty description`)
+        return []
+      }
+      entries.push({
+        title: row.title.replace(/\s+/g, ' ').trim(),
+        date: new Date(row.created_at * 1000).toISOString(),
+        text,
+        url: `${product.url}updates/`,
+        source: 'builtbybit',
+      })
+    }
+    if (page >= stats.max_page) return entries
+  }
+  return entries
+}
+
 async function fetchRepositoryUpdates(product, token) {
   if (!token || !product.repository) return []
 
@@ -242,11 +306,16 @@ async function main() {
 
   let receivedEntries = 0
   const sourceToken = process.env.LUMEN_SOURCE_READ_TOKEN
+  const updatesAuthorization = process.env.BUILDBYBIT_UPDATES_AUTHORIZATION
+  if (!updatesAuthorization) {
+    console.warn('BUILDBYBIT_UPDATES_AUTHORIZATION is not configured; creator API updates are disabled.')
+  }
   if (!sourceToken) {
     console.warn('LUMEN_SOURCE_READ_TOKEN is not configured; private repository fallback is disabled.')
   }
   for (const product of products) {
-    const builtByBitEntries = await fetchProductUpdates(product)
+    const apiEntries = updatesAuthorization ? await fetchCreatorUpdates(product, updatesAuthorization) : []
+    const builtByBitEntries = apiEntries.length ? apiEntries : await fetchProductUpdates(product)
     const repositoryEntries = await fetchRepositoryUpdates(product, sourceToken)
     const entries = [...builtByBitEntries, ...repositoryEntries]
     if (entries.length) {

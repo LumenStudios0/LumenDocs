@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { extractUpdateEntries, fetchProductUpdates } from './refresh-changelogs.mjs'
+import { extractUpdateEntries, fetchCreatorUpdates, fetchProductUpdates } from './refresh-changelogs.mjs'
 
 test('extracts dated BuiltByBit resource updates and their official links', () => {
   const html = `
@@ -62,6 +62,72 @@ test('stops retrying a product when BuiltByBit blocks automation', async () => {
     })
     assert.deepEqual(entries, [])
     assert.equal(requestedUrls.length, 1)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('reads creator updates from every API page with descriptions and a server-only token', async () => {
+  const originalFetch = globalThis.fetch
+  const requests = []
+  globalThis.fetch = async (input, options) => {
+    const url = new URL(input)
+    requests.push(url)
+    assert.equal(url.origin + url.pathname, 'https://api.builtbybit.com/v2/resources/creator/updates')
+    assert.equal(url.searchParams.get('resource_ids'), '132519')
+    assert.equal(url.searchParams.get('with'), 'Description')
+    assert.equal(options.headers.Authorization, 'Token synthetic-updates-token')
+    const page = Number(url.searchParams.get('page'))
+    return Response.json({
+      result: 'success',
+      data: {
+        updates: [{ update_id: page, resource_id: 132519, created_at: 1700000000 + page, title: `Release ${page}`, Description: { html: '<p>Fixed &amp; improved <strong>features</strong>.</p>' } }],
+        stats: { total: 2, page, per_page: 1, max_page: 2 },
+      },
+    })
+  }
+  try {
+    const entries = await fetchCreatorUpdates({ name: 'Gladiator', url: 'https://builtbybit.com/resources/gladiator.132519/' }, 'Token synthetic-updates-token')
+    assert.equal(requests.length, 2)
+    assert.deepEqual(entries.map(entry => entry.title), ['Release 1', 'Release 2'])
+    assert.equal(entries[0].text, 'Fixed & improved features .')
+    assert.equal(entries[0].url, 'https://builtbybit.com/resources/gladiator.132519/updates/')
+    assert.equal(entries[0].source, 'builtbybit')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('discards incomplete creator API results rather than publishing partial updates', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => Response.json({
+    result: 'success',
+    data: {
+      updates: [{ update_id: 1, resource_id: 123, created_at: 1700000000, title: 'Release', Description: { html: '<p>Fix</p>' } }],
+      stats: { total: 2, page: 1, per_page: 100, max_page: 1 },
+    },
+  })
+  try {
+    assert.deepEqual(await fetchCreatorUpdates({ name: 'Example', url: 'https://builtbybit.com/resources/example.123/' }, 'Token synthetic-updates-token'), [])
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('rejects creator updates for a different resource and upstream permission failures', async () => {
+  const originalFetch = globalThis.fetch
+  const product = { name: 'Example', url: 'https://builtbybit.com/resources/example.123/' }
+  try {
+    globalThis.fetch = async () => Response.json({
+      result: 'success',
+      data: {
+        updates: [{ update_id: 1, resource_id: 456, created_at: 1700000000, title: 'Release', Description: { html: '<p>Fix</p>' } }],
+        stats: { total: 1, page: 1, per_page: 100, max_page: 1 },
+      },
+    })
+    assert.deepEqual(await fetchCreatorUpdates(product, 'Token synthetic-updates-token'), [])
+    globalThis.fetch = async () => new Response('Forbidden', { status: 403 })
+    assert.deepEqual(await fetchCreatorUpdates(product, 'Token synthetic-updates-token'), [])
   } finally {
     globalThis.fetch = originalFetch
   }

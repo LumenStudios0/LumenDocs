@@ -31,6 +31,7 @@ jobs:
       - name: Collect official BuiltByBit updates
         env:
           LUMEN_SOURCE_READ_TOKEN: ${{ secrets.LUMEN_SOURCE_READ_TOKEN }}
+          BUILDBYBIT_UPDATES_AUTHORIZATION: ${{ secrets.BUILDBYBIT_UPDATES_AUTHORIZATION }}
         run: node scripts/refresh-changelogs.mjs
       - name: Commit changed updates
         id: changes
