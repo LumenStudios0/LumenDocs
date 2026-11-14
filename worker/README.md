@@ -183,6 +183,8 @@ The workflow finds or creates the `lumen-community` D1 database, fills the gener
 
 The Worker community API is backed by the independent `COMMUNITY_DB` D1 database; it does not depend on the licensing service. If the binding is missing, community requests return `COMMUNITY_SERVICE_UNAVAILABLE` rather than using in-memory or mock storage. Discord sign-in sessions and the existing origin checks authorize customer and staff routes. Customer tickets and submitted issues remain private until staff publish an issue. Ticket replies, moderation, notification preferences/reads, and manual status overrides persist in D1.
 
+Trial requests use the shared `shared/trial-products.mjs` product list, so customers can submit a request without a live registry lookup. Requests and their generic staff notifications are saved together. Staff approvals still check the live registry and customer entitlements before granting a time-limited license; an unavailable or unlinked product stays pending, and ambiguous grants require manual investigation.
+
 - Public: `GET /community/issues?page=1&pageSize=20`, `GET /community/status`.
 - Signed-in customer: `GET|POST /community/tickets`, `GET /community/tickets/{uuid}`, `POST /community/tickets/{uuid}/replies`, `POST /community/issues`, `GET|PUT /community/preferences`, `GET /community/notifications`, and `POST /community/notifications/{uuid}/read`.
 - Staff: `GET /community/staff/tickets`, `PUT /community/staff/tickets/{uuid}`, `GET|POST /community/staff/issues`, `PUT /community/staff/issues/{uuid}`, `GET|POST /community/staff/notifications`, `PUT /community/staff/status/{website|discord|licensing|builtbybit}`, and `POST /community/staff/status/check`.
@@ -203,11 +205,13 @@ The Worker serves `/studio/releases` as a public, paginated feed of published re
 
 The existing five-minute job scans up to two 25-customer licensing pages per run and persists its cursor. It checks canonical account product entitlements, ignores expired/revoked access, and creates private reminders inside seven days and one day before expiry. Notifications use deterministic IDs to prevent repeated cron runs from duplicating a reminder. Missing licensing configuration disables only this optional scan; errors are logged without replacing service-health results.
 
-### Private Maven-built plugin downloads
+### Private plugin downloads
 
 `GET /studio/downloads?page=1` returns up to 20 published artifacts visible to the signed-in Discord account. `GET|HEAD /studio/downloads/{uuid}` rechecks canonical licensing access on each request. Accounts must be active, not awaiting verification, and hold an active, unexpired entitlement to the exact active product. Licensing failures fail closed. Staff with both `dashboard.view` and `products.manage` can inspect all published builds and see safe build-result summaries. Draft artifacts are never returned.
 
 The manually dispatched **Build private plugin downloads** workflow builds the Java 21 Maven projects in `.github/plugin-downloads.json`, validates real plugin descriptors/classes, and uploads verified JARs into private `studio_downloads` and `studio_download_chunks` tables. JARs are limited to 32 MiB and stored as 64 KiB base64 chunks; the Worker streams bounded groups without loading entire JARs into memory. Responses use attachment headers and `private, no-store`; the browser checks file length and SHA-256 before saving. A failed build never replaces a previously published build. Repository access uses the existing Actions source-read secret; Cloudflare credentials are scoped to uploading, not Maven execution. Never publish paid JARs, private source URLs, or GitHub credentials in Pages assets, public releases, or public Actions artifacts.
+
+Staff with `dashboard.view` and `products.manage` can also select a plugin and upload a trusted JAR directly in the product release manager. Uploads use private, actor-owned temporary drafts; the server verifies the stored SHA-256 and plugin JAR structure before publication. Verification is not malware scanning. Drafts expire after 24 hours, and failed or cancelled uploads do not replace published files. Uploading does not depend on source repository access or grant any customer access.
 
 Artifact product IDs must match the licensing registry exactly. In particular, LumenShards retains product ID `1`; LumenOrders uses `lumenorder`. Uploading a build does not create registry entries, link plugins, or grant ownership. Staff must configure any missing products and actual licenses before those downloads become available to customers.
 

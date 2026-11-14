@@ -4,6 +4,7 @@ import { readFile, readdir } from 'node:fs/promises'
 import { DatabaseSync } from 'node:sqlite'
 import { handleProductTools, runProductChecks } from '../worker/product-tools.js'
 import worker from '../worker/chat.js'
+import { handlePluginDownloads } from '../worker/plugin-downloads.js'
 
 async function fixture(t) {
   const sqlite = new DatabaseSync(':memory:')
@@ -290,4 +291,364 @@ test('download staff access is permission checked and broken artifacts are never
   await assert.rejects(response.arrayBuffer(), /could not be completed/)
   sqlite.prepare("UPDATE studio_downloads SET filename = '../not-a-safe-file.jar' WHERE id = ?").run(id)
   assert.equal((await call('/studio/downloads/' + id)).status, 503)
+})
+
+function pluginJar(size = 100) {
+  const files = [['plugin.yml', Buffer.from('name: Test\nmain: Test\nversion: 1\n')], ['Test.class', Buffer.alloc(size, 42)]]
+  const locals = []
+  const directory = []
+  let offset = 0
+  for (const [name, bytes] of files) {
+    const filename = Buffer.from(name)
+    const local = Buffer.alloc(30)
+    local.writeUInt32LE(0x04034b50)
+    local.writeUInt16LE(20, 4)
+    local.writeUInt32LE(bytes.length, 18)
+    local.writeUInt32LE(bytes.length, 22)
+    local.writeUInt16LE(filename.length, 26)
+    locals.push(local, filename, bytes)
+    const central = Buffer.alloc(46)
+    central.writeUInt32LE(0x02014b50)
+    central.writeUInt16LE(20, 6)
+    central.writeUInt32LE(bytes.length, 20)
+    central.writeUInt32LE(bytes.length, 24)
+    central.writeUInt16LE(filename.length, 28)
+    central.writeUInt32LE(offset, 42)
+    directory.push(central, filename)
+    offset += local.length + filename.length + bytes.length
+  }
+  const central = Buffer.concat(directory)
+  const end = Buffer.alloc(22)
+  end.writeUInt32LE(0x06054b50)
+  end.writeUInt16LE(files.length, 8)
+  end.writeUInt16LE(files.length, 10)
+  end.writeUInt32LE(central.length, 12)
+  end.writeUInt32LE(offset, 16)
+  return Buffer.concat([...locals, central, end])
+}
+
+async function manualFixture(t) {
+  const base = await fixture(t)
+  const requests = []
+  const deps = {
+    respond: (body, status) => Response.json(body, { status }),
+    verifyLoginToken: async token => /^\d+$/.test(token) ? { id: token } : null,
+    licensingRequest: async (_env, path) => {
+      requests.push(path)
+      throw new Error('Licensing is unavailable')
+    },
+  }
+  const call = (path, method = 'POST', body, token = base.owner) => handlePluginDownloads(new Request('https://worker.example' + path, {
+    method, headers: { Authorization: `Bearer ${token}` },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  }), base.env, 'https://lumenstudio.fyi', path, deps)
+  const bytes = pluginJar(65536 * 21 + 7)
+  const body = {
+    productId: '1', version: '1.2.3', filename: 'LumenShards-1.2.3.jar',
+    size: bytes.length, sha256: Buffer.from(await crypto.subtle.digest('SHA-256', bytes)).toString('hex'),
+  }
+  const chunks = []
+  for (let start = 0; start < bytes.length; start += 65536) chunks.push(bytes.subarray(start, start + 65536).toString('base64'))
+  const begin = async (metadata = body) => {
+    const response = await call('/studio/downloads/uploads', 'POST', metadata)
+    assert.equal(response.status, 201, await response.clone().text())
+    const result = await response.json()
+    return { ...result, path: '/studio/downloads/uploads/' + result.uploadId }
+  }
+  return { ...base, call, deps, requests, bytes, body, chunks, begin }
+}
+
+test('manual uploads publish without licensing, use canonical names and still require customer entitlements', async t => {
+  const { call, begin, sqlite, bytes, chunks, env, deps, customer, requests } = await manualFixture(t)
+  const existing = await seedDownload(sqlite)
+  const { path, uploadId, batchSize } = await begin()
+  assert.equal(batchSize, 20)
+  assert.equal((await (await call('/studio/downloads', 'GET')).json()).total, 1)
+  assert.equal((await call('/studio/downloads/' + uploadId, 'GET')).status, 404)
+  for (let start = 0; start < chunks.length; start += batchSize) {
+    const body = { start, chunks: chunks.slice(start, start + batchSize) }
+    assert.equal((await call(path + '/chunks', 'PUT', body)).status, 200)
+    assert.equal((await call(path + '/chunks', 'PUT', body)).status, 200)
+  }
+  assert.equal(sqlite.prepare('SELECT published FROM studio_downloads WHERE id = ?').get(uploadId).published, 0)
+  const published = await call(path + '/publish')
+  assert.equal(published.status, 201, await published.clone().text())
+  const artifact = (await published.json()).download
+  assert.equal(artifact.productId, '1')
+  assert.equal(artifact.name, 'LumenShards')
+  assert.equal((await call(path + '/publish')).status, 200)
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM website_access_audit WHERE action = 'download.publish'").get().n, 1)
+  assert.equal((await call(path + '/chunks', 'PUT', { start: 0, chunks: [chunks[0]] })).status, 409)
+  assert.equal((await call(path + '/cancel')).status, 409)
+  assert.equal(sqlite.prepare('SELECT published FROM studio_downloads WHERE id = ?').get(existing.id).published, 1)
+  assert.deepEqual(requests, [])
+  assert.equal((await call('/studio/downloads/' + uploadId, 'GET', undefined, customer)).status, 503)
+  deps.licensingRequest = async () => ({ ok: true, status: 200, data: {
+    customerDiscordId: customer, status: 'active', verificationRequired: false,
+    products: [{ productId: '1', productActive: true, status: 'active', expiresAt: null }],
+  } })
+  const downloaded = await call('/studio/downloads/' + uploadId, 'GET', undefined, customer)
+  assert.deepEqual(Buffer.from(await downloaded.arrayBuffer()), bytes)
+  deps.licensingRequest = async () => ({ ok: true, status: 200, data: {
+    customerDiscordId: customer, status: 'active', verificationRequired: false, products: [],
+  } })
+  assert.equal((await call('/studio/downloads/' + uploadId, 'GET', undefined, customer)).status, 404)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM studio_bulk_grants').get().n, 0)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM community_notifications').get().n, 0)
+  env.ADMIN_WRITE_LIMITER = undefined
+  assert.equal((await call('/studio/downloads/uploads', 'POST', {})).status, 503)
+})
+
+test('every upload step checks both staff permissions, ownership, expiration and write limits', async t => {
+  const { call, begin, sqlite, customer, owner, chunks, body, env } = await manualFixture(t)
+  const upload = await begin()
+  const other = '1012053634911064114'
+  for (const [suffix, method, payload] of [
+    ['/chunks', 'PUT', { start: 0, chunks: [chunks[0]] }], ['/publish', 'POST'], ['/cancel', 'POST'],
+  ]) {
+    assert.equal((await call(upload.path + suffix, method, payload, '')).status, 401)
+    assert.equal((await call(upload.path + suffix, method, payload, customer)).status, 403)
+    assert.equal((await call(upload.path + suffix, method, payload, other)).status, 404)
+  }
+  assert.equal((await call('/studio/downloads/uploads', 'POST', body, customer)).status, 403)
+  for (const permissions of [['dashboard.view'], ['products.manage']]) {
+    sqlite.prepare(`INSERT INTO website_role_permissions (role_id, permissions) VALUES ('studio_lead', ?)
+      ON CONFLICT(role_id) DO UPDATE SET permissions = excluded.permissions`).run(JSON.stringify(permissions))
+    assert.equal((await call('/studio/downloads/uploads', 'POST', body, other)).status, 403)
+  }
+  sqlite.prepare("DELETE FROM website_role_permissions WHERE role_id = 'studio_lead'").run()
+  env.ADMIN_WRITE_LIMITER = { limit: async ({ key }) => {
+    assert.equal(key, 'plugin-upload:' + owner)
+    return { success: false }
+  } }
+  assert.equal((await call(upload.path + '/chunks', 'PUT', { start: 0, chunks: [chunks[0]] })).status, 429)
+  env.ADMIN_WRITE_LIMITER = { limit: async () => ({ success: true }) }
+  sqlite.prepare('UPDATE studio_manual_uploads SET expires_at = ? WHERE download_id = ?').run('2000-01-01', upload.uploadId)
+  assert.equal((await call(upload.path + '/publish')).status, 404)
+  await begin()
+  assert.equal(sqlite.prepare('SELECT id FROM studio_downloads WHERE id = ?').get(upload.uploadId), undefined)
+})
+
+test('unlisted IDs, noncanonical names, invalid metadata and conflicting chunks cannot publish or overwrite data', async t => {
+  const { call, begin, sqlite, body, chunks, requests } = await manualFixture(t)
+  for (const patch of [
+    { productId: 'LumenShards' }, { productId: 'lumenshards' }, { productId: 'lumenorders' },
+    { productId: 'unlisted' }, { productId: '../1' }, { name: '' }, { name: 'Bad\nname' }, { name: 'Spoofed display name' },
+    { version: '../1' }, { filename: '../evil.jar' }, { filename: 'plugin.zip' },
+    { size: 0 }, { size: 32 * 1048576 + 1 }, { size: 1.5 }, { sha256: 'bad' },
+  ]) assert.equal((await call('/studio/downloads/uploads', 'POST', { ...body, ...patch })).status, 400)
+  const order = await begin({ ...body, productId: 'lumenorder' })
+  assert.equal(sqlite.prepare('SELECT name FROM studio_downloads WHERE id = ?').get(order.uploadId).name, 'LumenOrder')
+  assert.equal((await call(order.path + '/cancel')).status, 200)
+  assert.deepEqual(requests, [])
+  const { path, uploadId } = await begin()
+  for (const payload of [
+    { start: -1, chunks: [chunks[0]] }, { start: 0, chunks: Array(21).fill(chunks[0]) },
+    { start: 0, chunks: ['!bad'] }, { start: 0, chunks: ['UEs='] },
+    { start: chunks.length, chunks: [chunks[0]] },
+  ]) assert.ok([400, 413].includes((await call(path + '/chunks', 'PUT', payload)).status))
+  assert.equal((await call(path + '/chunks', 'PUT', { start: 0, chunks: [chunks[0]] })).status, 200)
+  const different = Buffer.alloc(65536, 1).toString('base64')
+  assert.equal((await call(path + '/chunks', 'PUT', { start: 0, chunks: [different] })).status, 409)
+  assert.equal(sqlite.prepare('SELECT data FROM studio_download_chunks WHERE download_id = ?').get(uploadId).data, chunks[0])
+  assert.equal((await call(path + '/publish')).status, 409)
+  assert.equal(sqlite.prepare('SELECT published FROM studio_downloads WHERE id = ?').get(uploadId).published, 0)
+  assert.equal((await call(path + '/cancel')).status, 200)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM studio_download_chunks WHERE download_id = ?').get(uploadId).n, 0)
+})
+
+test('server verification detects tampering and invalid JARs; simultaneous publishers cannot partially publish', async t => {
+  const { call, begin, sqlite, body, bytes, chunks } = await manualFixture(t)
+  for (const invalidJar of [false, true]) {
+    const bad = invalidJar ? Buffer.alloc(bytes.length, 42) : bytes
+    const hash = invalidJar ? Buffer.from(await crypto.subtle.digest('SHA-256', bad)).toString('hex') : '0'.repeat(64)
+    const { path, uploadId, batchSize } = await begin({ ...body, sha256: hash })
+    const data = []
+    for (let start = 0; start < bad.length; start += 65536) data.push(bad.subarray(start, start + 65536).toString('base64'))
+    for (let start = 0; start < data.length; start += batchSize) assert.equal((await call(path + '/chunks', 'PUT', {
+      start, chunks: data.slice(start, start + batchSize),
+    })).status, 200)
+    const failure = await call(path + '/publish')
+    assert.equal(failure.status, 409)
+    assert.match((await failure.json()).error, invalidJar ? /valid plugin JAR/ : /SHA-256/)
+    assert.equal(sqlite.prepare('SELECT published FROM studio_downloads WHERE id = ?').get(uploadId).published, 0)
+    assert.equal((await call(path + '/cancel')).status, 200)
+  }
+  const { path, uploadId, batchSize } = await begin()
+  for (let start = 0; start < chunks.length; start += batchSize) await call(path + '/chunks', 'PUT', { start, chunks: chunks.slice(start, start + batchSize) })
+  const outcomes = await Promise.all([call(path + '/publish'), call(path + '/publish')])
+  assert.deepEqual(outcomes.map(result => result.status).sort(), [201, 409])
+  assert.equal(sqlite.prepare('SELECT published FROM studio_downloads WHERE id = ?').get(uploadId).published, 1)
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM website_access_audit WHERE action = 'download.publish'").get().n, 1)
+})
+
+test('draft quota and recovery are actor-private and publication rolls back on audit failure', async t => {
+  const { call, begin, sqlite, chunks } = await manualFixture(t)
+  const existing = await seedDownload(sqlite)
+  const first = await begin()
+  const second = await begin()
+  const listed = await (await call('/studio/downloads/uploads', 'GET')).json()
+  assert.deepEqual(listed.uploads.map(row => row.id).sort(), [first.uploadId, second.uploadId].sort())
+  const other = await (await call('/studio/downloads/uploads', 'GET', undefined, '1012053634911064114')).json()
+  assert.deepEqual(other.uploads, [])
+  assert.equal((await call('/studio/downloads/uploads', 'POST', {
+    productId: '1', name: 'LumenShards', version: '1', filename: 'test.jar',
+    size: 100, sha256: '0'.repeat(64),
+  })).status, 409)
+  await call(second.path + '/cancel')
+  for (let start = 0; start < chunks.length; start += first.batchSize) {
+    await call(first.path + '/chunks', 'PUT', { start, chunks: chunks.slice(start, start + first.batchSize) })
+  }
+  sqlite.exec(`CREATE TRIGGER reject_upload_audit BEFORE INSERT ON website_access_audit
+    WHEN NEW.action = 'download.publish' BEGIN SELECT RAISE(ABORT, 'internal audit error'); END`)
+  const response = await call(first.path + '/publish')
+  assert.equal(response.status, 503)
+  assert.equal((await response.text()).includes('internal audit error'), false)
+  assert.equal(sqlite.prepare('SELECT published FROM studio_downloads WHERE id = ?').get(first.uploadId).published, 0)
+  assert.equal(sqlite.prepare('SELECT state FROM studio_manual_uploads WHERE download_id = ?').get(first.uploadId).state, 'failed')
+  assert.equal(sqlite.prepare('SELECT published FROM studio_downloads WHERE id = ?').get(existing.id).published, 1)
+  assert.equal((await call(first.path + '/cancel')).status, 200)
+})
+
+test('writes begun before the verification lock cannot insert chunks after locking', async t => {
+  const { call, begin, env, chunks, sqlite } = await manualFixture(t)
+  const { path, uploadId } = await begin()
+  const batch = env.COMMUNITY_DB.batch
+  env.COMMUNITY_DB.batch = async statements => {
+    sqlite.prepare("UPDATE studio_manual_uploads SET state = 'verifying' WHERE download_id = ?").run(uploadId)
+    return batch(statements)
+  }
+  assert.equal((await call(path + '/chunks', 'PUT', { start: 0, chunks: [chunks[0]] })).status, 409)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM studio_download_chunks WHERE download_id = ?').get(uploadId).n, 0)
+  assert.equal((await call(path + '/cancel')).status, 409)
+  assert.equal(sqlite.prepare('SELECT published FROM studio_downloads WHERE id = ?').get(uploadId).published, 0)
+})
+
+async function browserUploadApi(owner) {
+  const { transformWithEsbuild } = await import('vite')
+  const source = (await readFile(new URL('../docs/.vitepress/theme/studio-api.ts', import.meta.url), 'utf8'))
+    .replace("import { getDiscordSession } from './discord-session'", `const getDiscordSession = () => '${owner}'`)
+    .replaceAll('import.meta.env.VITE_DOCS_ASSISTANT_ENDPOINT', "'https://worker.example/chat'")
+  const { code } = await transformWithEsbuild(source, 'studio-api.ts', { loader: 'ts' })
+  return import('data:text/javascript;base64,' + Buffer.from(code + '\n//' + crypto.randomUUID()).toString('base64'))
+}
+
+test('draft listing and cancellation database failures return actionable errors', async t => {
+  const { call, begin, env, sqlite } = await manualFixture(t)
+  const { path, uploadId } = await begin()
+  const prepare = env.COMMUNITY_DB.prepare
+  env.COMMUNITY_DB.prepare = sql => {
+    if (sql.includes('SELECT d.id,d.name,d.filename') || sql.includes('DELETE FROM studio_downloads WHERE id = ?')) {
+      throw new Error('Private database failure')
+    }
+    return prepare(sql)
+  }
+  const list = await call('/studio/downloads/uploads', 'GET')
+  assert.equal(list.status, 503)
+  assert.match((await list.json()).error, /could not be listed.*Refresh builds.*0009_manual_uploads/)
+  const cancel = await call(path + '/cancel')
+  assert.equal(cancel.status, 503)
+  assert.match((await cancel.json()).error, /cancellation could not be confirmed.*Refresh builds/)
+  assert.equal(sqlite.prepare('SELECT published FROM studio_downloads WHERE id = ?').get(uploadId).published, 0)
+})
+
+test('browser reports both transfer and automatic draft cancellation failures', async t => {
+  const api = await browserUploadApi('1400375985211441242')
+  const original = { fetch: globalThis.fetch, window: globalThis.window, now: Date.now }
+  t.after(() => { globalThis.fetch = original.fetch; globalThis.window = original.window; Date.now = original.now })
+  let clock = Date.now()
+  Date.now = () => clock += 2100
+  globalThis.window = { location: { origin: 'https://lumenstudio.fyi' } }
+  const paths = []
+  globalThis.fetch = async input => {
+    const path = new URL(input).pathname
+    paths.push(path)
+    if (path.endsWith('/uploads')) return Response.json({ uploadId: crypto.randomUUID(), chunkSize: 65536, batchSize: 20 })
+    if (path.endsWith('/chunks')) return Response.json({ error: 'Transfer unavailable' }, { status: 503 })
+    return Response.json({ error: 'Cancellation unavailable' }, { status: 503 })
+  }
+  await assert.rejects(api.uploadPluginDownload({ productId: '1', version: '1' },
+    new File([pluginJar()], 'plugin.jar'), new AbortController().signal, () => {}),
+  /Transfer unavailable.*Draft cancellation could not be confirmed: Cancellation unavailable.*Refresh builds.*24 hours/)
+  assert.equal(paths.length, 3)
+  assert.ok(paths.at(-1).endsWith('/cancel'))
+})
+
+test('staff UI preserves downloads and exposes draft listing and discard failures', async t => {
+  const { parse, compileScript } = await import('@vue/compiler-sfc')
+  const { transformWithEsbuild } = await import('vite')
+  const original = { request: globalThis.manualUiRequest, cancel: globalThis.manualUiCancel }
+  t.after(() => {
+    if (original.request === undefined) delete globalThis.manualUiRequest
+    else globalThis.manualUiRequest = original.request
+    if (original.cancel === undefined) delete globalThis.manualUiCancel
+    else globalThis.manualUiCancel = original.cancel
+  })
+  globalThis.manualUiRequest = async path => {
+    if (path === '/downloads/uploads') throw new Error('Draft service unavailable')
+    return { items: [{ id: 'existing-download' }], total: 1, builds: [] }
+  }
+  globalThis.manualUiCancel = async () => { throw new Error('Discard service unavailable') }
+  const source = (await readFile(new URL('../docs/.vitepress/theme/PluginDownloads.vue', import.meta.url), 'utf8'))
+    .replace("import { onMounted, onUnmounted, ref } from 'vue'", "import { ref } from 'vue'\nconst onMounted = () => {}; const onUnmounted = () => {}")
+    .replace("import { getDiscordSession } from './discord-session'", "const getDiscordSession = () => '1400375985211441242'")
+    .replace(/^import .* from '\.\/studio-api'$/m, `const studioRequest = globalThis.manualUiRequest
+      const cancelPluginUpload = globalThis.manualUiCancel
+      const savePluginDownload = async () => {}; const uploadPluginDownload = async () => {}`)
+    .replace("'../../../shared/trial-products.mjs'", JSON.stringify(new URL('../shared/trial-products.mjs', import.meta.url).href))
+  const compiled = compileScript(parse(source).descriptor, { id: 'manual-upload-ui' }).content
+    .replaceAll("from 'vue'", `from '${import.meta.resolve('vue')}'`)
+  const { code } = await transformWithEsbuild(compiled, 'PluginDownloads.ts', { loader: 'ts' })
+  const component = (await import('data:text/javascript;base64,' + Buffer.from(code).toString('base64'))).default
+  const ui = component.setup({ staff: true }, { expose() {} })
+  ui.drafts.value = [{ id: 'unfinished' }]
+  await ui.load()
+  assert.equal(ui.items.value[0].id, 'existing-download')
+  assert.equal(ui.drafts.value[0].id, 'unfinished')
+  assert.match(ui.draftError.value, /Draft service unavailable.*Refresh builds.*out of date/)
+  await ui.cancelDraft('unfinished')
+  assert.match(ui.error.value, /Cancellation could not be confirmed.*Discard service unavailable.*Refresh builds/)
+  assert.match(ui.draftError.value, /Draft service unavailable/)
+})
+
+test('browser uploads a full 32 MiB JAR using bounded, paced writes and server-side verification', async t => {
+  const { env, deps, owner, sqlite } = await manualFixture(t)
+  const api = await browserUploadApi(owner)
+  const original = { fetch: globalThis.fetch, window: globalThis.window, now: Date.now, timeout: globalThis.setTimeout }
+  t.after(() => {
+    globalThis.fetch = original.fetch; globalThis.window = original.window
+    Date.now = original.now; globalThis.setTimeout = original.timeout
+  })
+  let clock = Date.now()
+  Date.now = () => clock
+  globalThis.window = { location: { origin: 'https://lumenstudio.fyi' } }
+  globalThis.setTimeout = (callback, delay) => {
+    queueMicrotask(() => { clock += delay; callback() })
+    return 1
+  }
+  const writes = []
+  env.ADMIN_WRITE_LIMITER = { limit: async () => {
+    assert.ok(writes.filter(time => time > clock - 60000).length <= 30)
+    return { success: true }
+  } }
+  globalThis.fetch = async (input, options) => {
+    const request = new Request(input, options)
+    writes.push(clock)
+    if (options.body) assert.ok(Buffer.byteLength(options.body) < 1800000)
+    return handlePluginDownloads(request, env, 'https://lumenstudio.fyi', new URL(input).pathname, deps)
+  }
+  const bytes = pluginJar(32 * 1048576 - pluginJar(0).length)
+  assert.equal(bytes.length, 32 * 1048576)
+  const file = new File([bytes], 'LumenShards-1.2.3.jar', { type: 'application/java-archive' })
+  const progress = []
+  const artifact = await api.uploadPluginDownload({ productId: '1', version: '1.2.3' },
+    file, new AbortController().signal, message => progress.push(message))
+  assert.equal(writes.length, 28)
+  assert.ok(writes.slice(1).every((time, n) => time - writes[n] >= 2100))
+  assert.match(progress.at(-1), /verifying/)
+  assert.equal(sqlite.prepare('SELECT published,size,chunk_count FROM studio_downloads WHERE id = ?').get(artifact.id).published, 1)
+  const response = await handlePluginDownloads(new Request('https://worker.example/studio/downloads/' + artifact.id, {
+    headers: { Authorization: 'Bearer ' + owner },
+  }), env, 'https://lumenstudio.fyi', '/studio/downloads/' + artifact.id, deps)
+  assert.deepEqual(Buffer.from(await response.arrayBuffer()), bytes)
 })

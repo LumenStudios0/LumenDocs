@@ -1263,6 +1263,12 @@ test('customers can select and submit trial requests during a licensing outage',
   assert.equal((await api(`/community/staff/trials/${item.id}`, 'PUT', { status: 'approved' })).status, 503)
   assert.equal(db.sqlite.prepare('SELECT status FROM community_trials WHERE id = ?').get(item.id).status, 'pending')
   assert.equal(db.sqlite.prepare('SELECT COUNT(*) AS n FROM community_trials').get().n, 1)
+  db.failBatchAt = 1
+  assert.equal((await api('/community/trials', 'POST', { productId: 'gladiator', reason: 'Evaluate the product' }, customer)).status, 503)
+  assert.equal(db.sqlite.prepare('SELECT COUNT(*) AS n FROM community_trials').get().n, 1)
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM community_notifications WHERE audience = 'staff'").get().n, 1)
+  db.failBatchAt = null
+  assert.equal((await api('/community/trials', 'POST', { productId: 'gladiator', reason: 'Evaluate the product' }, customer)).status, 201)
 })
 
 test('trial approval verifies every registry page before granting', async t => {
