@@ -2,6 +2,21 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { checkCompatibility, compareVersions, versionParts } from '../docs/.vitepress/theme/compatibility-utils.mjs'
 import { clearBookmarks, readBookmarks, toggleBookmark, validBookmarkPath } from '../docs/.vitepress/theme/doc-bookmarks.mjs'
+import { communityAvailabilityError, CommunityUnavailableError } from '../docs/.vitepress/theme/community-errors.mjs'
+
+test('missing Worker routes are connection failures, not missing user tickets', () => {
+  for (const path of ['/status', '/tickets', '/staff/tickets', '/issues', '/preferences']) {
+    const error = communityAvailabilityError(path, 404, { error: 'Not found' })
+    assert.ok(error instanceof CommunityUnavailableError)
+    assert.match(error.message, /updated Worker and its database/)
+  }
+  const id = '12345678-1234-1234-1234-123456789012'
+  assert.equal(communityAvailabilityError(`/tickets/${id}`, 404, { error: 'Ticket not found' }), null)
+  assert.ok(communityAvailabilityError(`/tickets/${id}`, 404, { error: 'Not found' }) instanceof CommunityUnavailableError)
+  assert.ok(communityAvailabilityError('/status', 503, { code: 'COMMUNITY_SERVICE_UNAVAILABLE' }) instanceof CommunityUnavailableError)
+  assert.equal(communityAvailabilityError('/tickets', 400, { error: 'Invalid ticket title' }), null)
+  assert.equal(communityAvailabilityError('/tickets', 401, { error: 'Sign in' }), null)
+})
 
 const plugin = { status: 'available', java: 21, apiVersion: '1.21', software: ['Paper'], dependencies: ['PacketEvents'], notes: [] }
 const setup = { java: 21, version: '1.21.6', software: 'Paper', installed: ['packetevents'] }

@@ -4,6 +4,7 @@ import { useData } from 'vitepress'
 import { getDiscordSession } from './discord-session'
 import { communityRequest, communityDate, type CommunityPage, type Issue, type Notification, type Preferences, type Reply, type Service, type Ticket } from './community-api'
 import pluginData from './plugin-compatibility-data.json'
+import { CommunityUnavailableError } from './community-errors.mjs'
 
 const props = defineProps<{ mode: 'tickets' | 'issues' | 'notifications' | 'status' }>()
 const { frontmatter } = useData()
@@ -12,6 +13,8 @@ const loading = ref(false)
 const submitting = ref(false)
 const error = ref('')
 const notice = ref('')
+const serviceReady = ref(false)
+const serviceUnavailable = ref(false)
 const page = ref(1)
 const total = ref(0)
 const tickets = ref<Ticket[]>([])
@@ -41,29 +44,35 @@ const headers = {
   tickets: ['YOUR SUPPORT WORKSPACE', 'Your tickets, on the website.', 'Create a private ticket and follow staff replies here. Do not include license keys, passwords, or access tokens.'],
   issues: ['KNOWN ISSUES', 'Confirmed issues. Clear workarounds.', 'Published issues are reviewed by staff. Connect Discord to submit a bug; your submission stays private until staff publish a sanitized issue.'],
   notifications: ['YOUR NOTIFICATION CENTER', 'Updates you choose to receive.', 'In-app announcements, plugin updates, and ticket replies. Preferences do not send email or Discord messages.'],
-  status: ['SERVICE HEALTH', 'Lumen service status.', 'Automatic probes run every five minutes. Staff can add a maintenance notice or override a status; the automatic result remains visible.'],
+  status: ['SERVICE HEALTH', 'Lumen service status.', 'When the website service is connected, automatic probes run every five minutes. Staff can add a maintenance notice or override a status.'],
 }
 
 function session() {
   try { token = getDiscordSession(); signedIn.value = !!token }
   catch (sessionError) { error.value = String(sessionError); signedIn.value = false }
 }
+function checkAvailabilityError(requestError: unknown) {
+  if (requestError instanceof CommunityUnavailableError) {
+    serviceReady.value = false
+    serviceUnavailable.value = true
+  }
+}
 async function load(target = 1, quiet = false) {
   const requestId = ++generation
-  if (!quiet) { loading.value = true; error.value = ''; notice.value = '' }
+  if (!quiet) { loading.value = true; error.value = ''; notice.value = ''; serviceReady.value = false; serviceUnavailable.value = false }
   selected.value = null
   replies.value = []
   session()
   try {
     if (props.mode === 'status') {
       const result = await communityRequest<{ services: Service[]; intervalMinutes: number }>('/status', {}, false)
-      if (requestId === generation) services.value = result.services
+      if (requestId === generation) { services.value = result.services; serviceReady.value = true }
     } else if (props.mode === 'issues') {
       const result = await communityRequest<CommunityPage<Issue>>(`/issues?page=${target}&pageSize=20`, {}, false)
-      if (requestId === generation) { issues.value = result.items; total.value = result.total; page.value = result.page }
+      if (requestId === generation) { issues.value = result.items; total.value = result.total; page.value = result.page; serviceReady.value = true }
     } else if (signedIn.value && props.mode === 'tickets') {
       const result = await communityRequest<CommunityPage<Ticket>>(`/tickets?page=${target}&pageSize=20`)
-      if (requestId === generation) { tickets.value = result.items; total.value = result.total; page.value = result.page }
+      if (requestId === generation) { tickets.value = result.items; total.value = result.total; page.value = result.page; serviceReady.value = true }
       const requested = new URLSearchParams(window.location.search).get('ticket')
       if (requestId === generation && !deepLinkHandled && requested && /^[0-9a-f-]{36}$/.test(requested)) {
         deepLinkHandled = true
@@ -77,12 +86,20 @@ async function load(target = 1, quiet = false) {
       if (requestId === generation) {
         notifications.value = result.items; total.value = result.total; page.value = result.page
         preferences.value = settings.preferences
+        serviceReady.value = true
         customTopics.value = settings.preferences.products.filter(id => !pluginData.plugins.some(plugin => plugin.id === id)).join(', ')
       }
+    }
+    if (requestId === generation && serviceReady.value) {
+      error.value = ''
+      serviceUnavailable.value = false
     }
   } catch (requestError) {
     if (requestId === generation) {
       error.value = requestError instanceof Error ? requestError.message : 'Could not load website data.'
+      serviceUnavailable.value = requestError instanceof CommunityUnavailableError
+      serviceReady.value = false
+      services.value = []
       if (!quiet) { tickets.value = []; issues.value = []; notifications.value = []; services.value = [] }
     }
   } finally { if (requestId === generation && !quiet) loading.value = false }
@@ -95,11 +112,16 @@ async function openTicket(id: string) {
   try {
     const result = await communityRequest<{ ticket: Ticket; replies: Reply[] }>(`/tickets/${id}`)
     if (requestId === generation) { selected.value = result.ticket; replies.value = result.replies; reply.value = ''; editing.value = false }
-  } catch (requestError) { if (requestId === generation) error.value = requestError instanceof Error ? requestError.message : 'Could not open ticket.' }
+  } catch (requestError) {
+    if (requestId === generation) {
+      error.value = requestError instanceof Error ? requestError.message : 'Could not open ticket.'
+      if (requestError instanceof CommunityUnavailableError) { serviceReady.value = false; serviceUnavailable.value = true }
+    }
+  }
   finally { if (requestId === generation) loading.value = false }
 }
 async function submit() {
-  if (submitting.value) return
+  if (submitting.value || !serviceReady.value) return
   submitting.value = true
   error.value = ''
   notice.value = ''
@@ -125,7 +147,12 @@ async function submit() {
       notice.value = 'Your ticket has been saved on the website.'
     }
     title.value = ''; body.value = ''; productId.value = ''; serverSoftware.value = ''; minecraftVersion.value = ''
-  } catch (requestError) { if (captured === getDiscordSession()) error.value = requestError instanceof Error ? requestError.message : 'Submission failed.' }
+  } catch (requestError) {
+    if (captured === getDiscordSession()) {
+      error.value = requestError instanceof Error ? requestError.message : 'Submission failed.'
+      checkAvailabilityError(requestError)
+    }
+  }
   finally { submitting.value = false }
 }
 function startEditing() {
@@ -158,7 +185,10 @@ async function saveTicketDetails() {
       else notice.value = 'Ticket details updated.'
     }
   } catch (requestError) {
-    if (captured === getDiscordSession()) error.value = `${saved ? 'Ticket changes saved; refresh failed. ' : ''}${requestError instanceof Error ? requestError.message : 'Could not update ticket.'}`
+    if (captured === getDiscordSession()) {
+      error.value = `${saved ? 'Ticket changes saved; refresh failed. ' : ''}${requestError instanceof Error ? requestError.message : 'Could not update ticket.'}`
+      checkAvailabilityError(requestError)
+    }
   } finally { submitting.value = false }
 }
 async function sendReply() {
@@ -170,7 +200,12 @@ async function sendReply() {
     await communityRequest(`/tickets/${id}/replies`, { method: 'POST', body: JSON.stringify({ body: reply.value }) })
     if (captured !== getDiscordSession()) return
     await openTicket(id)
-  } catch (requestError) { if (captured === getDiscordSession()) error.value = requestError instanceof Error ? requestError.message : 'Could not send reply.' }
+  } catch (requestError) {
+    if (captured === getDiscordSession()) {
+      error.value = requestError instanceof Error ? requestError.message : 'Could not send reply.'
+      checkAvailabilityError(requestError)
+    }
+  }
   finally { submitting.value = false }
 }
 async function savePreferences() {
@@ -185,7 +220,12 @@ async function savePreferences() {
     preferences.value = result.preferences
     await load(1)
     notice.value = 'Notification preferences saved.'
-  } catch (requestError) { if (captured === getDiscordSession()) error.value = requestError instanceof Error ? requestError.message : 'Could not save preferences.' }
+  } catch (requestError) {
+    if (captured === getDiscordSession()) {
+      error.value = requestError instanceof Error ? requestError.message : 'Could not save preferences.'
+      checkAvailabilityError(requestError)
+    }
+  }
   finally { submitting.value = false }
 }
 async function markRead(notification: Notification) {
@@ -194,7 +234,12 @@ async function markRead(notification: Notification) {
   try {
     await communityRequest(`/notifications/${notification.id}/read`, { method: 'POST' })
     if (captured === getDiscordSession()) notification.read = true
-  } catch (requestError) { if (captured === getDiscordSession()) error.value = requestError instanceof Error ? requestError.message : 'Could not mark notification read.' }
+  } catch (requestError) {
+    if (captured === getDiscordSession()) {
+      error.value = requestError instanceof Error ? requestError.message : 'Could not mark notification read.'
+      checkAvailabilityError(requestError)
+    }
+  }
 }
 function changedSession() {
   let current = ''
@@ -218,11 +263,13 @@ onUnmounted(() => { generation++; clearInterval(timer); window.removeEventListen
 <template>
   <section class="website-workspace" :aria-label="String(frontmatter.title || headers[mode][1])">
     <header><p class="website-kicker">{{ headers[mode][0] }}</p><h2>{{ headers[mode][1] }}</h2><p class="website-note">{{ headers[mode][2] }}</p><button type="button" :disabled="loading || submitting" @click="selected ? openTicket(selected.id) : load(page)">{{ loading ? 'Loading…' : 'Refresh' }}</button></header>
-    <p v-if="error" class="website-message website-error" role="alert">{{ error }}</p>
+    <p v-if="error" class="website-message" :class="{ 'website-error': !serviceUnavailable }" :role="serviceUnavailable ? 'status' : 'alert'">{{ error }}</p>
+    <p v-if="serviceUnavailable" class="website-note">Live data is unavailable, so sending and editing are disabled. <a href="https://discord.gg/lumenstudios">Contact support on Discord →</a></p>
     <p v-if="notice" class="website-message" role="status">{{ notice }}</p>
     <p v-if="loading" class="website-note" role="status">Loading website data…</p>
     <p v-if="!signedIn && mode !== 'status'" class="website-message">Use <strong>Log in</strong> in the header to connect your Discord account {{ mode === 'issues' ? 'before submitting a bug.' : 'to view your private workspace.' }}</p>
 
+    <fieldset class="website-service-controls" :disabled="loading || submitting || !serviceReady" aria-label="Website service controls">
     <template v-if="mode === 'tickets' && signedIn">
       <section v-if="selected" class="website-panel ticket-conversation">
         <button type="button" :disabled="loading || submitting" @click="backToTickets">← All my tickets</button>
@@ -235,7 +282,7 @@ onUnmounted(() => { generation++; clearInterval(timer); window.removeEventListen
         <p v-else class="website-note">This ticket is closed. Create a new ticket if you need further help.</p>
       </section>
       <template v-else>
-        <div class="ticket-toolbar"><div><h3>Your conversations</h3><p class="website-note">{{ total }} private {{ total === 1 ? 'ticket' : 'tickets' }} · Linked automatically to your Discord account</p></div><button class="website-primary" type="button" :disabled="submitting" @click="showComposer = !showComposer">{{ showComposer ? 'Cancel new ticket' : '+ New ticket' }}</button></div>
+        <div class="ticket-toolbar"><div><h3>Your conversations</h3><p class="website-note">{{ serviceReady ? `${total} private ${total === 1 ? 'ticket' : 'tickets'}` : 'Tickets have not loaded' }} · Linked automatically to your Discord account</p></div><button class="website-primary" type="button" :disabled="submitting" @click="showComposer = !showComposer">{{ showComposer ? 'Cancel new ticket' : '+ New ticket' }}</button></div>
         <form v-if="showComposer" class="website-panel ticket-composer" @submit.prevent="submit"><h3>How can we help?</h3><p class="website-message">No username needed. This ticket belongs to the Discord account you are logged into.</p><div class="website-columns"><label>Type<select v-model="type"><option value="support">Support</option><option value="bug">Bug report</option><option value="compatibility">Compatibility</option><option value="feature">Feature request</option></select></label><label>Plugin<select v-model="productId"><option value="">General / no specific plugin</option><option v-for="plugin in pluginData.plugins" :key="plugin.id" :value="plugin.id">{{ plugin.name }}</option></select></label></div><div v-if="type === 'compatibility'" class="website-columns"><label>Server software<input v-model="serverSoftware" required maxlength="100" placeholder="Paper, Purpur, etc."></label><label>Minecraft version<input v-model="minecraftVersion" required maxlength="50" placeholder="1.21.4"></label></div><label>Short title<input v-model="title" required minlength="3" maxlength="160" placeholder="What do you need help with?"></label><label>Details<textarea v-model="body" required minlength="5" maxlength="4000" rows="6" placeholder="What happened, what you expected, and steps to reproduce. Remove credentials from logs."></textarea></label><button class="website-primary" type="submit" :disabled="submitting">{{ submitting ? 'Saving ticket…' : 'Send to support' }}</button></form>
         <div class="website-list ticket-cards"><article v-for="ticket in tickets" :key="ticket.id"><p class="website-meta"><span class="website-badge" :data-status="ticket.status">{{ ticket.status === 'waiting' ? 'Reply requested' : ticket.status }}</span>{{ ticket.type }} · #{{ ticket.id.slice(0, 8) }}</p><h3>{{ ticket.title }}</h3><p class="website-note">{{ ticket.productId || 'General support' }} · {{ ticket.assignedTo?.name || 'Awaiting assignment' }}</p><div class="ticket-labels"><span v-for="label in ticket.labels" :key="label" class="website-badge">{{ label }}</span></div><div class="ticket-toolbar"><span class="website-meta">Updated {{ communityDate(ticket.updatedAt) }}</span><button type="button" :disabled="loading || submitting" @click="openTicket(ticket.id)">Open conversation →</button></div></article></div>
         <p v-if="!loading && !error && !tickets.length" class="website-note">No tickets on this page.</p>
@@ -257,8 +304,9 @@ onUnmounted(() => { generation++; clearInterval(timer); window.removeEventListen
 
     <template v-if="mode === 'status'">
       <div class="website-list"><article v-for="service in services" :key="service.id"><p class="website-meta"><span class="website-badge" :data-status="service.status">{{ service.status }}</span>{{ service.overrideStatus ? 'Staff override' : 'Automatic result' }}</p><h3>{{ service.name }}</h3><p v-if="service.message" class="website-body">{{ service.message }}</p><p class="website-note">Last automatic check: {{ communityDate(service.checkedAt) }} · Automatic result: {{ service.automaticStatus }}</p></article></div>
-      <p class="website-note">This page refreshes every five minutes while visible. Checks cover service reachability, not every feature or Minecraft server.</p>
+      <p class="website-note">{{ serviceReady ? 'This page refreshes every five minutes while visible. Checks cover service reachability, not every feature or Minecraft server.' : 'No live service checks are available yet. This page does not assume services are healthy when the status Worker is unavailable.' }}</p>
     </template>
     <div v-if="mode !== 'status' && !selected && total > 20" class="website-pagination"><button type="button" :disabled="loading || submitting || page <= 1" @click="load(page - 1)">Previous</button><span>Page {{ page }} / {{ Math.ceil(total / 20) }}</span><button type="button" :disabled="loading || submitting || page * 20 >= total" @click="load(page + 1)">Next</button></div>
+    </fieldset>
   </section>
 </template>

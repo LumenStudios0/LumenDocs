@@ -3,6 +3,8 @@ import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { withBase } from 'vitepress'
 import { clearDiscordSession, getDiscordSession, storeDiscordSession } from './discord-session'
 import { communityRequest } from './community-api'
+import { useCommunityService } from './use-community-service'
+import { CommunityUnavailableError } from './community-errors.mjs'
 
 declare global {
   interface Window {
@@ -96,6 +98,7 @@ const bugReport = ref({
 })
 const submittingBugReport = ref(false)
 const bugReportError = ref('')
+const { ready: bugServiceReady, checking: checkingBugService, connectionMessage: bugConnectionMessage, checkConnection: checkBugConnection } = useCommunityService()
 const bugReportSent = ref(false)
 const clickSounds = ref(true)
 const ambientMusic = ref(false)
@@ -1108,6 +1111,7 @@ function openBugReport() {
   assistantView.value = 'bug-report'
   bugReportError.value = ''
   bugReportSent.value = false
+  void checkBugConnection()
 }
 
 function showBugReport() {
@@ -1271,7 +1275,7 @@ function getBugReportEndpoint() {
 }
 
 async function submitBugReport() {
-  if (submittingBugReport.value) return
+  if (submittingBugReport.value || !bugServiceReady.value) return
   if (!getDiscordSession()) {
     bugReportError.value = 'Connect your Discord account using Log in before submitting a website bug ticket.'
     return
@@ -1296,6 +1300,11 @@ async function submitBugReport() {
 
     bugReportSent.value = true
   } catch (error) {
+    if (error instanceof CommunityUnavailableError) {
+      bugServiceReady.value = false
+      bugConnectionMessage.value = `${error.message} Delivery could not be confirmed; check your tickets before resending.`
+      return
+    }
     bugReportError.value = error instanceof Error
       ? error.message
       : 'Could not deliver the report. Please try again later.'
@@ -2144,12 +2153,17 @@ onUnmounted(() => {
             </label>
             <label>
               <span>Description of what happened</span>
-              <textarea v-model="bugReport.description" maxlength="2000" rows="3" required placeholder="What did you expect, and what happened instead?"></textarea>
+              <textarea v-model="bugReport.description" minlength="5" maxlength="2000" rows="3" required placeholder="What did you expect, and what happened instead?"></textarea>
             </label>
             <p v-if="bugReportError" class="assistant-bug-error" role="alert">{{ bugReportError }}</p>
+            <aside v-if="!bugServiceReady" class="assistant-field-hint" role="status">
+              <p>{{ checkingBugService ? 'Checking website support…' : bugConnectionMessage }}</p>
+              <button type="button" :disabled="checkingBugService" @click="checkBugConnection">Check connection again</button>
+              <p><a href="https://discord.gg/lumenstudios">Contact support on Discord →</a></p>
+            </aside>
             <p v-if="bugReportSent" class="assistant-bug-success" role="status">Your private website ticket is saved. <a href="/account/tickets">View my tickets →</a></p>
-            <button class="assistant-bug-submit" type="submit" :disabled="submittingBugReport || bugReportSent || !discordUser">
-              {{ submittingBugReport ? 'Sending report…' : bugReportSent ? 'Report sent' : 'Send bug report' }}
+            <button class="assistant-bug-submit" type="submit" :disabled="submittingBugReport || bugReportSent || !discordUser || !bugServiceReady">
+              {{ !bugServiceReady ? 'Website support unavailable' : submittingBugReport ? 'Sending report…' : bugReportSent ? 'Report sent' : 'Send bug report' }}
             </button>
           </form>
         </div>

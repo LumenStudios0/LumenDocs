@@ -62,6 +62,18 @@ The **Staff Dashboard** retains `/admin/` and adds **Tickets, updates & status**
 
 Persistent tickets, replies, preferences, announcements, and service status use the Worker's `COMMUNITY_DB` D1 binding. The Worker workflow provisions the `lumen-community` database and applies migrations before deployment; the Cloudflare deployment token needs D1 edit permission in addition to Worker edit permission. Missing storage or denied access is reported explicitly rather than shown as an empty successful result. Public known-issue posts require staff moderation, and public views do not expose customer identities or private tickets.
 
+An older Worker returns `Not found` for new `/community/*` routes. The website treats that as a missing service connection, not a missing customer ticket. Reports check readiness before enabling Send; unavailable ticket, notification, and staff controls remain disabled, with a connection recheck and Discord support link. A genuine `Ticket not found` response for a private conversation remains a normal ownership/not-found error. The site does not invent healthy service statuses or pretend unsent tickets were saved.
+
+| Feature | Required connection |
+| --- | --- |
+| Documentation, navigation, compatibility checker, local error search, bookmarks, music and paper lanterns | No Worker |
+| Discord sign-in and verified staff/owner access | OAuth Worker and Discord credentials |
+| Website tickets, replies, edits, assignment/labels, known issues, in-app notifications/preferences | Updated website Worker and migrated D1 database |
+| Live service status, automatic probes and staff overrides | Updated website Worker, D1 and five-minute cron |
+| New-ticket Discord alerts | Website Worker/D1 plus `DISCORD_BUG_REPORT_WEBHOOK` secret |
+| Licenses, purchase linking, product ownership, IPs, connected servers, account directory/deletion and staff license controls | Worker plus HTTPS licensing API and its server-only credentials; purchase linking also needs BuiltByBit OAuth |
+| Remote AI answers | Worker and configured AI-provider credentials; local docs search needs no Worker |
+
 `/status` shows reachability probes and staff maintenance overrides. Automatic checks run every five minutes, within the requested 1–10-minute window; the status page refreshes every five minutes while visible. Manual overrides remain until staff switch back to Automatic. Probes check website reachability, the Discord OAuth redirect, and licensing availability—not every plugin or customer's Minecraft server.
 
 The compatibility checker at `/getting-started/compatibility` covers identified studio plugins and upcoming/unverified projects using pinned repository manifest evidence. It distinguishes declared Java/API/dependency requirements from actual runtime testing. `/error-guides` searches known messages locally, without uploading logs. Documentation bookmarks at `/bookmarks` also remain in local browser storage and need no sign-in. Run `npm run test:website`, `npm run test:licensing`, and `npm run test:worker` before publishing.

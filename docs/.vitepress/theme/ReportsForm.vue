@@ -2,6 +2,8 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { getDiscordSession } from './discord-session'
 import { communityRequest } from './community-api'
+import { useCommunityService } from './use-community-service'
+import { CommunityUnavailableError } from './community-errors.mjs'
 
 type ReportType = 'bug' | 'compatibility' | 'feature'
 
@@ -19,11 +21,13 @@ const submitted = ref(false)
 const reportTypeRail = ref<HTMLElement | null>(null)
 const signedIn = ref(false)
 const ticketId = ref('')
+const uncertainSubmission = ref(false)
+const { ready, checking, connectionMessage, checkConnection } = useCommunityService()
 function syncSession() {
   try { signedIn.value = !!getDiscordSession() }
   catch (sessionError) { console.error('Unable to read report session:', sessionError); error.value = 'This browser could not access your Discord session.'; signedIn.value = false }
 }
-onMounted(() => { syncSession(); window.addEventListener('lumen-discord-user', syncSession) })
+onMounted(() => { syncSession(); void checkConnection(); window.addEventListener('lumen-discord-user', syncSession) })
 onUnmounted(() => window.removeEventListener('lumen-discord-user', syncSession))
 
 const reportTypes: { value: ReportType; label: string }[] = [
@@ -49,7 +53,7 @@ function scrollReportTypes(direction: -1 | 1) {
 }
 
 async function submitReport() {
-  if (submitting.value) return
+  if (submitting.value || !ready.value) return
   if (!getDiscordSession()) {
     error.value = 'Connect your Discord account with Log in before submitting a ticket.'
     return
@@ -80,6 +84,13 @@ async function submitReport() {
     ticketId.value = result.ticket.id
     submitted.value = true
   } catch (caught) {
+    if (captured !== getDiscordSession()) return
+    if (caught instanceof CommunityUnavailableError) {
+      ready.value = false
+      connectionMessage.value = caught.message
+      uncertainSubmission.value = true
+      return
+    }
     error.value = caught instanceof Error
       ? caught.message
       : 'Could not deliver the report. Please try again later.'
@@ -96,6 +107,12 @@ async function submitReport() {
       <h2>What would you like to share?</h2>
       <p>Choose a report type. Your ticket is saved privately on the website, where staff can reply.</p>
     </div>
+    <aside v-if="!ready" class="reports-message" role="status">
+      <p>{{ checking ? 'Checking whether website support is connected…' : connectionMessage }}</p>
+      <p v-if="!checking">{{ uncertainSubmission ? 'Delivery could not be confirmed. Check your tickets before sending this draft again.' : 'Sending is disabled while support is unavailable. You can prepare a draft below, but it has not been sent.' }}</p>
+      <button type="button" :disabled="checking" @click="checkConnection">Check connection again</button>
+      <p><a href="https://discord.gg/lumenstudios">Contact support on Discord →</a></p>
+    </aside>
 
     <form class="reports-form" @submit.prevent="submitReport">
       <div class="reports-type-field">
@@ -172,6 +189,7 @@ async function submitReport() {
         <textarea
           v-model="description"
           required
+          minlength="5"
           maxlength="2000"
           rows="5"
           :placeholder="reportType === 'bug'
@@ -197,8 +215,8 @@ async function submitReport() {
       <p v-if="submitted" class="reports-message reports-success" role="status">
         Your {{ reportTypeLabel.toLowerCase() }} is saved. <a :href="`/account/tickets?ticket=${ticketId}`">Open your website ticket →</a>
       </p>
-      <button class="reports-submit" type="submit" :disabled="submitting || submitted || !signedIn">
-        {{ submitting ? 'Sending…' : submitted ? 'Submitted' : `Send ${reportTypeLabel.toLowerCase()}` }}
+      <button class="reports-submit" type="submit" :disabled="submitting || submitted || !signedIn || !ready">
+        {{ !ready ? 'Website support unavailable' : submitting ? 'Sending…' : submitted ? 'Submitted' : `Send ${reportTypeLabel.toLowerCase()}` }}
       </button>
     </form>
 

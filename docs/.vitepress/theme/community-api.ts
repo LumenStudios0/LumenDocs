@@ -1,5 +1,6 @@
 import { getDiscordSession } from './discord-session'
 import { visibleServiceError } from './service-errors'
+import { communityAvailabilityError } from './community-errors.mjs'
 
 export interface Ticket {
   id: string
@@ -58,7 +59,7 @@ export interface CommunityPage<T> { items: T[]; total: number; page: number; pag
 
 export async function communityRequest<T>(path: string, init: RequestInit = {}, authenticated = true): Promise<T> {
   const configured = import.meta.env.VITE_DOCS_ASSISTANT_ENDPOINT
-  if (!configured) throw new Error(await visibleServiceError('The website service endpoint is not configured.', 0, 'website'))
+  if (!configured) throw communityAvailabilityError(path, 0, null)
   const url = new URL(configured, window.location.origin)
   url.pathname = url.pathname.replace(/\/chat\/?$/, '').replace(/\/$/, '') + '/community' + path.split('?')[0]
   url.search = path.includes('?') ? path.slice(path.indexOf('?') + 1) : ''
@@ -72,15 +73,21 @@ export async function communityRequest<T>(path: string, init: RequestInit = {}, 
     })
   } catch (error) {
     console.error('Website service request failed:', error)
-    throw new Error('Could not reach the website service. Please try again.')
+    throw communityAvailabilityError(path, 503, null)
   }
-  let result: T & { error?: string }
+  let result: T & { error?: string; code?: string }
   try { result = await response.json() }
   catch (error) {
     console.error('Website service returned an invalid response:', error)
+    const unavailable = communityAvailabilityError(path, response.status, null)
+    if (unavailable) throw unavailable
     throw new Error(await visibleServiceError(`The website service returned an invalid response (${response.status}).`, 0, 'website'))
   }
-  if (!response.ok) throw new Error(await visibleServiceError(result?.error || `Website request failed (${response.status}).`, response.status, 'website'))
+  if (!response.ok) {
+    const unavailable = communityAvailabilityError(path, response.status, result)
+    if (unavailable) throw unavailable
+    throw new Error(await visibleServiceError(result?.error || `Website request failed (${response.status}).`, response.status, 'website'))
+  }
   return result
 }
 
