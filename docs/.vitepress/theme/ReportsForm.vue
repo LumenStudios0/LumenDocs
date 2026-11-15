@@ -5,7 +5,7 @@ import { communityRequest } from './community-api'
 import { useCommunityService } from './use-community-service'
 import { CommunityUnavailableError } from './community-errors.mjs'
 
-type ReportType = 'bug' | 'compatibility' | 'feature'
+type ReportType = 'bug' | 'compatibility' | 'feature' | 'commission' | 'license_support'
 
 const reportType = ref<ReportType>('bug')
 const plugin = ref('')
@@ -34,12 +34,16 @@ const reportTypes: { value: ReportType; label: string }[] = [
   { value: 'bug', label: 'Bug report' },
   { value: 'compatibility', label: 'Compatibility' },
   { value: 'feature', label: 'Feature request' },
+  { value: 'commission', label: 'Commission request' },
+  { value: 'license_support', label: 'License support' },
 ]
 
 const reportTypeLabel = computed(() => ({
   bug: 'Bug report',
   compatibility: 'Compatibility report',
   feature: 'Feature request',
+  commission: 'Commission request',
+  license_support: 'License support request',
 }[reportType.value]))
 
 function selectReportType(type: ReportType) {
@@ -101,7 +105,7 @@ async function submitReport() {
 </script>
 
 <template>
-  <section class="reports-workspace" aria-label="Submit a report">
+  <section class="reports-workspace" aria-label="Support center">
     <div class="reports-intro">
       <span class="reports-eyebrow">LUMEN STUDIOS SUPPORT</span>
       <h2>What would you like to share?</h2>
@@ -148,7 +152,7 @@ async function submitReport() {
         </div>
       </div>
 
-      <div v-if="reportType !== 'feature'" class="reports-fields">
+      <div v-if="reportType === 'bug' || reportType === 'compatibility'" class="reports-fields">
         <label>
           <span>Plugin</span>
           <input v-model="plugin" required maxlength="100" placeholder="e.g. LumenAuction">
@@ -165,7 +169,7 @@ async function submitReport() {
         </div>
       </div>
       <label v-else>
-        <span>Related plugin <small>Optional</small></span>
+        <span>{{ reportType === 'license_support' ? 'Plugin needing license help' : 'Related plugin' }} <small>Optional</small></span>
         <input v-model="plugin" maxlength="100" placeholder="e.g. LumenAuction">
       </label>
 
@@ -179,13 +183,13 @@ async function submitReport() {
         </select>
       </label>
 
-      <label v-if="reportType === 'feature'">
-        <span>Request title</span>
-        <input v-model="title" required maxlength="120" placeholder="A short summary of the idea">
+      <label v-if="reportType === 'feature' || reportType === 'commission' || reportType === 'license_support'">
+        <span>{{ reportType === 'feature' ? 'Request title' : reportType === 'commission' ? 'Commission title' : 'What do you need help with?' }}</span>
+        <input v-model="title" required maxlength="120" :placeholder="reportType === 'feature' ? 'A short summary of the idea' : reportType === 'commission' ? 'A short summary of the project' : 'A short summary of your license issue'">
       </label>
 
       <label>
-        <span>{{ reportType === 'bug' ? 'What happened?' : reportType === 'compatibility' ? 'Test details' : 'How would this help?' }}</span>
+        <span>{{ reportType === 'bug' ? 'What happened?' : reportType === 'compatibility' ? 'Test details' : reportType === 'feature' ? 'How would this help?' : reportType === 'commission' ? 'What would you like us to build?' : 'License issue details' }}</span>
         <textarea
           v-model="description"
           required
@@ -196,9 +200,14 @@ async function submitReport() {
             ? 'What did you expect, and what happened instead?'
             : reportType === 'compatibility'
               ? 'Share what you tested and any relevant details.'
-              : 'Describe the feature and the problem it would solve.'"
+              : reportType === 'feature'
+                ? 'Describe the feature and the problem it would solve.'
+                : reportType === 'commission'
+                  ? 'Describe the Minecraft plugin or feature you want commissioned, including key requirements and any useful deadline or budget range.'
+                  : 'Describe the license error and steps you have tried. Include your plugin name and server IP setup if relevant, but never include a license key, plugin token, or other secret.'"
         />
       </label>
+      <p v-if="reportType === 'license_support'" class="reports-message">For your safety, do not include a license key, plugin token, password, or full server config.</p>
 
       <details v-if="reportType === 'bug'" class="reports-extra-fields">
         <summary>More details <span>Optional</span></summary>

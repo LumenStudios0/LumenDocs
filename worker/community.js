@@ -210,7 +210,7 @@ async function createTicket(request, env, user, deps, body, typeOverride) {
   }
   if (!body || typeof body !== 'object' || Array.isArray(body)) return json(request, { error: 'Expected a ticket object' }, 400, deps.respond)
   const type = typeOverride ?? body.type
-  const types = new Set(['support', 'bug', 'compatibility', 'feature'])
+  const types = new Set(['support', 'bug', 'compatibility', 'feature', 'commission', 'license_support'])
   if (!types.has(type)) return json(request, { error: 'Choose a valid ticket type' }, 400, deps.respond)
   if (!validText(body.title, 3, 160) || !validText(body.body, 5, 8000)) {
     return json(request, { error: 'Title must be 3–160 characters and body 5–8000 characters' }, 400, deps.respond)

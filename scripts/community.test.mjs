@@ -227,6 +227,21 @@ test('customers can only view their tickets and ticket lifecycle/replies persist
   assert.equal(rejected.status, 409)
 })
 
+test('support center commission and license support requests are accepted as distinct private tickets', async () => {
+  const customer = await tokenFor(customerId, 'Customer')
+  for (const [type, title, body] of [
+    ['commission', 'Custom Minecraft plugin', 'I would like to discuss a custom plugin commission.'],
+    ['license_support', 'License validation issue', 'My plugin reports a license validation error.'],
+  ]) {
+    const response = await call('/community/tickets', 'POST', { type, title, body }, customer)
+    assert.equal(response.status, 201)
+    const ticket = (await response.json()).ticket
+    assert.equal(ticket.type, type)
+    assert.equal(ticket.title, title)
+    assert.equal(ticket.body, body)
+  }
+})
+
 test('tickets validate types, compatibility fields, payload lengths, and pagination bounds', async () => {
   const customer = await tokenFor(customerId, 'Customer')
   const badType = await call('/community/tickets', 'POST', { type: 'other', title: 'A title', body: 'A body here.' }, customer)

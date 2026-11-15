@@ -2,8 +2,8 @@
 import ReportsForm from '../.vitepress/theme/ReportsForm.vue'
 </script>
 
-# Reports
+# Support center
 
-Connect your Discord account, then submit a private website ticket for bugs, compatibility results, or feature ideas. Staff reply on the website; follow your conversation in [My tickets](/account/tickets). Never include license keys or credentials.
+Connect your Discord account to send a private request to the Lumen Studios team. Choose a bug report, compatibility report, feature request, commission request, or license support. Staff reply in your website tickets. Never include license keys, plugin tokens, passwords, or other credentials.
 
 <ReportsForm />
