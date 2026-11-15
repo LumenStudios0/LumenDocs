@@ -33,6 +33,10 @@ export function bootstrapRole(id, env) {
   return (env.ADMIN_DISCORD_IDS || '').split(',').map(value => value.trim()).includes(id) ? 'support_team' : 'guest'
 }
 
+export function memberRole(id, savedRole, env) {
+  return id === OWNER_DISCORD_ID ? 'owner' : savedRole || bootstrapRole(id, env)
+}
+
 export async function rolePolicies(env) {
   const rows = env.COMMUNITY_DB
     ? (await env.COMMUNITY_DB.prepare('SELECT * FROM website_role_permissions').all()).results || [] : []
@@ -47,7 +51,7 @@ export async function rolePolicies(env) {
 export async function resolveAccess(id, env) {
   const member = env.COMMUNITY_DB
     ? await env.COMMUNITY_DB.prepare('SELECT role_id, revision FROM website_members WHERE discord_id = ?').bind(id).first() : null
-  const roleId = id === OWNER_DISCORD_ID ? 'owner' : member?.role_id || bootstrapRole(id, env)
+  const roleId = memberRole(id, member?.role_id, env)
   const policy = (await rolePolicies(env)).find(role => role.id === roleId)
   if (!policy) throw new Error('Invalid saved member role')
   return { role: roleId, roleName: policy.name, rank: policy.rank, permissions: policy.permissions,

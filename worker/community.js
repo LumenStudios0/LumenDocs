@@ -269,7 +269,7 @@ async function ticketDetail(request, env, user, deps, id, isStaff) {
   const replies = await env.COMMUNITY_DB.prepare(
     'SELECT id, body, author_id, author_name, staff, created_at FROM community_replies WHERE ticket_id = ? ORDER BY created_at',
   ).bind(id).all()
-  const profiles = await messageProfiles(env.COMMUNITY_DB, (replies.results || []).map(reply => reply.author_id))
+  const profiles = await messageProfiles(env.COMMUNITY_DB, (replies.results || []).map(reply => reply.author_id), env)
   return json(request, {
     ticket: {
       ...ticketView(row, isStaff, deps.ticketEstimates),
@@ -823,7 +823,7 @@ async function forumList(request, env, url, deps, staff, viewerId, canAnnounce =
     values,
     page,
   )
-  const profiles = await messageProfiles(env.COMMUNITY_DB, result.items.map(row => row.author_id))
+  const profiles = await messageProfiles(env.COMMUNITY_DB, result.items.map(row => row.author_id), env)
   return json(request, {
     ...result, items: result.items.map(row => ({ ...threadView(row, staff, viewerId), profile: profiles.get(row.author_id) || null })), viewer: { signedIn: Boolean(viewerId), staff, canAnnounce },
   }, 200, deps.respond)
@@ -835,7 +835,7 @@ async function forumThread(request, env, deps, id, staff, viewerId, canAnnounce 
   const posts = await env.COMMUNITY_DB.prepare(
     `SELECT * FROM community_thread_posts WHERE thread_id = ? ${staff ? '' : 'AND hidden = 0'} ORDER BY created_at ASC LIMIT 500`,
   ).bind(id).all()
-  const profiles = await messageProfiles(env.COMMUNITY_DB, [row.author_id, ...(posts.results || []).map(post => post.author_id)])
+  const profiles = await messageProfiles(env.COMMUNITY_DB, [row.author_id, ...(posts.results || []).map(post => post.author_id)], env)
   return json(request, {
     thread: { ...threadView(row, staff, viewerId), profile: profiles.get(row.author_id) || null },
     posts: (posts.results ?? []).map(post => ({ ...postView(post, staff), profile: profiles.get(post.author_id) || null })),

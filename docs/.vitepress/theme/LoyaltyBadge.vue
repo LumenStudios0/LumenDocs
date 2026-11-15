@@ -7,11 +7,11 @@ defineProps<{ tier: { id: string; name: string }; compact?: boolean }>()
     <svg class="badge-effects" viewBox="0 0 160 40" preserveAspectRatio="none" aria-hidden="true">
       <path class="badge-circuit" d="M0 31H25L36 20H72M88 20H120L133 7H160" />
       <path class="badge-trace" d="M0 31H25L36 20H72M88 20H120L133 7H160" />
-      <g v-if="tier.id === 'nova' || tier.id === 'elite'" class="badge-dust">
+      <g v-if="['nova', 'elite', 'studio_lead', 'owner'].includes(tier.id)" class="badge-dust">
         <circle cx="9" cy="11" r="1" /><circle cx="42" cy="33" r="1" />
         <circle cx="108" cy="9" r="1.2" /><circle cx="148" cy="29" r="1" />
       </g>
-      <path v-if="tier.id === 'elite'" class="badge-flash" d="M138 5L140 11L146 13L140 15L138 21L136 15L130 13L136 11Z" />
+      <path v-if="tier.id === 'elite' || tier.id === 'owner'" class="badge-flash" d="M138 5L140 11L146 13L140 15L138 21L136 15L130 13L136 11Z" />
     </svg>
     <span class="badge-sheen" aria-hidden="true" />
     <svg class="badge-art" viewBox="0 0 32 32" fill="none" aria-hidden="true">
@@ -40,6 +40,35 @@ defineProps<{ tier: { id: string; name: string }; compact?: boolean }>()
         <path class="badge-ink elite-draw" d="M5 12L11 17L16 7L21 17L27 12L24 25H8Z" />
         <path class="elite-crystal" d="M16 14L20 20L16 25L12 20Z" />
         <path class="elite-sparks" d="M3 4V8M1 6H5M28 4V8M26 6H30" />
+      </g>
+      <g v-else-if="tier.id === 'staff'">
+        <path class="badge-facet" d="M16 3L27 7V16Q26 25 16 29Q6 25 5 16V7Z" />
+        <path class="badge-ink staff-shield" d="M16 3L27 7V16Q26 25 16 29Q6 25 5 16V7Z" />
+        <path class="staff-check" d="M10 16L14 20L22 11" />
+        <path class="staff-scan" d="M8 9H24" />
+      </g>
+      <g v-else-if="tier.id === 'developer'">
+        <path class="badge-facet" d="M16 2L29 9V23L16 30L3 23V9Z" />
+        <path class="developer-frame" d="M16 2L29 9V23L16 30L3 23V9Z" />
+        <path class="badge-ink developer-code" d="M11 11L6 16L11 21M21 11L26 16L21 21M18 9L14 23" />
+        <path class="developer-signal" d="M3 9H9M23 23H29" />
+        <circle class="developer-node" cx="16" cy="3" r="1.5" />
+      </g>
+      <g v-else-if="tier.id === 'studio_lead'">
+        <circle class="lead-radar" cx="16" cy="16" r="13" />
+        <path class="lead-axis" d="M16 1V6M16 26V31M1 16H6M26 16H31" />
+        <g class="lead-compass">
+          <path class="badge-facet" d="M16 5L21 16L16 27L11 16Z" />
+          <path class="badge-ink" d="M16 5L21 16L16 27L11 16Z" />
+          <path class="lead-needle" d="M16 5L21 16H16Z" />
+        </g>
+        <circle cx="16" cy="16" r="2" class="lead-center" />
+      </g>
+      <g v-else-if="tier.id === 'owner'">
+        <g class="owner-orbit"><path d="M16 1L19 5L24 4L25 9L30 12L27 16L30 20L25 23L24 28L19 27L16 31L13 27L8 28L7 23L2 20L5 16L2 12L7 9L8 4L13 5Z" /></g>
+        <path class="badge-facet" d="M16 6L25 16L16 26L7 16Z" />
+        <path class="badge-ink owner-sigil" d="M16 6L25 16L16 26L7 16Z" />
+        <path class="owner-star" d="M16 10L18 14L22 16L18 18L16 22L14 18L10 16L14 14Z" />
       </g>
     </svg>
     <span class="badge-label">{{ tier.name }}</span>
@@ -72,6 +101,10 @@ defineProps<{ tier: { id: string; name: string }; compact?: boolean }>()
 .loyalty-badge[data-tier=radiance] { --badge-color: #c8afff; --badge-secondary: #86f6f1; --badge-bg: #292348; }
 .loyalty-badge[data-tier=nova] { --badge-color: #9bdfff; --badge-secondary: #ca9dff; --badge-bg: #202b49; border-radius: 13px 5px; }
 .loyalty-badge[data-tier=elite] { --badge-color: #ffe1a0; --badge-secondary: #f5a3f5; --badge-bg: #3a2444; border-radius: 6px; }
+.loyalty-badge[data-tier=staff] { --badge-color: #8ff3dc; --badge-secondary: #82caff; --badge-bg: #193b3d; border-radius: 11px 5px; }
+.loyalty-badge[data-tier=developer] { --badge-color: #b2ff97; --badge-secondary: #83d9ff; --badge-bg: #1d332d; border-radius: 4px; background: repeating-linear-gradient(0deg, #a3ffc507 0 1px, transparent 1px 5px), linear-gradient(120deg, var(--badge-bg), #161522); }
+.loyalty-badge[data-tier=studio_lead] { --badge-color: #ffbd9b; --badge-secondary: #ff84b9; --badge-bg: #402537; border-radius: 5px 13px; }
+.loyalty-badge[data-tier=owner] { --badge-color: #e7b8ff; --badge-secondary: #ffe6a3; --badge-bg: #422452; border-radius: 12px 4px; }
 .badge-label { position: relative; z-index: 2; overflow-wrap: anywhere; color: #fff4ff; }
 .badge-art { position: relative; z-index: 2; width: 26px; height: 26px; flex-shrink: 0; color: var(--badge-color); stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
 .badge-facet { fill: var(--badge-color); fill-opacity: .2; stroke: none; }
@@ -93,6 +126,21 @@ defineProps<{ tier: { id: string; name: string }; compact?: boolean }>()
 .elite-crystal { fill: var(--badge-secondary); stroke: none; animation: badge-crystal-glow 4s ease-in-out infinite; }
 .elite-sparks { animation: badge-spark 4s ease-in-out infinite reverse; }
 .badge-flash { fill: var(--badge-color); transform-origin: 138px 13px; animation: badge-flash-bloom 6s ease-in-out infinite; }
+.staff-shield { animation-duration: 7s; }
+.staff-check { stroke-dasharray: 20; animation: badge-check-draw 5s ease-in-out infinite; }
+.staff-scan { stroke: var(--badge-secondary); animation: badge-shield-scan 5s ease-in-out infinite; }
+.developer-frame { stroke: var(--badge-secondary); stroke-dasharray: 5 9; animation: badge-nova-orbit 7s linear infinite; }
+.developer-code { animation-duration: 4s; }
+.developer-signal { stroke: var(--badge-secondary); stroke-dasharray: 2 4; animation: badge-nova-orbit 2s linear infinite; }
+.developer-node { fill: var(--badge-color); stroke: none; animation: badge-spark 3s ease-in-out infinite; }
+.lead-radar { stroke: var(--badge-secondary); stroke-dasharray: 15 6 2 6; animation: badge-nova-orbit 8s linear infinite; }
+.lead-axis { opacity: .65; }
+.lead-compass { transform-origin: 16px 16px; animation: badge-compass-steer 9s ease-in-out infinite; }
+.lead-needle { fill: var(--badge-secondary); stroke: none; }
+.lead-center { fill: var(--badge-color); stroke: none; }
+.owner-orbit { stroke: var(--badge-secondary); opacity: .7; transform-origin: 16px 16px; animation: badge-ray-orbit 24s linear infinite; }
+.owner-sigil { animation-duration: 6s; }
+.owner-star { fill: var(--badge-secondary); stroke: none; animation: badge-crystal-glow 5s ease-in-out infinite; }
 .loyalty-badge--compact { gap: 4px; padding: 2px 7px 2px 4px; font-size: 10px; border-radius: 5px 8px; }
 .loyalty-badge--compact .badge-art { width: 18px; height: 18px; }
 @keyframes badge-ink-draw { 0%, 100% { stroke-dashoffset: 0; } 35% { stroke-dashoffset: 90; opacity: .4; } 65% { stroke-dashoffset: 0; opacity: 1; } }
@@ -105,6 +153,9 @@ defineProps<{ tier: { id: string; name: string }; compact?: boolean }>()
 @keyframes badge-dust-drift { 50% { transform: translateY(-3px); opacity: .4; } }
 @keyframes badge-crystal-glow { 50% { fill: var(--badge-color); opacity: .5; } }
 @keyframes badge-flash-bloom { 0%, 30%, 100% { transform: scale(.35); opacity: .2; } 55% { transform: scale(1); opacity: .9; } }
+@keyframes badge-check-draw { 0%, 100% { stroke-dashoffset: 0; } 30% { stroke-dashoffset: 20; } 65% { stroke-dashoffset: 0; } }
+@keyframes badge-shield-scan { 0%, 100% { transform: translateY(0); opacity: .2; } 50% { transform: translateY(12px); opacity: .8; } }
+@keyframes badge-compass-steer { 0%, 100% { transform: rotate(-25deg); } 40% { transform: rotate(60deg); } 70% { transform: rotate(15deg); } }
 @media (prefers-reduced-motion: reduce) {
   .loyalty-badge *, .loyalty-badge *::before, .loyalty-badge *::after { animation: none; }
   .badge-sheen { display: none; }

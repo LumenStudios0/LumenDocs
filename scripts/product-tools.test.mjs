@@ -277,6 +277,81 @@ test('member profiles are public automatically with owner-only edits, safe field
   assert.equal(outage.profile.bio, body.bio)
 })
 
+test('badge selection unlocks lower tiers and staff ranks, filters downgrades immediately and gives Owner all eight cosmetic badges', async t => {
+  const { call, sqlite, customer, owner, env } = await fixture(t)
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  let count = 7
+  const products = Array.from({ length: 10 }, (_, i) => ({ productId: `p${i}`, name: `Plugin ${i}`, active: true, plugins: [`p${i}`] }))
+  globalThis.fetch = async input => {
+    const url = new URL(input)
+    return url.pathname.endsWith('/products') ? Response.json({ items: products, total: 10 })
+      : Response.json({ customerDiscordId: url.pathname.split('/').at(-1), status: 'active', verificationRequired: false,
+        products: products.slice(0, count).map(product => ({ productId: product.productId, productActive: true, status: 'active', expiresAt: null })) })
+  }
+  const initial = (await (await call('/studio/profiles/me', 'GET', undefined, customer)).json()).profile
+  assert.deepEqual(initial.availableBadges.map(b => b.id), ['spark', 'radiance', 'nova'])
+  assert.deepEqual(initial.badges.map(b => b.id), ['nova'])
+  for (const [owned, unlocked] of [[1, ['spark']], [3, ['spark', 'radiance']], [10, ['spark', 'radiance', 'nova', 'elite']]]) {
+    count = owned
+    const profile = (await (await call('/studio/profiles/me', 'GET', undefined, customer)).json()).profile
+    assert.deepEqual(profile.availableBadges.map(b => b.id), unlocked)
+  }
+  count = 7
+  await call('/studio/profiles/me', 'GET', undefined, customer)
+  const body = { displayName: 'Builder', bio: '', pronouns: '', status: '', accent: '#123456', banner: '#654321',
+    website: '', showcase: '', favoritePlugin: '', public: true, revision: 0, badgeIds: ['spark', 'radiance', 'nova'] }
+  const eliteId = '223456789012345678'
+  count = 10
+  const eliteProfile = (await (await call('/studio/profiles/me', 'GET', undefined, eliteId)).json()).profile
+  const eliteIds = eliteProfile.availableBadges.map(b => b.id)
+  assert.equal((await call('/studio/profiles/me', 'PUT', { ...body, badgeIds: eliteIds }, eliteId)).status, 200)
+  assert.deepEqual((await messageProfiles(env.COMMUNITY_DB, [eliteId], env)).get(eliteId).badges.map(b => b.id),
+    ['spark', 'radiance', 'nova', 'elite'])
+  count = 7
+  for (const id of ['elite', 'staff', 'developer', 'studio_lead', 'owner', 'fake']) {
+    assert.equal((await call('/studio/profiles/me', 'PUT', { ...body, badgeIds: [id] }, customer)).status, 403)
+  }
+  for (const badgeIds of [['spark', 'spark'], ['spark', 7], 'owner', Array(9).fill('spark')]) {
+    assert.equal((await call('/studio/profiles/me', 'PUT', { ...body, badgeIds }, customer)).status, 400)
+  }
+  assert.equal((await call('/studio/profiles/me', 'PUT', body, customer)).status, 200)
+  assert.equal((await call('/studio/profiles/me', 'PUT', body, customer)).status, 409)
+  let publicProfile = (await (await call('/studio/profiles/' + customer, 'GET', undefined, '')).json()).profile
+  assert.deepEqual(publicProfile.badges.map(b => b.id), body.badgeIds)
+  assert.equal(publicProfile.availableBadges, undefined)
+  assert.deepEqual((await messageProfiles(env.COMMUNITY_DB, [customer], env)).get(customer).badges.map(b => b.id), body.badgeIds)
+  count = 1
+  await call('/studio/profiles/me', 'GET', undefined, customer)
+  assert.deepEqual((await messageProfiles(env.COMMUNITY_DB, [customer], env)).get(customer).badges.map(b => b.id), ['spark'])
+  sqlite.prepare('UPDATE member_profiles SET tier_checked_at=? WHERE user_id=?').run('2000-01-01', customer)
+  assert.deepEqual((await messageProfiles(env.COMMUNITY_DB, [customer], env)).get(customer).badges, [])
+  count = 0
+  sqlite.prepare("INSERT INTO website_members(discord_id,role_id) VALUES (?,'support_team')").run(customer)
+  const staff = (await (await call('/studio/profiles/me', 'GET', undefined, customer)).json()).profile
+  assert.deepEqual(staff.availableBadges.map(b => b.id), ['staff'])
+  sqlite.prepare("UPDATE website_members SET role_id='developer' WHERE discord_id=?").run(customer)
+  const developer = (await (await call('/studio/profiles/me', 'GET', undefined, customer)).json()).profile
+  assert.deepEqual(developer.availableBadges.map(b => b.id), ['staff', 'developer'])
+  assert.equal((await call('/studio/profiles/me', 'PUT', { ...body, revision: 1, badgeIds: ['staff', 'developer'] }, customer)).status, 200)
+  sqlite.prepare("UPDATE website_members SET role_id='client' WHERE discord_id=?").run(customer)
+  publicProfile = (await (await call('/studio/profiles/' + customer, 'GET', undefined, '')).json()).profile
+  assert.deepEqual(publicProfile.badges, [])
+  assert.deepEqual((await messageProfiles(env.COMMUNITY_DB, [customer], env)).get(customer).badges, [])
+  assert.equal((await call('/studio/profiles/me', 'PUT', { ...body, revision: 2, badgeIds: ['developer'] }, customer)).status, 403)
+  sqlite.prepare("UPDATE website_members SET role_id='studio_lead' WHERE discord_id=?").run(customer)
+  const lead = (await (await call('/studio/profiles/me', 'GET', undefined, customer)).json()).profile
+  assert.deepEqual(lead.availableBadges.map(b => b.id), ['staff', 'developer', 'studio_lead'])
+  const ownerProfile = (await (await call('/studio/profiles/me', 'GET', undefined, owner)).json()).profile
+  const all = ownerProfile.availableBadges.map(b => b.id)
+  assert.equal(all.length, 8)
+  assert.equal(ownerProfile.tier, null)
+  assert.equal((await call('/studio/profiles/me', 'PUT', { ...body, badgeIds: all }, owner)).status, 200)
+  assert.equal((await messageProfiles(env.COMMUNITY_DB, [owner], env)).get(owner).badges.length, 8)
+  assert.equal((await call('/studio/profiles/me', 'PUT', { ...body, revision: 1, badgeIds: [] }, owner)).status, 200)
+  assert.deepEqual((await messageProfiles(env.COMMUNITY_DB, [owner], env)).get(owner).badges, [])
+})
+
 test('public-profile migration publishes existing profiles without losing owner edits and rejects stale drafts', async t => {
   const { call, sqlite, customer } = await fixture(t)
   sqlite.prepare(`INSERT INTO member_profiles(user_id,username,display_name,bio,public,revision,created_at,updated_at)
