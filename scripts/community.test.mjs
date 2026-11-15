@@ -29,7 +29,7 @@ async function tokenFor(id, name) {
 
 function createD1() {
   const sqlite = new DatabaseSync(':memory:')
-  const migrations = Promise.all(['0001_community.sql', '0002_ticket_routing.sql', '0003_community_forum.sql', '0004_website_access.sql', '0005_member_registration.sql', '0006_community_expansion.sql', '0007_product_tools.sql', '0010_trial_duration.sql'].map(
+  const migrations = Promise.all(['0001_community.sql', '0002_ticket_routing.sql', '0003_community_forum.sql', '0004_website_access.sql', '0005_member_registration.sql', '0006_community_expansion.sql', '0007_product_tools.sql', '0010_trial_duration.sql', '0011_staff_docs_permissions.sql'].map(
     name => readFile(new URL(`../worker/migrations/community/${name}`, import.meta.url), 'utf8'),
   ))
   const database = {
@@ -793,6 +793,83 @@ test('preset roles enforce strict assignment hierarchy, protected owner and curr
   assert.equal((await api('/auth/me', 'GET', undefined, guest)).status, 200)
   const members = await (await api('/admin/website/members?query=Guest')).json()
   assert.equal(members.items[0].role, 'guest')
+})
+
+test('staff knowledge migration preserves saved policies and enables only the intended additions', async t => {
+  const db = new DatabaseSync(':memory:')
+  t.after(() => db.close())
+  db.exec(await readFile(new URL('../worker/migrations/community/0004_website_access.sql', import.meta.url), 'utf8'))
+  const insert = db.prepare('INSERT INTO website_role_permissions (role_id, permissions, revision) VALUES (?, ?, ?)')
+  for (const role of ROLES.filter(role => role.id !== 'owner')) {
+    insert.run(role.id, JSON.stringify(role.rank >= 2 ? ['tickets.view'] : []), 4)
+  }
+  db.exec(await readFile(new URL('../worker/migrations/community/0011_staff_docs_permissions.sql', import.meta.url), 'utf8'))
+  for (const role of ROLES.filter(role => role.id !== 'owner')) {
+    const saved = db.prepare('SELECT permissions, revision FROM website_role_permissions WHERE role_id = ?').get(role.id)
+    assert.equal(saved.revision, 5)
+    assert.deepEqual(JSON.parse(saved.permissions), [
+      ...(role.rank >= 2 ? ['tickets.view'] : []),
+      'support.create', 'trials.request', 'forum.post',
+      ...(role.rank >= 2 ? ['staff.docs'] : []),
+    ])
+  }
+})
+
+test('private staff guides require staff rank and current permission on every request', async t => {
+  const { db, api, assign } = await accessFixture(t)
+  const id = '223456789012345698'
+  const member = await tokenFor(id, 'Knowledge reader')
+  const anonymous = await api('/studio/staff/docs', 'GET', undefined, null)
+  assert.equal(anonymous.status, 401)
+  assert.doesNotMatch(await anonymous.text(), /Required inputs|Validation request/)
+  for (const role of ['guest', 'client']) {
+    assert.equal((await assign(id, role)).status, 200)
+    assert.equal((await api('/studio/staff/docs', 'GET', undefined, member)).status, 403)
+    assert.equal((await api(`/admin/website/roles/${role}`, 'PUT', { permissions: ['staff.docs'], revision: 0 })).status, 403)
+  }
+  for (const role of ['support_team', 'developer', 'studio_lead']) {
+    assert.equal((await assign(id, role)).status, 200)
+    const response = await api('/studio/staff/docs', 'GET', undefined, member)
+    assert.equal(response.status, 200)
+    assert.equal(response.headers.get('Cache-Control'), 'no-store')
+    const payload = await response.json()
+    assert.ok(payload.guides.some(guide => guide.id === 'integration' && guide.body.includes('X-Plugin-Token')))
+    assert.ok(payload.guides.some(guide => guide.id === 'ticket-playbook'))
+    assert.equal(payload.actor.roleName, ROLES.find(item => item.id === role).name)
+  }
+  await assign(id, 'support_team')
+  const preset = ROLES.find(role => role.id === 'support_team')
+  assert.equal((await api('/admin/website/roles/support_team', 'PUT', {
+    permissions: preset.permissions.filter(permission => permission !== 'staff.docs'), revision: 0,
+  })).status, 200)
+  assert.equal((await api('/studio/staff/docs', 'GET', undefined, member)).status, 403)
+  // Legacy or corrupt lower-role policies must not bypass the staff-rank floor.
+  db.sqlite.prepare("INSERT INTO website_role_permissions(role_id, permissions, revision) VALUES ('client', ?, 1)")
+    .run(JSON.stringify(['staff.docs', 'dashboard.view']))
+  await assign(id, 'client')
+  assert.equal((await api('/studio/staff/docs', 'GET', undefined, member)).status, 403)
+  assert.equal((await api('/admin/users', 'GET', undefined, member)).status, 403)
+})
+
+test('guest and client permission toggles enforce new requests without removing existing ticket access', async t => {
+  const { api, assign } = await accessFixture(t)
+  const member = await tokenFor(customerId, 'Customer')
+  const ticket = (await (await api('/community/tickets', 'POST', { type: 'support', title: 'Existing request', body: 'Keep this conversation accessible.' }, member)).json()).ticket
+  for (const role of ['guest', 'client']) {
+    await assign(customerId, role)
+    assert.equal((await api(`/admin/website/roles/${role}`, 'PUT', { permissions: [], revision: 0 })).status, 200)
+    for (const [path, body] of [
+      ['/community/tickets', { type: 'commission', title: 'New request', body: 'Discuss a new project.' }],
+      ['/community/issues', { title: 'New issue', body: 'A new issue report.' }],
+      ['/community/trials', { productId: '1', reason: 'Evaluate a plugin.' }],
+      ['/community/forum', { channel: 'general', title: 'New topic', body: 'New forum post.' }],
+    ]) assert.equal((await api(path, 'POST', body, member)).status, 403)
+    assert.equal((await api(`/community/tickets/${ticket.id}`, 'GET', undefined, member)).status, 200)
+    assert.equal((await api(`/community/tickets/${ticket.id}/replies`, 'POST', { body: 'Continuing the existing conversation.' }, member)).status, 200)
+    assert.equal((await api(`/admin/website/roles/${role}`, 'PUT', { permissions: ['support.create', 'trials.request', 'forum.post'], revision: 1 })).status, 200)
+    assert.equal((await api('/community/trials', 'POST', { productId: role === 'guest' ? '1' : 'gladiator', reason: 'Evaluate a plugin.' }, member)).status, 201)
+    assert.equal((await api('/community/tickets', 'POST', { type: 'license_support', title: 'License request', body: 'Request allowed again.' }, member)).status, 201)
+  }
 })
 
 test('support grants and IP controls honor saved permissions immediately without exposing destructive registry operations', async t => {

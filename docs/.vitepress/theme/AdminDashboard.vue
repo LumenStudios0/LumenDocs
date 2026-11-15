@@ -597,6 +597,7 @@ onUnmounted(() => {
     <p v-if="accessReady && !can('dashboard.view') && !accessError" class="staff-message" role="status">Your role does not have Staff Dashboard access.</p>
     <p v-if="can('dashboard.view') && !availableViews.length && !communityAccess && !can('roles.assign') && !can('settings.view')" class="staff-message" role="status">Dashboard access is enabled, but your role has no tools assigned yet.</p>
     <nav v-if="can('dashboard.view')" class="staff-navigation" aria-label="Staff dashboard areas">
+      <a v-if="permissions.includes('staff.docs')" href="/staff/">Staff mode &amp; guides</a>
       <button v-if="availableViews.length" type="button" :aria-pressed="!websiteOperations && !settingsArea" @click="websiteOperations = false; settingsArea = ''; loadView()">Licenses &amp; accounts</button>
       <button v-if="communityAccess" type="button" :aria-pressed="websiteOperations && !settingsArea" :disabled="submitting" @click="websiteOperations = true; settingsArea = ''">Tickets, updates &amp; status</button>
       <button v-if="can('roles.assign')" type="button" :aria-pressed="settingsArea === 'roles'" @click="settingsArea = 'roles'; clearKey()">Users &amp; roles</button>

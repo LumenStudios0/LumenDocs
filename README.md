@@ -62,6 +62,8 @@ If the licensing backend is unavailable, the signed-in studio owner can select *
 
 ## Publishing and support workflows
 
+**Staff mode** at `/staff/` provides searchable private staff playbooks and a developer desk with a red-and-black, reduced-motion-aware animated interface. Access requires Support team rank or higher and `staff.docs`. Guide content is served by the authenticated Worker, not embedded in public Pages assets, docs search, or the AI assistant's Markdown corpus. Staff can enter from their account menu or Staff Dashboard. Website settings includes Guest/Client toggles for new support requests, trials, and community posts; those roles cannot receive staff privileges or product ownership through these switches.
+
 Customers can select a plugin and request a trial at `/account/trials` even when the licensing service is unavailable. Requests appear in **Tickets, updates & status**, and staff receive an in-app notification. Approval grants an actual time-limited license and therefore requires license-grant permission, a working licensing API, and an active matching product linked to a plugin. Unavailable or unlinked products remain pending until configured; existing access is preserved. Closed tickets accept owner-only satisfaction ratings; staff can escalate tickets and configure unanswered-ticket reminders through the existing Discord webhook.
 
 Staff notifications support HTTPS image links, rich formatting, and scheduled publication. Published staff updates and product releases appear at `/updates`. Formatting includes headings, bold, italic, code, and allowlisted text colors; raw HTML is not executed. The status page keeps incident history, and customers can subscribe to published known issues.

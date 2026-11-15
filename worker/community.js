@@ -204,6 +204,9 @@ async function issueList(request, env, url, deps) {
 }
 
 async function createTicket(request, env, user, deps, body, typeOverride) {
+  if (!hasPermission(await resolveAccess(user.id, env), 'support.create')) {
+    return json(request, { error: 'Your role cannot submit new support requests.' }, 403, deps.respond)
+  }
   const { settings } = await siteSettings(env)
   if (!settings.supportOpen && !hasPermission(await resolveAccess(user.id, env), 'tickets.manage')) {
     return json(request, { error: settings.supportClosedMessage, code: 'SUPPORT_PAUSED' }, 503, deps.respond)
@@ -963,6 +966,14 @@ export async function handleCommunity(request, env, origin, path, deps) {
   const auth = await session(request, env, deps, staffPath)
   if (auth.response) return auth.response
   const { user, role, access } = auth
+  const memberPermission = request.method === 'POST'
+    ? suffix === '/issues' ? 'support.create'
+      : suffix === '/forum' || /^\/forum\/[^/]+\/replies$/.test(suffix) ? 'forum.post'
+        : suffix === '/trials' ? 'trials.request' : null
+    : null
+  if (memberPermission && !hasPermission(access, memberPermission)) {
+    return json(request, { error: `Permission required: ${memberPermission}` }, 403, deps.respond)
+  }
   const dbFailure = await requireDb(request, env, deps, Boolean(role))
   if (dbFailure) return dbFailure
   const privateResponse = await limit(request, env, user, deps, Boolean(role))

@@ -1,4 +1,8 @@
 export const PERMISSIONS = [
+  ['support.create', 'Submit support center requests and known issues', 'Member features'],
+  ['trials.request', 'Request product trials', 'Member features'],
+  ['forum.post', 'Create community threads and replies', 'Member features'],
+  ['staff.docs', 'Open Staff mode and private staff/developer guides', 'Staff knowledge'],
   ['dashboard.view', 'Open Staff Dashboard', 'Dashboard'],
   ['customers.view', 'View customers and their license data', 'Licensing'],
   ['customers.restrict', 'Ban, hold and release customer accounts', 'Licensing'],
@@ -33,7 +37,9 @@ export const PERMISSIONS = [
   ['settings.audit', 'Read website access and settings audit history', 'Settings'],
 ].map(([id, name, group]) => ({ id, name, group }))
 
+export const MEMBER_PERMISSIONS = ['support.create', 'trials.request', 'forum.post']
 const support = [
+  ...MEMBER_PERMISSIONS, 'staff.docs',
   'dashboard.view', 'customers.view', 'customers.verify', 'licenses.grant', 'licenses.status', 'licenses.ips',
   'audit.view', 'plugins.view', 'tickets.view', 'tickets.reply', 'tickets.manage', 'tickets.alerts',
   'forum.moderate', 'roles.assign',
@@ -41,8 +47,8 @@ const support = [
 const developer = [...support, 'plugins.register', 'plugins.manage', 'products.create', 'products.manage',
   'products.link', 'products.unlink', 'issues.manage', 'notifications.manage', 'forum.announce', 'status.manage']
 export const ROLES = [
-  { id: 'guest', name: 'Guest', rank: 0, permissions: [] },
-  { id: 'client', name: 'Client', rank: 1, permissions: [] },
+  { id: 'guest', name: 'Guest', rank: 0, permissions: MEMBER_PERMISSIONS },
+  { id: 'client', name: 'Client', rank: 1, permissions: MEMBER_PERMISSIONS },
   { id: 'support_team', name: 'Support team', rank: 2, permissions: support },
   { id: 'developer', name: 'Developer', rank: 3, permissions: developer },
   { id: 'studio_lead', name: 'Studio Lead', rank: 4, permissions: PERMISSIONS.map(item => item.id) },

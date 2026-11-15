@@ -18,6 +18,7 @@ import CompatibilityChecker from './CompatibilityChecker.vue'
 import ErrorGuides from './ErrorGuides.vue'
 import DocBookmarks from './DocBookmarks.vue'
 import SiteDialog from './SiteDialog.vue'
+import StaffKnowledge from './StaffKnowledge.vue'
 import { createSiteDialog, siteDialogKey } from './site-dialog'
 import './custom.css'
 import './website-tools.css'
@@ -41,6 +42,7 @@ export default {
     app.component('CompatibilityChecker', CompatibilityChecker)
     app.component('ErrorGuides', ErrorGuides)
     app.component('DocBookmarks', DocBookmarks)
+    app.component('StaffKnowledge', StaffKnowledge)
   },
   Layout: defineComponent({
     setup() {
@@ -52,14 +54,15 @@ export default {
       const navMenuOpen = ref(false)
       const currentPath = ref(router.route.path)
       const workspace = computed(() => {
+        if (/^\/staff(?:\/|$)/.test(currentPath.value)) return { name: 'Staff mode', link: '/staff/', label: 'STAFF KNOWLEDGE' }
         if (/^\/admin(?:\/|$)/.test(currentPath.value)) return { name: 'Studio console', link: '/admin/', label: 'ADMINISTRATION' }
         if (/^\/account(?:\/|$)/.test(currentPath.value)) return { name: 'Customer portal', link: '/account/', label: 'YOUR WORKSPACE' }
         return { name: 'Documentation', link: '/docs/', label: 'THE LUMEN GUIDEBOOK' }
       })
       const isDocumentation = computed(() =>
-        currentPath.value !== '/' && !/^\/(?:account|admin)(?:\/|$)/.test(currentPath.value),
+        currentPath.value !== '/' && !/^\/(?:account|admin|staff)(?:\/|$)/.test(currentPath.value),
       )
-      const isOperations = computed(() => /^\/(?:account|admin)(?:\/|$)/.test(currentPath.value))
+      const isOperations = computed(() => /^\/(?:account|admin|staff)(?:\/|$)/.test(currentPath.value))
       let traversingHistory = false
       const topNavigationItems = [
         { text: 'Documentation', link: '/docs/', detail: 'Answers, without the digging.', icon: 'M4 3h12l4 4v14H4zM14 3v6h6M8 13h8M8 17h5' },

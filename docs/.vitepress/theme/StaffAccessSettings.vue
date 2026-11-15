@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { ROLES } from '../../../shared/permissions.mjs'
+import { MEMBER_PERMISSIONS, ROLES } from '../../../shared/permissions.mjs'
 import { useSiteDialog } from './site-dialog'
 const { confirm: confirmSiteAction } = useSiteDialog()
 
@@ -43,7 +43,8 @@ const assignableRoles = computed(() => roles.value.filter(role => actor.value?.r
   role.rank < (actor.value?.rank ?? -1) && role.permissions.every(permission => can(permission))))
 const editableRole = computed(() => selectedRole.value && selectedRole.value.id !== 'owner' && can('settings.roles') &&
   (actor.value?.role === 'owner' || selectedRole.value.rank < (actor.value?.rank ?? -1)))
-const groups = computed(() => [...new Set(permissions.value.map(item => item.group))])
+const visiblePermissions = computed(() => permissions.value.filter(item => (selectedRole.value?.rank ?? 0) >= 2 || MEMBER_PERMISSIONS.includes(item.id)))
+const groups = computed(() => [...new Set(visiblePermissions.value.map(item => item.group))])
 const busy = computed(() => loading.value || saving.value)
 const messageOf = (value: unknown) => value instanceof Error ? value.message : 'Website request failed.'
 function selectRole() { permissionDraft.value = [...(selectedRole.value?.permissions || [])] }
@@ -145,8 +146,9 @@ onMounted(() => { void refresh() })
           <h3>Preset role permissions</h3>
           <p class="website-note">Ranks and the six roles are fixed. Owner always retains all permissions. Other roles have independent permission sets; editing one does not automatically change higher roles. Dashboard access requires “Open Staff Dashboard” in addition to action permissions. License grants also need customer and registry read access.</p>
           <label>Role<select v-model="selectedRoleId" :disabled="busy" @change="selectRole"><option v-for="role in roles" :key="role.id" :value="role.id">{{ role.name }}</option></select></label>
+          <p v-if="selectedRole && selectedRole.rank < 2" class="website-note">Guest and Client toggles control signed-in users submitting support requests, requesting trials, and posting in the community. They never grant staff access or product ownership. Anonymous visitors still need to sign in before posting.</p>
           <p v-if="!editableRole" class="website-note">Read-only: you need role-permission editing access and a strictly higher role. Owner permissions cannot be edited.</p>
-          <fieldset v-for="group in groups" :key="group" :disabled="busy || !editableRole" class="permission-group"><legend>{{ group }}</legend><label v-for="permission in permissions.filter(item => item.group === group)" :key="permission.id" class="website-check"><input v-model="permissionDraft" :value="permission.id" type="checkbox" :disabled="!can(permission.id) && !permissionDraft.includes(permission.id)">{{ permission.name }}<code>{{ permission.id }}</code></label></fieldset>
+          <fieldset v-for="group in groups" :key="group" :disabled="busy || !editableRole" class="permission-group"><legend>{{ group }}</legend><label v-for="permission in visiblePermissions.filter(item => item.group === group)" :key="permission.id" class="website-check"><input v-model="permissionDraft" :value="permission.id" type="checkbox" :disabled="!can(permission.id) && !permissionDraft.includes(permission.id)">{{ permission.name }}<code>{{ permission.id }}</code></label></fieldset>
           <div class="website-actions"><button type="button" class="website-primary" :disabled="busy || !editableRole" @click="saveRole">Save role permissions</button><button type="button" :disabled="busy || !editableRole" @click="restorePreset">Restore preset in editor</button></div>
         </section>
         <form v-if="settings" class="website-panel" @submit.prevent="save('/website/settings', { settings, revision: settingsRevision }, 'Website settings saved.')">

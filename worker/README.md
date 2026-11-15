@@ -199,6 +199,8 @@ Response details: ticket creation and `GET /community/tickets/{uuid}` use `{ "ti
 
 ## Product tools and expiry reminders
 
+`GET /studio/staff/docs` serves private staff/developer guides only after verifying the current signed-in role is Support team or higher and has `staff.docs`. The endpoint uses staff read limits and `no-store` responses. `worker/staff-knowledge.js` is intentionally not imported into Pages. Migration `0011_staff_docs_permissions.sql` enables staff guides for existing staff policies and preserves prior member behavior with `support.create`, `trials.request`, and `forum.post`; Guest/Client policies can only grant these member actions. Permission changes affect the next request, including existing sessions. Anonymous posting remains disabled.
+
 The Worker serves `/studio/releases` as a public, paginated feed of published release notes. Authenticated staff with `products.manage` can list, create, and edit drafts at `/studio/staff/releases` and `/studio/staff/releases/{id}`. The first publication creates an in-app product update; drafts stay private. This manager stores release metadata, not plugin binaries.
 
 `POST /studio/bulk-grants` requires `licenses.grant` and accepts `{requestId, productId, customerIds, expiresAt}`. Use a fresh UUID per intentional batch, at most ten distinct Discord IDs, and `null` for lifetime access. The batch is reserved in D1 before contacting the licensing API. Reusing the same UUID returns recorded results without granting again. Active access and restricted accounts are skipped rather than shortened or replaced. Results marked `processing` or `uncertain` require staff inspection, not an automatic retry. Keys are never included in the response. Successful grants create private license notifications.

@@ -1,4 +1,4 @@
-import { PERMISSIONS, ROLES } from '../shared/permissions.mjs'
+import { MEMBER_PERMISSIONS, PERMISSIONS, ROLES } from '../shared/permissions.mjs'
 
 export const OWNER_DISCORD_ID = '1400375985211441242'
 const LEAD_DISCORD_ID = '1012053634911064114'
@@ -39,7 +39,7 @@ export async function rolePolicies(env) {
     const saved = rows.find(row => row.role_id === role.id)
     const permissions = saved ? JSON.parse(saved.permissions) : role.permissions
     if (!Array.isArray(permissions) || permissions.some(id => !permissionIds.has(id))) throw new Error('Invalid saved role permissions')
-    return { ...role, permissions: [...permissions], revision: saved?.revision || 0 }
+    return { ...role, permissions: role.rank < 2 ? permissions.filter(id => MEMBER_PERMISSIONS.includes(id)) : [...permissions], revision: saved?.revision || 0 }
   })
 }
 
@@ -175,6 +175,9 @@ export async function websiteAdminApi(request, env, path, user, access, respond,
     if (role.id === 'owner' || access.role !== 'owner' && role.rank >= access.rank) return send({ error: 'Only lower role permissions can be edited. Owner permissions are fixed.' }, 403)
     if (!Array.isArray(body.permissions) || body.permissions.some(id => !permissionIds.has(id))) return send({ error: 'Choose valid preset permissions.' }, 400)
     const permissions = [...new Set(body.permissions)].sort()
+    if (role.rank < 2 && permissions.some(id => !MEMBER_PERMISSIONS.includes(id))) {
+      return send({ error: 'Guest and Client roles can only receive member-feature permissions, never staff tools or private guides.' }, 403)
+    }
     if (access.role !== 'owner' && permissions.some(id => !allows(id))) return send({ error: 'You cannot delegate permissions you do not have.' }, 403)
     statements = [
       db.prepare(`INSERT INTO website_role_permissions(role_id, permissions, revision)
