@@ -1,12 +1,17 @@
 import { getDiscordSession } from './discord-session'
 
-export async function studioRequest<T>(path: string, init: RequestInit = {}, authenticated = true): Promise<T> {
+export function studioUrl(path: string) {
   const configured = import.meta.env.VITE_DOCS_ASSISTANT_ENDPOINT
   if (!configured) throw new Error('Website tools are not configured.')
   const url = new URL(configured, window.location.origin)
   const [route, query] = path.split('?')
   url.pathname = url.pathname.replace(/\/chat\/?$/, '').replace(/\/$/, '') + '/studio' + route
   url.search = query || ''
+  return url.href
+}
+
+export async function studioRequest<T>(path: string, init: RequestInit = {}, authenticated = true): Promise<T> {
+  const url = studioUrl(path)
   const token = authenticated ? getDiscordSession() : ''
   if (authenticated && !token) throw new Error('Sign in with Discord to continue.')
   const response = await fetch(url, {

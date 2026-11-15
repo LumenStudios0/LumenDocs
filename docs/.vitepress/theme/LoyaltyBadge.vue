@@ -70,6 +70,21 @@ defineProps<{ tier: { id: string; name: string }; compact?: boolean }>()
         <path class="badge-ink owner-sigil" d="M16 6L25 16L16 26L7 16Z" />
         <path class="owner-star" d="M16 10L18 14L22 16L18 18L16 22L14 18L10 16L14 14Z" />
       </g>
+      <g v-else-if="tier.id==='introduced'">
+        <path class="badge-facet" d="M5 4H27V25H12L5 30Z" /><path class="badge-ink" d="M5 4H27V25H12L5 30Z" /><path class="staff-check" d="M10 10H22M10 15H22M10 20H17" />
+      </g>
+      <g v-else-if="tier.id==='server_builder'">
+        <path class="badge-facet" d="M16 3L28 10V23L16 30L4 23V10Z" /><path class="badge-ink" d="M16 3L28 10V23L16 30L4 23V10ZM4 10L16 17L28 10M16 17V30" /><path class="developer-signal" d="M9 19L12 21M20 23L24 21" />
+      </g>
+      <g v-else-if="tier.id==='conversation'">
+        <path class="badge-ink" d="M3 6H23V21H10L3 27ZM23 11H29V26H22L17 30V23" /><circle class="developer-node" cx="9" cy="13" r="1" /><circle class="developer-node" cx="16" cy="13" r="1" />
+      </g>
+      <g v-else-if="tier.id==='contributor'">
+        <path class="badge-facet" d="M16 3L29 16L16 29L3 16Z" /><path class="badge-ink" d="M16 3L29 16L16 29L3 16Z" /><path class="staff-check" d="M9 16L14 21L23 11" />
+      </g>
+      <g v-else-if="tier.id==='regular'">
+        <circle class="lead-radar" cx="16" cy="16" r="13" /><path class="badge-ink" d="M16 7V16L23 20" /><path class="elite-sparks" d="M5 4V9M2 7H8" />
+      </g>
     </svg>
     <span class="badge-label">{{ tier.name }}</span>
   </span>

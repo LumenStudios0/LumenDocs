@@ -6,6 +6,7 @@ import { handleProductTools, runProductChecks } from '../worker/product-tools.js
 import worker from '../worker/chat.js'
 import { handlePluginDownloads } from '../worker/plugin-downloads.js'
 import { messageProfiles } from '../worker/profiles.js'
+import { backgrounds, frames, decorations } from '../shared/profile-cosmetics.mjs'
 
 async function fixture(t) {
   const sqlite = new DatabaseSync(':memory:')
@@ -350,6 +351,126 @@ test('badge selection unlocks lower tiers and staff ranks, filters downgrades im
   assert.equal((await messageProfiles(env.COMMUNITY_DB, [owner], env)).get(owner).badges.length, 8)
   assert.equal((await call('/studio/profiles/me', 'PUT', { ...body, revision: 1, badgeIds: [] }, owner)).status, 200)
   assert.deepEqual((await messageProfiles(env.COMMUNITY_DB, [owner], env)).get(owner).badges, [])
+})
+
+test('profile cosmetics enforce Spark and Radiance unlocks, persist presets and suppress them after expiry', async t => {
+  const { call, customer, sqlite, env } = await fixture(t)
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  let count = 0
+  const products = Array.from({ length: 10 }, (_, i) => ({ productId: `p${i}`, name: `Plugin ${i}`, active: true, plugins: [`p${i}`] }))
+  globalThis.fetch = async input => new URL(input).pathname.endsWith('/products') ? Response.json({ items: products, total: 10 })
+    : Response.json({ customerDiscordId: customer, status: 'active', verificationRequired: false,
+      products: products.slice(0,count).map(p => ({ productId: p.productId, productActive: true, status: 'active', expiresAt: null })) })
+  await call('/studio/profiles/me','GET',undefined,customer)
+  let revision = 0
+  const base = { displayName: 'Builder', bio: '', pronouns: '', status: '', accent: '#123456', banner: '#654321',
+    website: '', showcase: '', favoritePlugin: '', public: true }
+  const appearance = { background: 'none', frame: 'none', decoration: 'none' }
+  const save = (patch = {}) => call('/studio/profiles/me','PUT',{ ...base, revision, appearance: { ...appearance, ...patch } },customer)
+  assert.equal((await save({ background: 'aurora' })).status,403)
+  assert.equal((await save({ frame: 'amethyst' })).status,403)
+  assert.equal((await save({ decoration: 'stars' })).status,403)
+  assert.equal((await save({ background: 'made-up' })).status,400)
+  count = 1
+  const spark = (await (await call('/studio/profiles/me','GET',undefined,customer)).json()).profile
+  assert.deepEqual(spark.cosmeticAccess,{ backgrounds:true,frames:true,decorations:false })
+  const animated = backgrounds.filter(p => p.animated)
+  const staticPresets = backgrounds.filter(p => !p.animated && p.id !== 'none')
+  assert.ok(animated.length >= 10)
+  assert.equal(staticPresets.length,5)
+  for (const preset of [...animated,...staticPresets]) {
+    assert.equal((await save({ background:preset.id })).status,200)
+    revision++
+    assert.equal((await (await call('/studio/profiles/'+customer,'GET',undefined,'')).json()).profile.appearance.background,preset.id)
+  }
+  for (const frame of frames) {
+    assert.equal((await save({ frame:frame.id })).status,200); revision++
+  }
+  assert.equal((await save({ decoration:'stars' })).status,403)
+  count=3
+  await call('/studio/profiles/me','GET',undefined,customer)
+  for (const decoration of decorations) {
+    assert.equal((await save({ decoration:decoration.id })).status,200); revision++
+  }
+  Object.assign(appearance,{background:'stars',frame:'diamond',decoration:'orbits'})
+  assert.equal((await save()).status,200); revision++
+  sqlite.prepare('UPDATE member_profiles SET tier_checked_at=? WHERE user_id=?').run('2000-01-01',customer)
+  let publicProfile=(await (await call('/studio/profiles/'+customer,'GET',undefined,'')).json()).profile
+  assert.deepEqual(publicProfile.appearance,{background:'none',frame:'none',decoration:'none'})
+  assert.equal((await save()).status,200); revision++
+  count=3
+  await call('/studio/profiles/me','GET',undefined,customer)
+  publicProfile=(await (await call('/studio/profiles/'+customer,'GET',undefined,'')).json()).profile
+  assert.deepEqual(publicProfile.appearance,appearance)
+  assert.equal((await messageProfiles(env.COMMUNITY_DB,[customer],env)).get(customer).appearance,undefined)
+})
+
+test('banner uploads validate raster size and dimensions, remain owner-only, and save atomically with profile revisions', async t => {
+  const { call, customer, owner, sqlite }=await fixture(t)
+  const banner='UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoCAAIAAUAmJaQAA3AA/v02aAA='
+  const base={displayName:'Builder',bio:'',pronouns:'',status:'',accent:'#123456',banner:'#654321',
+    website:'',showcase:'',favoritePlugin:'',public:true,revision:0,bannerImage:banner}
+  assert.equal((await call('/studio/profiles/me','PUT',base,'')).status,401)
+  assert.equal((await call('/studio/profiles/'+customer,'PUT',base,owner)).status,405)
+  const oversized=Buffer.from(banner,'base64')
+  oversized.writeUInt16LE(1201,26)
+  for (const image of [Buffer.from('<svg onload="alert(1)"/>').toString('base64'),'bad',oversized.toString('base64'),'A'.repeat(350004)]) {
+    assert.equal((await call('/studio/profiles/me','PUT',{...base,bannerImage:image},customer)).status,400)
+  }
+  const uploaded=await call('/studio/profiles/me','PUT',base,customer)
+  assert.equal(uploaded.status,200)
+  const profile=(await uploaded.json()).profile
+  assert.equal(profile.bannerVersion,1)
+  assert.ok(!JSON.stringify(profile).includes(banner))
+  let media=await call('/studio/profiles/media/'+customer,'GET',undefined,'')
+  assert.equal(media.status,200)
+  assert.equal(media.headers.get('Content-Type'),'image/webp')
+  assert.equal(media.headers.get('X-Content-Type-Options'),'nosniff')
+  assert.equal(Buffer.from(await media.arrayBuffer()).toString('base64'),banner)
+  assert.equal((await call('/studio/profiles/me','PUT',{...base,bannerImage:null},customer)).status,409)
+  assert.equal(sqlite.prepare('SELECT data FROM member_profile_banners WHERE user_id=?').get(customer).data,banner)
+  assert.equal((await call('/studio/profiles/me','PUT',{...base,revision:1,bannerImage:null},customer)).status,200)
+  assert.equal((await call('/studio/profiles/media/'+customer,'GET',undefined,'')).status,404)
+  assert.equal(sqlite.prepare('SELECT data FROM member_profile_banners WHERE user_id=?').get(customer).data,null)
+  sqlite.exec("CREATE TRIGGER reject_banner_update BEFORE UPDATE ON member_profile_banners BEGIN SELECT RAISE(ABORT,'Injected banner failure'); END")
+  assert.equal((await call('/studio/profiles/me','PUT',{...base,revision:2,displayName:'Must not persist'},customer)).status,503)
+  assert.equal(sqlite.prepare('SELECT revision,display_name FROM member_profiles WHERE user_id=?').get(customer).revision,2)
+  assert.equal(sqlite.prepare('SELECT display_name FROM member_profiles WHERE user_id=?').get(customer).display_name,'Builder')
+})
+
+test('server showcases validate links and limits and achievements derive only from actual public activity', async t => {
+  const { call, customer, sqlite, env }=await fixture(t)
+  const base={displayName:'Builder',bio:'I build Minecraft servers with my friends.',pronouns:'',status:'',accent:'#123456',banner:'#654321',
+    website:'',showcase:'',favoritePlugin:'',public:true,revision:0}
+  const server={name:'Purple Survival',description:'A friendly server',javaAddress:'play.example.net:25565',bedrockAddress:'bedrock.example.net:19132',
+    version:'1.21',gamemodes:'Survival',plugins:'Lumen Crates',website:'https://example.net',discord:'https://discord.gg/example',
+    trailer:'https://example.net/trailer',logo:'https://example.net/logo.png',featured:true,screenshots:[{url:'https://example.net/server.png',alt:'Spawn area'}]}
+  const badServers=[[...Array(4).fill({...server,featured:false})],[{...server,website:'javascript:alert(1)'}],
+    [{...server,javaAddress:'evil\nHost: fake'}],[{...server,javaAddress:'play.example.net:99999'}],[{...server,bedrockAddress:'https://example.net'}],[{...server,screenshots:Array(5).fill(server.screenshots[0])}],
+    [server,server],[{...server,screenshots:[{url:'data:image/svg+xml,x',alt:''}]}]]
+  for(const servers of badServers) assert.equal((await call('/studio/profiles/me','PUT',{...base,servers},customer)).status,400)
+  assert.equal((await call('/studio/profiles/me','PUT',{...base,badgeIds:['server_builder']},customer)).status,403)
+  const saved=(await (await call('/studio/profiles/me','PUT',{...base,servers:[server]},customer)).json()).profile
+  assert.deepEqual(saved.servers,[server])
+  assert.deepEqual(saved.achievements.filter(a=>a.earned).map(a=>a.id),['introduced','server_builder'])
+  const now=new Date().toISOString(),threadId=crypto.randomUUID()
+  sqlite.prepare(`INSERT INTO community_threads(id,channel,author_id,author_name,title,body,created_at,updated_at,last_activity_at)
+    VALUES (?,'general',?,'Builder','New thread','Hello',?,?,?)`).run(threadId,customer,now,now,now)
+  sqlite.prepare(`INSERT INTO community_thread_posts(id,thread_id,author_id,author_name,body,created_at)
+    VALUES (?,?,?,'Builder','Reply',?)`).run(crypto.randomUUID(),threadId,customer,now)
+  const badgeIds=['introduced','server_builder','conversation','contributor']
+  assert.equal((await call('/studio/profiles/me','PUT',{...base,revision:1,badgeIds},customer)).status,200)
+  assert.deepEqual((await messageProfiles(env.COMMUNITY_DB,[customer],env)).get(customer).badges.map(b=>b.id),badgeIds)
+  sqlite.prepare('UPDATE community_threads SET hidden=1 WHERE id=?').run(threadId)
+  assert.deepEqual((await messageProfiles(env.COMMUNITY_DB,[customer],env)).get(customer).badges.map(b=>b.id),['introduced','server_builder'])
+  assert.equal((await call('/studio/profiles/me','PUT',{...base,revision:2,servers:[],bio:''},customer)).status,200)
+  const publicProfile=(await (await call('/studio/profiles/'+customer,'GET',undefined,'')).json()).profile
+  assert.deepEqual(publicProfile.badges,[])
+  assert.equal(publicProfile.achievements,undefined)
+  assert.equal(publicProfile.has_thread,undefined)
+  sqlite.prepare('UPDATE member_profiles SET created_at=? WHERE user_id=?').run('2000-01-01',customer)
+  assert.equal((await call('/studio/profiles/me','PUT',{...base,revision:3,badgeIds:['regular']},customer)).status,200)
 })
 
 test('public-profile migration publishes existing profiles without losing owner edits and rejects stale drafts', async t => {

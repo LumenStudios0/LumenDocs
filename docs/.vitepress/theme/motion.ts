@@ -1,5 +1,5 @@
 const surfaces = '.VPDoc .vp-doc > div > :is(h1,h2,h3), .lumen-card, .home-entry-card, .home-reveal, .home-step, .staff-profile, .staff-panel, .staff-customers, .ops .panel, .knowledge-hero, .knowledge-article, .knowledge-launchpad a, .customer-hero, .customer-destinations > a, .license-health, .health-metrics article, .server-workspace, .server-list article, .account-product-card, .website-panel'
-const scenes = '.launch-atmosphere, .engine-stage, .deploy-scene, .home-feature-card, .home-license-art, .home-portal-visual, .home-journey, .home-final-glow, .knowledge-hero, .customer-hero, .loyalty-badge'
+const scenes = '.launch-atmosphere, .engine-stage, .deploy-scene, .home-feature-card, .home-license-art, .home-portal-visual, .home-journey, .home-final-glow, .knowledge-hero, .customer-hero, .loyalty-badge, .profile-backdrop, .profile-avatar'
 const interactive = 'a.home-button, .home-entry-card, .home-feature-card, .home-step, .lumen-card, .VPButton, .staff-actions button, .staff-navigation button, .ops button, .knowledge-launchpad a, .customer-destinations > a, .account-product-card, .website-primary'
 
 export function createStudioMotion() {
