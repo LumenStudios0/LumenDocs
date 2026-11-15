@@ -406,6 +406,46 @@ test('profile cosmetics enforce Spark and Radiance unlocks, persist presets and 
   assert.equal((await messageProfiles(env.COMMUNITY_DB,[customer],env)).get(customer).appearance,undefined)
 })
 
+test('custom profile colors require Spark, persist across old clients and disappear on expiry without being lost', async t => {
+  const { call, customer, owner, sqlite } = await fixture(t)
+  const previousFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = previousFetch })
+  let owned = false
+  globalThis.fetch = async input => new URL(input).pathname.endsWith('/products')
+    ? Response.json({ items: [{ productId: 'p1', name: 'Plugin', active: true, plugins: ['p1'] },
+      { productId: 'p2', name: 'Plugin 2', active: true, plugins: ['p2'] }], total: 2 })
+    : Response.json({ customerDiscordId: customer, status: 'active', verificationRequired: false,
+      products: owned ? [{ productId: 'p1', productActive: true, status: 'active', expiresAt: null }] : [] })
+  const base = { displayName: 'Builder', bio: '', pronouns: '', status: '', accent: '#123456', banner: '#654321',
+    website: '', showcase: '', favoritePlugin: '', public: true, revision: 0 }
+  const colors = { surface: '#221133', text: '#ffffff', links: '#ffcc99' }
+  const appearance = { background: 'none', frame: 'none', decoration: 'none', colors }
+  await call('/studio/profiles/me', 'GET', undefined, customer)
+  assert.equal((await call('/studio/profiles/me', 'PUT', { ...base, appearance }, customer)).status, 403)
+  owned = true
+  await call('/studio/profiles/me', 'GET', undefined, customer)
+  for (const invalid of [{ ...colors, text: 'red' }, { ...colors, extra: '#ffffff' }, { ...colors, links: '#fff' }]) {
+    assert.equal((await call('/studio/profiles/me', 'PUT', { ...base, appearance: { ...appearance, colors: invalid } }, customer)).status, 400)
+  }
+  assert.equal((await call('/studio/profiles/me', 'PUT', { ...base, appearance }, customer)).status, 200)
+  assert.deepEqual((await (await call('/studio/profiles/' + customer, 'GET', undefined, '')).json()).profile.appearance.colors, colors)
+  assert.equal((await call('/studio/profiles/me', 'PUT', { ...base, revision: 1,
+    appearance: { background: 'none', frame: 'none', decoration: 'none' } }, customer)).status, 200)
+  sqlite.prepare('UPDATE member_profiles SET tier_checked_at=? WHERE user_id=?').run('2000-01-01', customer)
+  let profile = (await (await call('/studio/profiles/' + customer, 'GET', undefined, '')).json()).profile
+  assert.equal(profile.appearance.colors, null)
+  assert.equal((await call('/studio/profiles/me', 'PUT', { ...base, revision: 2,
+    appearance: { ...appearance, colors: { ...colors, text: '#112233' } } }, customer)).status, 403)
+  assert.equal((await call('/studio/profiles/me', 'PUT', { ...base, revision: 2, appearance }, customer)).status, 200)
+  await call('/studio/profiles/me', 'GET', undefined, customer)
+  profile = (await (await call('/studio/profiles/' + customer, 'GET', undefined, '')).json()).profile
+  assert.deepEqual(profile.appearance.colors, colors)
+  assert.equal((await call('/studio/profiles/me', 'PUT', { ...base, revision: 3,
+    appearance: { ...appearance, colors: null } }, customer)).status, 200)
+  assert.equal((await (await call('/studio/profiles/' + customer, 'GET', undefined, '')).json()).profile.appearance.colors, undefined)
+  assert.equal((await call('/studio/profiles/me', 'PUT', { ...base, appearance }, owner)).status, 200)
+})
+
 test('banner uploads validate raster size and dimensions, remain owner-only, and save atomically with profile revisions', async t => {
   const { call, customer, owner, sqlite }=await fixture(t)
   const banner='UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoCAAIAAUAmJaQAA3AA/v02aAA='

@@ -9,13 +9,15 @@ import ServerShowcases from './ServerShowcases.vue'
 import type { ServerShowcase } from './profile-types'
 import { backgrounds, frames, decorations } from '../../../shared/profile-cosmetics.mjs'
 const props = defineProps<{ editOwn?: boolean }>()
+interface ProfileColors { surface: string; text: string; links: string }
+interface ProfileAppearance { background: string; frame: string; decoration: string; colors?: ProfileColors | null }
 interface Profile {
   id: string; username: string; displayName: string; avatarUrl: string; bio: string; pronouns: string; status: string;
   accent: string; banner: string; website: string; showcase: string; favoritePlugin: string;
   tier: { id: string; name: string } | null; badges: { id: string; name: string }[]; availableBadges?: { id: string; name: string }[];
   tierCheckedAt: string | null; joinedAt: string; public?: boolean; revision?: number
-  appearance: { background: string; frame: string; decoration: string }; servers: ServerShowcase[]; bannerVersion: number | null;
-  savedAppearance?: { background: string; frame: string; decoration: string };
+  appearance: ProfileAppearance; servers: ServerShowcase[]; bannerVersion: number | null;
+  savedAppearance?: ProfileAppearance;
   cosmeticAccess?: { backgrounds: boolean; frames: boolean; decorations: boolean };
   achievements?: { id: string; name: string; description: string; earned: boolean }[]
 }
@@ -33,12 +35,13 @@ const total = ref(0)
 const bannerImage = ref<string | null | undefined>(undefined)
 const processingBanner = ref(false)
 const draft = reactive({ displayName: '', bio: '', pronouns: '', status: '', accent: '#9f72ff', banner: '#38205c', website: '', showcase: '', favoritePlugin: '', public: true, revision: 0, badgeIds: new Array<string>(),
-  appearance: { background: 'none', frame: 'none', decoration: 'none' }, servers: new Array<ServerShowcase>() })
+  appearance: { background: 'none', frame: 'none', decoration: 'none', colors: null as ProfileColors | null }, servers: new Array<ServerShowcase>() })
 const preview = computed(() => editing.value && own.value
   ? { ...own.value, ...draft, appearance: {
     background: own.value.cosmeticAccess?.backgrounds ? draft.appearance.background : 'none',
     frame: own.value.cosmeticAccess?.frames ? draft.appearance.frame : 'none',
     decoration: own.value.cosmeticAccess?.decorations ? draft.appearance.decoration : 'none',
+    colors: own.value.cosmeticAccess?.backgrounds ? draft.appearance.colors : null,
   }, badges: (own.value.availableBadges || []).filter(badge => draft.badgeIds.includes(badge.id)) }
   : selected.value)
 const bannerSource = computed(() => {
@@ -53,7 +56,8 @@ function fill(profile: Profile) {
   draft.public = true
   draft.revision = profile.revision ?? 0
   draft.badgeIds = (profile.badges ?? (profile.tier ? [profile.tier] : [])).map(badge => badge.id)
-  draft.appearance = { ...(profile.savedAppearance || profile.appearance || { background: 'none', frame: 'none', decoration: 'none' }) }
+  const appearance = profile.savedAppearance || profile.appearance || { background: 'none', frame: 'none', decoration: 'none' }
+  draft.appearance = { ...appearance, colors: appearance.colors ? { ...appearance.colors } : null }
   draft.servers = (profile.servers || []).map(server => ({ ...server, screenshots: server.screenshots.map(image => ({ ...image })) }))
   bannerImage.value = undefined
 }
@@ -113,6 +117,10 @@ async function copyLink() {
   catch { error.value = 'Clipboard access was denied.' }
 }
 function resetAppearance() { draft.accent = '#9f72ff'; draft.banner = '#38205c' }
+function toggleProfileColors(event: Event) {
+  if (event.target instanceof HTMLInputElement) draft.appearance.colors = event.target.checked
+    ? { surface: '#191326', text: '#f5efff', links: '#c2a1ff' } : null
+}
 async function uploadBanner(event: Event) {
   if (!(event.target instanceof HTMLInputElement)) return
   const file = event.target.files?.[0]; event.target.value = ''
@@ -130,7 +138,7 @@ async function uploadBanner(event: Event) {
     const canvas = document.createElement('canvas'); canvas.width = 1200; canvas.height = 400
     const context = canvas.getContext('2d')
     if (!context) throw new Error('This browser cannot prepare banner images.')
-    const scale = Math.max(1200 / bitmap.width, 400 / bitmap.height)
+    const scale = Math.min(1200 / bitmap.width, 400 / bitmap.height)
     context.drawImage(bitmap, (1200-bitmap.width*scale)/2, (400-bitmap.height*scale)/2, bitmap.width*scale, bitmap.height*scale)
     let data = canvas.toDataURL('image/webp', .82)
     if (!data.startsWith('data:image/webp;base64,')) throw new Error('WebP conversion is not supported by this browser.')
@@ -148,7 +156,7 @@ async function init() {
   generation++; selected.value = null; own.value = null; editing.value = false; notice.value = ''; error.value = ''
   bannerImage.value = undefined
   Object.assign(draft, { displayName: '', bio: '', pronouns: '', status: '', accent: '#9f72ff', banner: '#38205c', website: '', showcase: '', favoritePlugin: '', public: true, revision: 0, badgeIds: [],
-    appearance: { background: 'none', frame: 'none', decoration: 'none' }, servers: [] })
+    appearance: { background: 'none', frame: 'none', decoration: 'none', colors: null }, servers: [] })
   await directory()
   if (request !== initialization) return
   await mine()
@@ -169,9 +177,12 @@ onUnmounted(() => { generation++; initialization++; window.removeEventListener('
     <div class="members-layout">
       <section class="members-directory" aria-label="Member search results"><button v-for="member in results" :key="member.id" :disabled="saving" @click="open(member.id)" :style="{ borderLeftColor: member.accent }"><img v-if="member.avatarUrl" :src="member.avatarUrl" alt="" referrerpolicy="no-referrer"><span v-else class="member-initial">{{ member.displayName.slice(0,2) }}</span><span><strong>{{ member.displayName }}</strong><small>@{{ member.username }}</small><span class="profile-badges"><LoyaltyBadge v-for="badge in member.badges ?? (member.tier ? [member.tier] : [])" :key="badge.id" :tier="badge" compact /></span></span></button><p v-if="!loading && !results.length">No published profiles found.</p><nav v-if="total > 20"><button :disabled="page === 1 || loading || saving" @click="directory(page-1)">Previous</button><span>{{ page }} / {{ Math.ceil(total/20) }}</span><button :disabled="page*20 >= total || loading || saving" @click="directory(page+1)">Next</button></nav></section>
       <div>
-        <article v-if="preview" class="member-profile" :style="{ '--profile-accent': preview.accent, '--profile-banner': preview.banner }">
+        <article v-if="preview" class="member-profile" :style="{ '--profile-accent': preview.accent, '--profile-banner': preview.banner,
+          ...(preview.appearance?.colors ? { '--vp-c-bg-soft': preview.appearance.colors.surface, '--vp-c-text-1': preview.appearance.colors.text,
+            '--vp-c-text-2': preview.appearance.colors.text, '--vp-c-brand-1': preview.appearance.colors.links,
+            '--vp-c-divider': preview.accent } : {}) }">
           <ProfileBackdrop :preset="preview.appearance?.background || 'none'" />
-          <div class="member-banner"><img v-if="bannerSource" :src="bannerSource" alt="Profile banner"><span v-if="editing">LIVE PREVIEW</span></div>
+          <div class="member-banner" :class="{ 'has-image': bannerSource }"><img v-if="bannerSource" :src="bannerSource" alt="Profile banner"><span v-if="editing && !bannerSource">LIVE PREVIEW</span></div>
           <div class="member-profile-body"><ProfileAvatar class="member-avatar-display" :name="preview.displayName" :url="preview.avatarUrl" :frame="preview.appearance?.frame || 'none'" :decoration="preview.appearance?.decoration || 'none'" />
             <h2>{{ preview.displayName }}</h2><p class="member-handle">@{{ preview.username }} <span v-if="preview.pronouns">· {{ preview.pronouns }}</span></p>
             <div class="profile-badges profile-loyalty"><LoyaltyBadge v-for="badge in preview.badges ?? (preview.tier ? [preview.tier] : [])" :key="badge.id" :tier="badge" /></div>
@@ -189,7 +200,7 @@ onUnmounted(() => { generation++; initialization++; window.removeEventListener('
             <h3>Profile appearance</h3>
             <p>Backgrounds and frames unlock at Spark. Avatar decorations unlock at Radiance. Higher tiers inherit these options.</p>
             <label>Upload banner image<input type="file" accept="image/png,image/jpeg,image/webp" @change="uploadBanner"></label>
-            <p>PNG, JPEG or WebP up to 8 MiB. Center-cropped to 1200 x 400 and stored as a static WebP. Save to upload.</p>
+            <p>PNG, JPEG or WebP up to 8 MiB. The full image is fitted into a 1200 x 400 static WebP. Save to upload.</p>
             <button type="button" @click="bannerImage=null">Remove banner image</button>
             <label>Background<select v-model="draft.appearance.background" :disabled="!own.cosmeticAccess?.backgrounds"><option v-for="preset in backgrounds" :key="preset.id" :value="preset.id">{{ preset.name }} / {{ preset.animated ? 'Animated' : 'Static' }}</option></select></label>
             <div class="background-picker"><button v-for="preset in backgrounds.filter(preset=>preset.id!=='none')" :key="preset.id" type="button" :disabled="!own.cosmeticAccess?.backgrounds" :aria-pressed="draft.appearance.background===preset.id" @click="draft.appearance.background=preset.id"><ProfileBackdrop :preset="preset.id" /><span>{{ preset.name }}</span><small>{{ preset.animated ? 'Animated' : 'Static' }}</small></button></div>
@@ -212,6 +223,16 @@ onUnmounted(() => { generation++; initialization++; window.removeEventListener('
           <label>Display name<input v-model="draft.displayName" required maxlength="60"></label><label>Pronouns<input v-model="draft.pronouns" maxlength="40" placeholder="Optional"></label><label>Custom status<input v-model="draft.status" maxlength="80" placeholder="What are you building?"></label>
           <label>About me <small>{{ draft.bio.length }} / 600</small><textarea v-model="draft.bio" maxlength="600" rows="5" placeholder="Tell the community about yourself. No private information or credentials." /></label>
           <div class="member-colors"><label>Accent color<input v-model="draft.accent" type="color"></label><label>Banner color<input v-model="draft.banner" type="color"></label><button type="button" @click="resetAppearance">Reset colors</button></div>
+          <div class="profile-custom-colors">
+            <label class="profile-color-toggle"><input type="checkbox" :checked="!!draft.appearance.colors" :disabled="!own.cosmeticAccess?.backgrounds" @change="toggleProfileColors"> Custom profile colors (Spark+)</label>
+            <p>Set the card, text, and link colors. Pick contrasting colors so your profile stays readable.</p>
+            <div v-if="draft.appearance.colors" class="member-colors">
+              <label>Card color<input v-model="draft.appearance.colors.surface" type="color" :disabled="!own.cosmeticAccess?.backgrounds"></label>
+              <label>Text color<input v-model="draft.appearance.colors.text" type="color" :disabled="!own.cosmeticAccess?.backgrounds"></label>
+              <label>Link color<input v-model="draft.appearance.colors.links" type="color" :disabled="!own.cosmeticAccess?.backgrounds"></label>
+              <button type="button" @click="draft.appearance.colors=null">Use default profile colors</button>
+            </div>
+          </div>
           <label>Website<input v-model="draft.website" type="url" maxlength="500" placeholder="https://…"></label><label>Server showcase link<input v-model="draft.showcase" type="url" maxlength="500" placeholder="https://…"></label><label>Favorite plugin<input v-model="draft.favoritePlugin" maxlength="80"></label>
           <ServerShowcases :servers="draft.servers" editable @change="draft.servers=$event" />
           <p>Your profile and badge are public. Only you can edit this information. Ticket content, licenses, purchases and last-online activity are never included.</p>
@@ -222,7 +243,9 @@ onUnmounted(() => { generation++; initialization++; window.removeEventListener('
   </main>
 </template>
 <style scoped>
-.member-profile{position:relative;isolation:isolate}.member-profile>.profile-backdrop{opacity:.65}.member-profile:has(>.profile-backdrop) .member-banner{background:linear-gradient(130deg,color-mix(in srgb,var(--profile-banner) 55%,transparent),color-mix(in srgb,var(--profile-accent) 40%,transparent))}.member-profile-body{position:relative;background:color-mix(in srgb,var(--vp-c-bg-soft) 65%,transparent)}.member-banner img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.member-avatar-display{margin-top:-40px;z-index:2}
+.member-banner.has-image::after{display:none}.member-profile:has(>.profile-backdrop) .member-banner.has-image{background:var(--profile-banner)}.member-editor .profile-color-toggle{display:flex;align-items:center;gap:8px}
+.member-profile-body{color:var(--vp-c-text-1)}.member-profile-body :deep(.showcase-links a),.member-profile-body .member-links a{color:var(--vp-c-brand-1)}.member-profile-body .member-status,.member-profile-body :deep(.server-showcase){border-color:var(--vp-c-divider)}
+.member-profile{position:relative;isolation:isolate}.member-profile>.profile-backdrop{opacity:.65}.member-profile:has(>.profile-backdrop) .member-banner{background:linear-gradient(130deg,color-mix(in srgb,var(--profile-banner) 55%,transparent),color-mix(in srgb,var(--profile-accent) 40%,transparent))}.member-profile-body{position:relative;background:color-mix(in srgb,var(--vp-c-bg-soft) 65%,transparent)}.member-banner img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}.member-avatar-display{margin-top:-40px;z-index:2}
 .background-picker{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.background-picker button{position:relative;isolation:isolate;min-height:80px;overflow:hidden;text-align:left}.background-picker .profile-backdrop{opacity:.7}.background-picker span:not(.profile-backdrop),.background-picker small{position:relative;display:block;font-size:10px}.background-picker span:not(.profile-backdrop){margin-top:26px;background:var(--vp-c-bg-soft)}
 .avatar-picker{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.avatar-picker button{display:grid;justify-items:center;gap:9px;min-height:88px}.avatar-picker button>span:last-child{font-size:10px}.profile-cosmetics select{width:100%;padding:10px;background:var(--vp-c-bg);color:var(--vp-c-text-1);border:1px solid var(--vp-c-divider);border-radius:8px}.profile-cosmetics button[aria-pressed=true]{border-color:var(--vp-c-brand-1)}
 .profile-achievements article{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 0;border-bottom:1px solid var(--vp-c-divider);opacity:.6}.profile-achievements article.earned{opacity:1}.profile-achievements article>span:not(.loyalty-badge){font-size:11px;flex:1;min-width:120px}.profile-achievements strong{font-size:10px}

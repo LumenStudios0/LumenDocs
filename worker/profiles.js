@@ -36,6 +36,7 @@ function view(row, env, owner = false) {
     background: cosmeticAccess.backgrounds ? savedAppearance.background : 'none',
     frame: cosmeticAccess.frames ? savedAppearance.frame : 'none',
     decoration: cosmeticAccess.decorations ? savedAppearance.decoration : 'none',
+    ...(savedAppearance.colors ? { colors: cosmeticAccess.backgrounds ? savedAppearance.colors : null } : {}),
   }
   const earnedIds = [
     ...(row.bio.trim().length >= 40 ? ['introduced'] : []),
@@ -219,14 +220,22 @@ export async function handleProfiles(request, env, origin, path, deps) {
         const current = await db.prepare(`${profileSelect} WHERE p.user_id=?`).bind(user.id).first()
         const currentView = view(current, env, true)
         const available = currentView.availableBadges
-        const appearance = body.appearance ?? JSON.parse(current.appearance)
-        if (body.appearance !== undefined && (!appearance || typeof appearance !== 'object' || Array.isArray(appearance) ||
-          Object.keys(appearance).some(key => !['background', 'frame', 'decoration'].includes(key)) ||
+        const saved = JSON.parse(current.appearance)
+        const appearance = body.appearance === undefined ? saved
+          : { ...body.appearance, ...(body.appearance?.colors === undefined && saved.colors ? { colors: saved.colors } : {}) }
+        if (body.appearance !== undefined && (!body.appearance || typeof body.appearance !== 'object' || Array.isArray(body.appearance) ||
+          Object.keys(appearance).some(key => !['background', 'frame', 'decoration', 'colors'].includes(key)) ||
           !backgrounds.some(preset => preset.id === appearance.background) || !frames.some(preset => preset.id === appearance.frame) ||
-          !decorations.some(preset => preset.id === appearance.decoration))) {
+          !decorations.some(preset => preset.id === appearance.decoration) ||
+          appearance.colors !== undefined && appearance.colors !== null &&
+            (typeof appearance.colors !== 'object' || Array.isArray(appearance.colors) ||
+              Object.keys(appearance.colors).length !== 3 ||
+              ['surface', 'text', 'links'].some(key => typeof appearance.colors[key] !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(appearance.colors[key]))))) {
           return send({ error: 'Choose supported background, frame and decoration presets.' }, 400)
         }
-        const saved = JSON.parse(current.appearance)
+        if (appearance.colors && JSON.stringify(appearance.colors) !== JSON.stringify(saved.colors) && !currentView.cosmeticAccess.backgrounds) {
+          return send({ error: 'Custom profile colors require Spark or higher.' }, 403)
+        }
         for (const [key, access] of [['background', 'backgrounds'], ['frame', 'frames'], ['decoration', 'decorations']]) {
           if (appearance[key] !== 'none' && appearance[key] !== saved[key] && !currentView.cosmeticAccess[access]) {
             return send({ error: key === 'decoration' ? 'Avatar decorations require Radiance or higher.' : 'Backgrounds and avatar frames require Spark or higher.' }, 403)
