@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { checkCompatibility, compareVersions, versionParts } from '../docs/.vitepress/theme/compatibility-utils.mjs'
 import { clearBookmarks, readBookmarks, toggleBookmark, validBookmarkPath } from '../docs/.vitepress/theme/doc-bookmarks.mjs'
 import { communityAvailabilityError, CommunityUnavailableError } from '../docs/.vitepress/theme/community-errors.mjs'
+import { clearStaffPreferences, readStaffPreferences, toggleStaffPreference } from '../docs/.vitepress/theme/staff-preferences.mjs'
 
 test('missing Worker routes are connection failures, not missing user tickets', () => {
   for (const path of ['/status', '/tickets', '/staff/tickets', '/issues', '/preferences']) {
@@ -61,4 +62,35 @@ test('bookmarks reject unsafe destinations and surface storage corruption/failur
   const browser = storage()
   browser.setItem = () => { throw new Error('Storage blocked') }
   assert.throws(() => toggleBookmark(browser, { title: 'Docs', path: '/docs/' }), /blocked/)
+})
+
+test('staff guide preferences persist only IDs and stay separate for each verified actor', () => {
+  const browser = storage()
+  const first = '223456789012345698'
+  const second = '323456789012345698'
+  toggleStaffPreference(browser, first, 'saved', 'plugin-lumenshards')
+  toggleStaffPreference(browser, first, 'read', 'integration')
+  assert.deepEqual(readStaffPreferences(browser, first), { saved: ['plugin-lumenshards'], read: ['integration'] })
+  assert.deepEqual(readStaffPreferences(browser, second), { saved: [], read: [] })
+  assert.equal(browser.getItem(`lumen-staff-guides-v1:${first}`), '{"saved":["plugin-lumenshards"],"read":["integration"]}')
+  toggleStaffPreference(browser, first, 'saved', 'plugin-lumenshards')
+  assert.deepEqual(readStaffPreferences(browser, first).saved, [])
+  clearStaffPreferences(browser, second)
+  assert.deepEqual(readStaffPreferences(browser, first).read, ['integration'])
+  clearStaffPreferences(browser, first)
+  assert.deepEqual(readStaffPreferences(browser, first), { saved: [], read: [] })
+})
+
+test('staff guide preference corruption and persistence errors are surfaced without changing prior state', () => {
+  const browser = storage()
+  const id = '223456789012345698'
+  assert.throws(() => readStaffPreferences(browser, 'unverified'), /identity/)
+  assert.throws(() => toggleStaffPreference(browser, id, 'saved', 'Internal guide body with secrets'), /valid/)
+  browser.setItem(`lumen-staff-guides-v1:${id}`, '{"saved": ["bad/path"], "read": []}')
+  assert.throws(() => readStaffPreferences(browser, id), /invalid/)
+  clearStaffPreferences(browser, id)
+  toggleStaffPreference(browser, id, 'saved', 'integration')
+  browser.setItem = () => { throw new Error('Storage blocked') }
+  assert.throws(() => toggleStaffPreference(browser, id, 'read', 'integration'), /blocked/)
+  assert.deepEqual(readStaffPreferences(browser, id), { saved: ['integration'], read: [] })
 })

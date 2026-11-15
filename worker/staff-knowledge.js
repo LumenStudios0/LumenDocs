@@ -151,6 +151,179 @@ Only authorized staff can edit lower roles, and non-owners cannot delegate a per
 ### Access problems
 Ask the user to refresh permissions or sign in with the correct Discord identity. Verify the current role and permissions rather than trusting a hidden/visible button. Never use local test mode as proof of live authorization.`,
   },
+  ...[
+    {
+      id: 'lumenshards', name: 'LumenShards', summary: 'AFK rewards, balances, shops, storage, and license validation.',
+      body: `### Identify the environment
+The published guide targets Paper 1.21.6-1.21.11 and Java 21. Confirm the installed version and sanitized startup error. Check active product access and the server public egress IP without asking for keys or tokens.
+
+### Diagnose by feature
+- AFK rewards: verify the configured area, timing, movement conditions, and intentional permission bonuses. Do not grant shard.alwaysearn as a blanket fix.
+- Shop refusals: confirm balance, price, and room for all item rewards before investigating charging.
+- Placeholders: check PlaceholderAPI and the Shards expansion; verify %shard_balance% or the documented AFK placeholders.
+- Leaderboards: leaderboard.db is separate from balances and repopulates as balances change.
+
+### Files and safe checks
+Review only sanitized sections of config.yml, shop.yml, afk.yml, and messages.yml. Identify YAML or SQLite storage before recommending backup/recovery. /shard version and /shard balance are diagnostic starting points; /shard give, take, and set change balances and need deliberate authorization.
+
+### Escalation evidence
+Record exact plugin/server versions, affected feature, storage selection, relevant permission, and a minimal reproduction. License-service failures disable features while validation retries; do not advise bypassing validation.`,
+    },
+    {
+      id: 'lumenduels', name: 'LumenDuels', summary: 'Arena readiness, queues, kits, ranking, and cleanup.',
+      body: `### Identify the edition
+Confirm standard LumenDuels, not Premium, and the exact JAR release. API 1.21 is not a guarantee of every runtime version. PlaceholderAPI, Vault, and WorldGuard are optional and depend on enabled features.
+
+### Arena and queue triage
+Check arenas.yml for the world name, two spawn points, enabled state, and supported duel types. Compare queues and WorldGuard settings in config.yml. Check kits.yml and the selected kit before opening live queues.
+
+### Storage and permissions
+Identify SQLite or MySQL and inspect the first startup error. Never collect database passwords. /duel stats is a useful read check; the descriptor declares lumen.duels.admin, but commands may check additional permissions.
+
+### Restoration and escalation
+Reproduce inventory handling and block restoration on a copy of the arena world. Do not test cleanup on a live match or reset player rankings as a troubleshooting shortcut. Include match lifecycle, kit, arena settings, and whether an optional integration changes the outcome.`,
+    },
+    {
+      id: 'lumenduels-premium', name: 'LumenDuels Premium', summary: 'Premium edition checks and safe practice-match testing.',
+      body: `### Confirm the correct release
+Premium and standard LumenDuels are separate editions. Do not recommend installing both unless that release explicitly supports it. Confirm the Premium download and its included version notes; API 1.21 alone is not exact runtime certification.
+
+### Reproduce the player flow
+Test duel requests, ranked and unranked queues, selected kit, arena entry, match completion, Elo/rank updates, and rewards on a staging server. Record which step first differs from the expected result.
+
+### Inspect the generated settings
+Compare the release-generated storage, arena, kit, rank, shop, GUI, and message files. Check optional PlaceholderAPI, Vault, and WorldGuard only for features that use them. Verify inventory cleanup and arena restoration before queues go live.
+
+### Escalate without assumptions
+Use /duel help and the release instructions for exact commands/permissions rather than assuming parity with standard. Include edition, JAR version, server build, minimal configuration, and whether the issue reproduces without optional integrations.`,
+    },
+    {
+      id: 'lumeneconomy', name: 'LumenEconomy', summary: 'Whole-unit currency, prices, multipliers, selling, and hooks.',
+      body: `### Establish the baseline
+The documented build target is Paper API 1.21.4 with Java 21. Other versions/forks require actual testing. Identify the selected Vault provider and installed PlaceholderAPI before diagnosing integrations.
+
+### Prices and selling
+Check prices.yml, blacklists, feature switches, and sell permissions. Worth may show a blacklisted item that cannot pay out. Currency uses whole units; negative or fractional payments are intentionally rejected.
+
+### Multiplier diagnosis
+Compare multipliers.yml base, permission, global, temporary, and progression tiers. Commands, tools, and menus share the same price/multiplier calculation. Record item material, quantity, expected base price, and applied tiers before reporting a rounding issue.
+
+### Safe verification
+Use /worth, /balance, and /sellhistory to inspect behavior. Use /lumeneco reload only for supported setting changes. Balance edits and global multipliers change the economy; reproduce with test accounts and small controlled transactions, not live financial adjustments.`,
+    },
+    {
+      id: 'lumenspawners', name: 'LumenSpawners', summary: 'Virtual production, capacity, ownership, rarities, and sales.',
+      body: `### Understand virtual production
+Paper is intended; the compile target is API 1.21.6, not a promise that every server build works. Spawners produce configured items/drops virtually and persist data in SQLite.
+
+### No-production checklist
+Inspect the type, configured interval, storage capacity, and next-cycle output. Full storage pauses production rather than discarding overflow. Drop chances come from mobs.yml, not vanilla looting or difficulty rules.
+
+### Access and selling
+Check owner settings, lumenspawners.use, lumenspawners.sell, and relevant break permissions. Selling needs selling.enabled, configured prices, Vault, and an economy provider. Evolution, upgrades, and leaderboards start disabled.
+
+### Safe diagnostics
+Use /vspawner info and /vspawner stats. Record rarity, stack size, interval, storage, and relevant mobs.yml entry. Do not grant spawners or modify rarity weights just to investigate a report; those are state-changing admin operations.`,
+    },
+    {
+      id: 'lumenauction', name: 'LumenAuction', summary: 'Vault, listing limits, expired items, and database recovery.',
+      body: `### Identify the environment
+The public guide targets Minecraft 1.21.6-1.21.11, Java 21, and Bukkit-family servers. The interface can load without Vault, but listing and buying need Vault plus an active economy provider.
+
+### Listing and permission triage
+Compare duration and max-listing permission tiers with config.yml. The longest granted duration and largest granted limit apply. Check allowed materials, price limits, fees, and taxes before reporting a refused listing.
+
+### Expired or missing items
+Have the seller check /ah listings, /ah history, and /ah expired. Expired items are private storage, not automatically lost. Capture a sanitized listing identifier and timeline without publishing customer data.
+
+### Recovery boundary
+auction.db holds persistent marketplace data. Stop the server before copying/restoring it; deleting it resets the market. Escalate inconsistent balances/items with the transaction history and a stopped-server backup, never advise a database reset as the first fix.`,
+    },
+    {
+      id: 'lumenorder', name: 'LumenOrder', summary: 'Escrow, claims, Vault integrations, and transaction review.',
+      body: `### Establish dependencies
+Java 21+ and Bukkit/Spigot/Paper/Purpur are documented; Folia is unsupported. Creating orders and delivering items need Vault and an economy provider, even when browsing works.
+
+### Claims are not lost deliveries
+Escrow holds the full order value by default. Delivered items go to buyer claims, including offline buyers and full inventories. Ask the buyer to use /order claim before investigating missing items.
+
+### Configuration and matching
+Check limits, expiry, fees, material/enchantment matching, and optional ItemsAdder/Nexo/EcoEnchants integrations. Review sanitized config.yml and lang/en_us.yml. Permission node names can be changed in config, so do not assume defaults.
+
+### Ambiguous transaction response
+Use Admin GUI > Needs review and inspect items, escrow, and balances before resolving. /order admin resolve can complete or roll back real transactions; never repeatedly run it after an uncertain result. Preserve the SQLite data and timeline for developer review.`,
+    },
+    {
+      id: 'lumenessentials', name: 'LumenEssentials', summary: 'Moderation, permission-gated tools, snapshots, and wipe safety.',
+      body: `### Verify the platform and role
+The build target is Paper API 1.21.11 with Java 21; other Bukkit-family runtimes need verification. Missing dashboard actions usually reflect individual permissions, not a broken menu.
+
+### Moderation and restoration
+Use /staffdashboard, /staffrequests, and /history for the relevant workflow. Inventory restoration requires an online player, lumenessentials.inventory-snapshot.restore, and a matching confirmation. Test restores only with explicit authorization.
+
+### Wipe operations require escalation
+Review wipe.yml, preview/backup requirements, and /playerwipe integrations before considering any destructive operation. Do not bypass confirmation or wipe a customer account as a diagnostic step. The stashes feature is disabled and not executable.
+
+### Privacy and incident evidence
+Chat logs have configurable retention and can be disabled. Alt-link alerts are signals, not proof of shared identity. Request only sanitized setting excerpts and error messages; preserve audit evidence for moderation or restore disputes.`,
+    },
+    {
+      id: 'lumenspoofer', name: 'LumenSpoofer', summary: 'Fake-player backend compatibility, navigation, and task queues.',
+      body: `### Runtime compatibility first
+Paper is intended. The startup gate allows 1.21.6-1.21.11 and 26.1+, but server internals can break the fake-player backend between releases. A passing version check or build does not prove NPC compatibility.
+
+### Diagnose task behavior
+Use /Ls goal <name> status and compare the current task, route, team role, and storage destination. Check movement settings in config.yml; routine sprint-jumping is off by default.
+
+### Reproduction safety
+Capture the first backend/startup error, exact Paper build, NPC mode, terrain, and task steps. /Ls devtest run npc-navigation <bot> is a live test requiring lumen.npc.dev; use a controlled world and test NPC, not a production combat target.
+
+### Escalation boundary
+Do not promise Spigot/Bukkit support or fix an incompatible backend by suppressing startup errors. Reproduce on the exact server build and provide sanitized backend diagnostics to a developer.`,
+    },
+    {
+      id: 'gladiator', name: 'Gladiator', summary: 'Detection signals, PacketEvents, masking, and safe diagnostics.',
+      body: `### Confirm the integration matrix
+The public target is Minecraft 1.21.6-1.21.11 with Java 21+ on Bukkit/Spigot/Paper/Purpur. Packet masking needs a PacketEvents release compatible with the exact server/protocol; it is not bundled.
+
+### Signals are not proof
+Heuristics can flag normal play. Start with alerts, compare thresholds and detection groups, and use a safe test account before enabling enforcement. Client brands and address-based links are not reliable identity proof.
+
+### Choose safe diagnostics
+/gladiator test reads module/integration status. Packet counters may be zero when no relevant traffic has occurred. Discord tests send real messages; punishment tests can actually kick or ban and require deliberate authorization.
+
+### Collect the right context
+Record module, server/protocol, PacketEvents version, reproduction, thresholds, and Geyser/Floodgate forwarding if relevant. Keep webhook URLs and shared keys private. Native Paper/Purpur Anti-Xray settings are separate and need a restart.`,
+    },
+    {
+      id: 'lumenbounty', name: 'LumenBounty', summary: 'Coming-soon enquiries without inventing release details.',
+      body: `### Current public status
+LumenBounty is coming soon. Supported versions, commands, configuration, and delivery dates are not published. Do not offer a download or promise runtime compatibility.
+
+### Handle enquiries
+Clarify whether the customer asks about availability, a feature suggestion, or a commission. Point them to website update-notification preferences and record the requested use case in the private ticket.
+
+### Escalation
+Send commercial or launch-date questions to studio leadership. Send concrete bounty-workflow ideas to a developer with acceptance criteria. Do not invent permission nodes, registry identifiers, prices, or trial availability.`,
+    },
+    ...['LumenTeam', 'LumenIntellegance', 'Sentinel'].map(name => ({
+      id: name.toLowerCase(), name, summary: 'Coming-soon status, feature enquiries, and escalation boundaries.',
+      body: `### Published status
+${name} appears in the public coming-soon catalog. Commands, dependencies, supported versions, configuration, and delivery dates are not established by that listing.
+
+### Customer enquiry checklist
+Clarify the intended server use case and whether this is an availability question, suggestion, or commission. Record acceptance criteria without promising that the unreleased product already implements them.
+
+### Route the next step
+Refer launch-date and commercial questions to studio leadership; refer technical feature questions to a developer. Customers can follow website updates. Do not issue trials, create registry mappings, or distribute an unrelated JAR as a substitute.
+
+### Reply accurately
+Explain what is published and what still needs confirmation. Never invent commands, permissions, prices, or a release date; keep development-only details in private staff conversations.`,
+    })),
+  ].map(plugin => ({
+    id: `plugin-${plugin.id}`, category: 'Plugin playbooks', title: plugin.name,
+    summary: plugin.summary, body: plugin.body,
+  })),
 ]
 
 export async function staffKnowledge(request, env, origin, deps) {
@@ -164,5 +337,5 @@ export async function staffKnowledge(request, env, origin, deps) {
   if (access.rank < 2 || !hasPermission(access, 'staff.docs')) return send({ error: 'Staff mode requires Support team rank or higher and staff.docs permission.' }, 403)
   if (!env.ADMIN_READ_LIMITER) return send({ error: 'Staff request limiting is unavailable.' }, 503)
   if (!(await env.ADMIN_READ_LIMITER.limit({ key: `staff-guides:${user.id}` })).success) return send({ error: 'Too many staff guide requests. Please wait a minute.' }, 429)
-  return send({ actor: { roleName: access.roleName, permissions: access.permissions }, guides })
+  return send({ actor: { id: user.id, roleName: access.roleName, permissions: access.permissions }, guides })
 }

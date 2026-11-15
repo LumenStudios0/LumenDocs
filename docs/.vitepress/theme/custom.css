@@ -4531,3 +4531,37 @@ html.lumen-staff-mode ::selection {
   background: #b52c3966;
   color: #fff;
 }
+
+html.lumen-staff-mode :is(.lumen-day-night-fade, .lumen-track-visuals, .VPNavBarSearch) {
+  display: none;
+}
+
+.staff-sidebar-heading {
+  display: grid;
+  gap: 8px;
+  margin: 24px 0 28px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--lumen-card-border);
+}
+
+.staff-sidebar-heading small { color: var(--vp-c-brand-1); font-size: 9px; letter-spacing: .12em; }
+.staff-sidebar-heading strong { font-size: 22px; letter-spacing: -.04em; }
+.staff-sidebar-heading span { color: var(--vp-c-text-2); font-size: 11px; }
+
+html.lumen-staff-mode .website-workspace > header,
+html.lumen-staff-mode .ticket-cards > article {
+  background: radial-gradient(ellipse at 100% 0, var(--vp-c-brand-soft), transparent 65%), var(--vp-c-bg-soft);
+}
+
+html.lumen-staff-mode .website-workspace .website-primary {
+  background: var(--vp-button-brand-bg);
+  border-color: var(--vp-button-brand-bg);
+}
+
+html.lumen-staff-mode .ticket-message-staff {
+  --ticket-staff-color: #ff8896;
+  --ticket-staff-soft: #441b28;
+  border-color: var(--lumen-card-border);
+  background: linear-gradient(135deg, #b52c3914, transparent 75%), var(--vp-c-bg);
+  box-shadow: 0 3px 16px #b52c390a;
+}

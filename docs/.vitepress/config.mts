@@ -1,5 +1,21 @@
 import { defineConfig } from 'vitepress'
 
+const staffSidebar = [
+  { text: 'Staff operations', items: [
+    { text: 'Command center', link: '/staff/' },
+    { text: 'Staff Dashboard', link: '/admin/' },
+    { text: 'Ticket queue & updates', link: '/admin/#tickets' },
+    { text: 'Plugins & products', link: '/admin/#products' },
+    { text: 'Users & roles', link: '/admin/#roles' },
+    { text: 'Website settings', link: '/admin/#settings' },
+  ] },
+  { text: 'Knowledge library', items: [
+    { text: 'Staff handbook', link: '/staff/?category=Staff%20handbook' },
+    { text: 'Developer desk', link: '/staff/?category=Developer%20desk' },
+    { text: 'Plugin playbooks', link: '/staff/?category=Plugin%20playbooks' },
+  ] },
+]
+
 export default defineConfig({
   lang: 'en-US',
   title: 'Lumen Studios',
@@ -52,15 +68,8 @@ export default defineConfig({
       { text: 'Support', link: '/reports/' },
     ],
     sidebar: {
-      '/admin/': [
-        {
-          text: 'Studio tools',
-          items: [
-            { text: 'Staff Dashboard', link: '/admin/' },
-            { text: 'Customer portal', link: '/account/' },
-          ],
-        },
-      ],
+      '/admin/': staffSidebar,
+      '/staff/': staffSidebar,
       '/account/': [
         {
           text: 'Your account',

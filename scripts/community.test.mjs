@@ -835,6 +835,12 @@ test('private staff guides require staff rank and current permission on every re
     const payload = await response.json()
     assert.ok(payload.guides.some(guide => guide.id === 'integration' && guide.body.includes('X-Plugin-Token')))
     assert.ok(payload.guides.some(guide => guide.id === 'ticket-playbook'))
+    assert.equal(payload.actor.id, id)
+    const catalog = await readFile(new URL('../docs/.vitepress/theme/PluginCatalog.vue', import.meta.url), 'utf8')
+    for (const [, name] of catalog.matchAll(/\{ name: '([^']+)'/g)) {
+      assert.ok(payload.guides.some(guide => guide.category === 'Plugin playbooks' && guide.title === name), `Missing staff playbook for ${name}`)
+    }
+    assert.equal(new Set(payload.guides.map(guide => guide.id)).size, payload.guides.length)
     assert.equal(payload.actor.roleName, ROLES.find(item => item.id === role).name)
   }
   await assign(id, 'support_team')

@@ -194,6 +194,7 @@ async function verifyAccess() {
 async function initialize() {
   const identity = await verifyAccess()
   if (!identity || !can('dashboard.view')) return
+  selectLinkedArea()
   if (settingsArea.value && !can(settingsArea.value === 'roles' ? 'roles.assign' : 'settings.view')) settingsArea.value = ''
   if (websiteOperations.value && !communityAccess.value) websiteOperations.value = false
   if (!availableViews.value.some(tab => tab.id === view.value)) {
@@ -203,6 +204,26 @@ async function initialize() {
     else if (can('settings.view')) settingsArea.value = 'settings'
   }
   if (!websiteOperations.value && !settingsArea.value && availableViews.value.length) await loadView()
+}
+
+function selectLinkedArea(resetDefault = false) {
+  if (!can('dashboard.view')) return
+  const area = window.location.hash.slice(1)
+  if (!area && resetDefault) {
+    websiteOperations.value = false; settingsArea.value = ''; user.value = null; selectedLicenseId.value = ''; clearKey()
+    if (availableViews.value.length) view.value = availableViews.value[0].id
+    else if (communityAccess.value) websiteOperations.value = true
+  } else if (area === 'tickets' && communityAccess.value) { websiteOperations.value = true; settingsArea.value = ''; clearKey() }
+  else if ((area === 'roles' || area === 'settings') && can(area === 'roles' ? 'roles.assign' : 'settings.view')) {
+    settingsArea.value = area; websiteOperations.value = false; clearKey()
+  } else if ((area === 'products' || area === 'audit') && availableViews.value.some(tab => tab.id === area)) {
+    websiteOperations.value = false; settingsArea.value = ''; user.value = null; selectedLicenseId.value = ''; view.value = area; clearKey()
+  }
+}
+function linkedAreaChanged() {
+  if (submitting.value || !['', 'tickets', 'roles', 'settings', 'products', 'audit'].includes(window.location.hash.slice(1))) return
+  selectLinkedArea(true)
+  if (!websiteOperations.value && !settingsArea.value && can('dashboard.view') && availableViews.value.length) void loadView()
 }
 
 function clearWorkspace() {
@@ -576,6 +597,7 @@ onMounted(() => {
   void initialize()
   clockTimer = setInterval(() => { clock.value = Date.now() }, 60000)
   window.addEventListener('lumen-discord-user', handleSession)
+  window.addEventListener('hashchange', linkedAreaChanged)
 })
 onUnmounted(() => {
   identityGeneration++
@@ -583,6 +605,7 @@ onUnmounted(() => {
   clearInterval(clockTimer)
   clearKey()
   window.removeEventListener('lumen-discord-user', handleSession)
+  window.removeEventListener('hashchange', linkedAreaChanged)
 })
 </script>
 
@@ -597,7 +620,7 @@ onUnmounted(() => {
     <p v-if="accessReady && !can('dashboard.view') && !accessError" class="staff-message" role="status">Your role does not have Staff Dashboard access.</p>
     <p v-if="can('dashboard.view') && !availableViews.length && !communityAccess && !can('roles.assign') && !can('settings.view')" class="staff-message" role="status">Dashboard access is enabled, but your role has no tools assigned yet.</p>
     <nav v-if="can('dashboard.view')" class="staff-navigation" aria-label="Staff dashboard areas">
-      <a v-if="permissions.includes('staff.docs')" href="/staff/">Staff mode &amp; guides</a>
+      <a v-if="permissions.includes('staff.docs')" href="/staff/">Command center &amp; guides</a>
       <button v-if="availableViews.length" type="button" :aria-pressed="!websiteOperations && !settingsArea" @click="websiteOperations = false; settingsArea = ''; loadView()">Licenses &amp; accounts</button>
       <button v-if="communityAccess" type="button" :aria-pressed="websiteOperations && !settingsArea" :disabled="submitting" @click="websiteOperations = true; settingsArea = ''">Tickets, updates &amp; status</button>
       <button v-if="can('roles.assign')" type="button" :aria-pressed="settingsArea === 'roles'" @click="settingsArea = 'roles'; clearKey()">Users &amp; roles</button>
@@ -739,12 +762,12 @@ onUnmounted(() => {
 
 <style scoped>
 .admin-workspace { max-width: 1280px; margin: 0 auto; padding: 32px clamp(16px, 3vw, 40px) 70px; color: var(--vp-c-text-1); }
-.staff-hero { position: relative; display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; overflow: hidden; padding: clamp(24px, 4vw, 42px); border: 1px solid #9a6bf344; border-radius: 22px; background: radial-gradient(ellipse at 100% 0, #7b3ff22a, transparent 60%), var(--vp-c-bg-soft); }
+.staff-hero { position: relative; display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; overflow: hidden; padding: clamp(24px, 4vw, 42px); border: 1px solid var(--lumen-card-border); border-radius: 22px; background: radial-gradient(ellipse at 100% 0, var(--vp-c-brand-soft), transparent 60%), var(--vp-c-bg-soft); }
 .staff-eyebrow { margin: 0 0 8px; color: var(--vp-c-brand-1); font-size: .62rem; font-weight: 750; letter-spacing: .12em; }
 .staff-hero h1 { margin: 15px 0 12px; font-size: clamp(1.9rem, 4vw, 3.2rem); line-height: 1.05; letter-spacing: -.055em; }
 .staff-hero h1 span { color: var(--vp-c-brand-1); }
 .staff-hero p:last-child { max-width: 500px; margin: 0; color: var(--vp-c-text-2); font-size: .9rem; line-height: 1.7; }
-.staff-access { flex-shrink: 0; padding: 7px 10px; border: 1px solid #9a6bf344; border-radius: 7px; color: var(--vp-c-brand-1); font-size: .65rem; }
+.staff-access { flex-shrink: 0; padding: 7px 10px; border: 1px solid var(--lumen-card-border); border-radius: 7px; color: var(--vp-c-brand-1); font-size: .65rem; }
 .staff-test-mode { margin: 18px 0; padding: 18px; border: 1px solid var(--vp-c-divider); border-radius: 12px; background: var(--vp-c-bg-soft); }
 .staff-test-mode.is-testing { border: 2px solid var(--vp-c-warning-1); background: var(--vp-c-warning-soft); }
 .staff-test-mode strong { font-size: .82rem; }
@@ -754,7 +777,8 @@ onUnmounted(() => {
 .admin-workspace button:hover:not(:disabled) { border-color: var(--vp-c-brand-1); background: var(--vp-c-brand-soft); }
 .admin-workspace button:disabled { opacity: .5; cursor: not-allowed; }
 .admin-workspace :is(button, input, select, summary):focus-visible, .staff-table-scroll:focus-visible { outline: 2px solid var(--vp-c-brand-1); outline-offset: 3px; }
-.staff-navigation button { display: flex; flex: 1; align-items: center; justify-content: center; gap: 12px; white-space: nowrap; border: 0; background: transparent; padding: 12px 16px; }
+.staff-navigation :is(button,a) { display: flex; flex: 1; align-items: center; justify-content: center; gap: 12px; white-space: nowrap; border: 0; border-radius: 8px; background: transparent; padding: 12px 16px; font-size: .76rem; font-weight: 600; line-height: 1.4; text-decoration: none; }
+.staff-navigation a:hover, .staff-navigation button[aria-pressed=true] { background: var(--vp-c-brand-soft); color: var(--vp-c-brand-1); }
 .staff-navigation small { font: .65rem var(--vp-font-family-mono); color: var(--vp-c-text-3); }
 .staff-navigation button[aria-current=page] { background: var(--vp-c-bg); color: var(--vp-c-brand-1); box-shadow: 0 2px 6px #0000000a; }
 .staff-context { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin: 18px 0; color: var(--vp-c-text-2); font-size: .73rem; }
@@ -775,11 +799,11 @@ onUnmounted(() => {
 .staff-toolbar > span { margin-left: auto; padding-bottom: 10px; color: var(--vp-c-text-3); font-size: .7rem; }
 .staff-toolbar .staff-grow { flex: 2; min-width: 190px; }
 .staff-grow { flex: 1; min-width: 0; }
-.admin-workspace .staff-primary { padding: 10px 15px; border-color: #7b3ff2; background: #7b3ff2; color: white; }
-.admin-workspace .staff-primary:hover:not(:disabled) { background: #6830cf; color: white; }
+.admin-workspace .staff-primary { padding: 10px 15px; border-color: var(--vp-button-brand-bg); background: var(--vp-button-brand-bg); color: white; }
+.admin-workspace .staff-primary:hover:not(:disabled) { background: var(--vp-button-brand-hover-bg); color: white; }
 .staff-customers { display: grid; gap: 8px; }
 .staff-customers > button { display: flex; align-items: center; gap: 16px; width: 100%; padding: 16px; text-align: left; }
-.staff-avatar { display: grid; flex-shrink: 0; width: 40px; height: 40px; place-items: center; border: 1px solid #9a6bf333; border-radius: 12px; background: var(--vp-c-brand-soft); color: var(--vp-c-brand-1); font-size: .8rem; font-weight: 750; }
+.staff-avatar { display: grid; flex-shrink: 0; width: 40px; height: 40px; place-items: center; border: 1px solid var(--lumen-card-border); border-radius: 12px; background: var(--vp-c-brand-soft); color: var(--vp-c-brand-1); font-size: .8rem; font-weight: 750; }
 .staff-customer-name { display: grid; flex: 1; min-width: 0; gap: 3px; }
 .staff-customer-name strong { font-size: .83rem; overflow-wrap: anywhere; }
 .staff-customer-name small, .staff-customer-status small { color: var(--vp-c-text-2); font-size: .68rem; overflow-wrap: anywhere; }

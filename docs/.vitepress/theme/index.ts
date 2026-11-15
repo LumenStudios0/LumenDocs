@@ -1,5 +1,5 @@
 import DefaultTheme from 'vitepress/theme'
-import { h, computed, defineComponent, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { h, computed, defineComponent, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useData, useRouter } from 'vitepress'
 import AccountLicenseIps from './AccountLicenseIps.vue'
 import AccountLicenseClaim from './AccountLicenseClaim.vue'
@@ -53,6 +53,9 @@ export default {
       const canGoForward = ref(false)
       const navMenuOpen = ref(false)
       const currentPath = ref(router.route.path)
+      const isStaff = computed(() => /^\/(?:staff|admin)(?:\/|$)/.test(currentPath.value))
+      const syncStaffTheme = () => document.documentElement.classList.toggle('lumen-staff-mode', isStaff.value)
+      watch(isStaff, syncStaffTheme)
       const workspace = computed(() => {
         if (/^\/staff(?:\/|$)/.test(currentPath.value)) return { name: 'Staff mode', link: '/staff/', label: 'STAFF KNOWLEDGE' }
         if (/^\/admin(?:\/|$)/.test(currentPath.value)) return { name: 'Studio console', link: '/admin/', label: 'ADMINISTRATION' }
@@ -75,6 +78,14 @@ export default {
         { text: 'Release notes', link: '/changelogs/', detail: 'See what is new at Lumen.', icon: 'M12 8v5l3 2M4 6a9 9 0 1 1-1 9M3 3v5h5' },
         { text: 'Compatibility checker', link: '/getting-started/compatibility', detail: 'Check declared plugin requirements.', icon: 'm5 12 4 4L19 6' },
         { text: 'Service status', link: '/status', detail: 'Service health and maintenance.', icon: 'M3 12h4l3-7 4 14 3-7h4' },
+      ]
+      const staffNavigationItems = [
+        { text: 'Command center', link: '/staff/', detail: 'Playbooks and shift tools.', icon: 'M3 4h18v16H3zM3 9h18M9 9v11' },
+        { text: 'Staff Dashboard', link: '/admin/', detail: 'Customer access and operations.', icon: 'M4 4h16v16H4zM7 8h10M7 12h10' },
+        { text: 'Ticket queue', link: '/admin/#tickets', detail: 'Support, trials, updates and status.', icon: 'M4 4h16v12H9l-5 5zM8 8h8' },
+        { text: 'Plugin playbooks', link: '/staff/?category=Plugin%20playbooks', detail: 'Product-specific support references.', icon: 'm12 3 9 5-9 5-9-5zM3 8v9l9 5 9-5V8' },
+        { text: 'Developer desk', link: '/staff/?category=Developer%20desk', detail: 'Integration and build guidance.', icon: 'm8 6-6 6 6 6M16 6l6 6-6 6' },
+        { text: 'Exit staff area', link: '/', detail: 'Return to the public website.', icon: 'M4 12h16M14 6l6 6-6 6' },
       ]
       let slideFromLeft = true
       let sunClicks = 0
@@ -354,6 +365,7 @@ export default {
         await previousRouteChanged?.(nextPath)
         await nextTick()
         currentPath.value = nextPath
+        window.dispatchEvent(new Event('lumen-staff-route'))
         addInlineCopyButtons()
         if (traversingHistory) {
           traversingHistory = false
@@ -378,6 +390,7 @@ export default {
 
       router.onAfterRouteChange = animatePage
       onMounted(() => {
+        syncStaffTheme()
         canGoBack.value = window.history.length > 1
         window.addEventListener('popstate', handlePopState)
         document.addEventListener('pointerdown', handleNavMenuPointerDown)
@@ -403,6 +416,7 @@ export default {
         void floodImpactAudio?.close()
         ambientWeatherTimers.forEach(timer => window.clearTimeout(timer))
         document.documentElement.classList.remove(
+          'lumen-staff-mode',
           'lumen-banana',
           'lumen-weather-meteors',
           'lumen-weather-rain',
@@ -423,7 +437,7 @@ export default {
             // Use VitePress's close handler so scroll lock and focus are restored.
             onClick: () => window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Escape' })),
           }, '×'),
-          h('a', { class: 'studio-workspace', href: workspace.value.link }, [
+          !isStaff.value && h('a', { class: 'studio-workspace', href: workspace.value.link }, [
             h('span', { class: 'studio-workspace-logo', 'aria-hidden': 'true' }, 'L'),
             h('span', [
               h('small', workspace.value.label),
@@ -431,7 +445,7 @@ export default {
             ]),
             h('span', { class: 'studio-workspace-chevron', 'aria-hidden': 'true' }, '↗'),
           ]),
-          h('button', {
+          !isStaff.value && h('button', {
             class: 'studio-sidebar-search',
             type: 'button',
             onClick: () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true })),
@@ -443,9 +457,15 @@ export default {
             h('span', 'Find an answer'),
             h('kbd', '/'),
           ]),
-          h('div', { class: 'studio-sidebar-label' }, 'WORKSPACE'),
+          isStaff.value
+            ? h('div', { class: 'staff-sidebar-heading' }, [h('small', 'LUMEN / INTERNAL'), h('strong', 'Staff center'), h('span', 'Operations. Knowledge. Teamwork.')])
+            : h('div', { class: 'studio-sidebar-label' }, 'WORKSPACE'),
         ],
-        'sidebar-nav-after': () => h('a', { class: 'studio-sidebar-help', href: '/reports/' }, [
+        'sidebar-nav-after': () => isStaff.value ? h('a', { class: 'studio-sidebar-help', href: '/' }, [
+          h('strong', 'Leave the staff area'),
+          h('span', 'Return to the customer website.'),
+          h('small', 'Exit staff mode →'),
+        ]) : h('a', { class: 'studio-sidebar-help', href: '/reports/' }, [
           h('span', { class: 'studio-sidebar-help-icon', 'aria-hidden': 'true' }, '?'),
           h('strong', 'A little help goes a long way.'),
           h('span', 'Questions, bugs, or a new idea?'),
@@ -576,7 +596,7 @@ export default {
                 h('rect', { x: 3, y: 14, width: 7, height: 7, rx: 1.5 }),
                 h('rect', { x: 14, y: 14, width: 7, height: 7, rx: 1.5 }),
               ]),
-              h('span', { class: 'lumen-nav-menu-label' }, 'Explore'),
+              h('span', { class: 'lumen-nav-menu-label' }, isStaff.value ? 'Staff tools' : 'Explore'),
               h('svg', { class: 'lumen-nav-menu-chevron', viewBox: '0 0 12 12', 'aria-hidden': 'true' }, [
                 h('path', { d: 'm3 4.5 3 3 3-3' }),
               ]),
@@ -587,10 +607,10 @@ export default {
               'aria-label': 'Main navigation',
             }, [
               h('div', { class: 'studio-menu-heading' }, [
-                h('small', 'THE LUMEN WORKSPACE'),
-                h('strong', 'Where would you like to go?'),
+                h('small', isStaff.value ? 'LUMEN STAFF CENTER' : 'THE LUMEN WORKSPACE'),
+                h('strong', isStaff.value ? 'Your next operation.' : 'Where would you like to go?'),
               ]),
-              ...topNavigationItems.map((item, index) =>
+              ...(isStaff.value ? staffNavigationItems : topNavigationItems).map((item, index) =>
                 h('a', {
                   class: 'lumen-nav-menu-link',
                   href: item.link,
@@ -608,7 +628,7 @@ export default {
                   h('span', { class: 'studio-menu-arrow', 'aria-hidden': 'true' }, '↗'),
                 ]),
               ),
-              h('div', { class: 'studio-menu-footer' }, [
+              !isStaff.value && h('div', { class: 'studio-menu-footer' }, [
                 h('a', {
                   class: 'studio-menu-discord',
                   href: 'https://discord.gg/lumenstudios',
@@ -628,14 +648,14 @@ export default {
           h('div', { class: 'lumen-nav-report-group' }, [
             h('a', {
               class: 'lumen-report-button',
-              href: '/reports/',
-              'aria-label': 'Open the support center to submit a request',
+              href: isStaff.value ? '/staff/' : '/reports/',
+              'aria-label': isStaff.value ? 'Open staff command center' : 'Open the support center to submit a request',
             }, [
               h('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' }, [
                 h('path', { d: 'M12 8v9M8.5 10 5 7.5M15.5 10 19 7.5M8 13H4.5M16 13h3.5M9 5.5 7.5 3M15 5.5 16.5 3M8 17l-2 2M16 17l2 2' }),
                 h('path', { d: 'M8 11a4 4 0 0 1 8 0v5a4 4 0 0 1-8 0zM10 6h4' }),
               ]),
-              h('span', 'Support center'),
+              h('span', isStaff.value ? 'Staff center' : 'Support center'),
             ]),
             h('div', { id: 'lumen-nav-auth' }),
           ]),
