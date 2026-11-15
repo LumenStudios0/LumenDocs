@@ -9,7 +9,7 @@
     "docs:preview": "vitepress preview docs",
     "test:worker": "node --test scripts/bug-report.test.mjs scripts/dinosaur-discoveries.test.mjs scripts/discord-auth.test.mjs scripts/community.test.mjs scripts/product-tools.test.mjs scripts/staff-operations.test.mjs scripts/staff-assistant.test.mjs",
     "test:website": "node --test scripts/website-tools.test.mjs scripts/plugin-compatibility.test.mjs scripts/rich-text.test.mjs scripts/studio-motion.test.mjs",
-    "test:licensing": "node --test scripts/licensing-dashboard.test.mjs scripts/plugin-editing-upgrade.test.mjs scripts/staff-license-upgrade.test.mjs"
+    "test:licensing": "node --test scripts/licensing-dashboard.test.mjs scripts/plugin-editing-upgrade.test.mjs scripts/staff-license-upgrade.test.mjs scripts/license-deletion-upgrade.test.mjs"
   },
   "overrides": {
     "vite": "6.4.5"

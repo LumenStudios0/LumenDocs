@@ -176,7 +176,7 @@ test('legacy split permissions are applied until the policy is explicitly edited
   })).status, 200)
   permissions = (await (await api('/auth/me', 'GET', undefined, support)).json()).user.permissions
   assert.ok(!permissions.includes('customers.hold') && !permissions.includes('tickets.escalate'))
-  assert.equal(db.sqlite.prepare("SELECT policy_version FROM website_role_permissions WHERE role_id='support_team'").get().policy_version, 1)
+  assert.equal(db.sqlite.prepare("SELECT policy_version FROM website_role_permissions WHERE role_id='support_team'").get().policy_version, 2)
 })
 
 test('senior support can grant and revoke with key-free audit records', async t => {
@@ -194,6 +194,51 @@ test('senior support can grant and revoke with key-free audit records', async t 
   assert.deepEqual(audit.map(row => row.action), ['license.grant_succeeded', 'license.revoke_succeeded'])
   assert.ok(audit.every(row => row.actor_role === 'sr_support'))
   assert.doesNotMatch(JSON.stringify(audit), /secret-key-never-audited/)
+})
+
+test('license deletion requires senior permission and confirms the upstream result', async t => {
+  const { db, api, assign } = await accessFixture(t)
+  const supportId = '222222222222222222', seniorId = '222222222222222223'
+  await assign(supportId, 'support_team')
+  await assign(seniorId, 'sr_support')
+  const support = await tokenFor(supportId, 'Support')
+  const senior = await tokenFor(seniorId, 'Senior')
+  const license = '12345678-1234-1234-1234-123456789012'
+  const path = `/admin/licenses/${license}`
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  let calls = 0, response = Response.json({ detail: 'Method Not Allowed' }, { status: 405 })
+  globalThis.fetch = async () => { calls++; return response }
+  assert.equal((await api(path, 'DELETE', undefined, support)).status, 403)
+  assert.equal(calls, 0)
+  let result = await api(path, 'DELETE', undefined, senior)
+  assert.equal(result.status, 503)
+  assert.match((await result.json()).error, /deletion update/)
+  response = Response.json({ deleted: true, licenseId: 'other' })
+  result = await api(path, 'DELETE', undefined, senior)
+  assert.equal(result.status, 502)
+  assert.match((await result.json()).error, /did not confirm/)
+  response = Response.json({ deleted: true, licenseId: license })
+  assert.equal((await api(path, 'DELETE', undefined, senior)).status, 200)
+  const actions = db.sqlite.prepare("SELECT action FROM website_access_audit WHERE action LIKE 'license.delete%' ORDER BY action").all().map(row => row.action)
+  assert.deepEqual(actions, ['license.delete_rejected', 'license.delete_requested', 'license.delete_succeeded'])
+})
+
+test('existing senior policies gain deletion until explicitly edited', async t => {
+  const { db, api, assign } = await accessFixture(t)
+  const id = '222222222222222223'
+  await assign(id, 'sr_support')
+  const senior = await tokenFor(id, 'Senior')
+  db.sqlite.prepare("INSERT INTO website_role_permissions(role_id,permissions,policy_version) VALUES ('sr_support',?,1)")
+    .run(JSON.stringify(['dashboard.view', 'licenses.revoke']))
+  let current = (await (await api('/auth/me', 'GET', undefined, senior)).json()).user.permissions
+  assert.ok(current.includes('licenses.delete'))
+  assert.equal((await api('/admin/website/roles/sr_support', 'PUT', {
+    permissions: ['dashboard.view', 'licenses.revoke'], revision: 1,
+  })).status, 200)
+  current = (await (await api('/auth/me', 'GET', undefined, senior)).json()).user.permissions
+  assert.ok(!current.includes('licenses.delete'))
+  assert.equal((await api('/admin/licenses/12345678-1234-1234-1234-123456789012', 'DELETE', undefined, senior)).status, 403)
 })
 
 test('junior support can escalate a ticket without assigning it', async t => {

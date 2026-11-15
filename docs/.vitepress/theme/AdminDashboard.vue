@@ -594,6 +594,18 @@ async function customerLicenseBatch(action: 'grant' | 'revoke') {
     if (session === getDiscordSession()) error.value = `Batch actions may have been saved. Do not repeat until you refresh and review the customer. ${messageOf(requestError)}`
   } finally { submitting.value = false }
 }
+async function deleteSelectedLicense() {
+  const license = selectedLicense.value
+  if (!license || !user.value || license.status !== 'revoked' || !can('licenses.delete') || busy.value || testMode.value) return
+  const customerId = user.value.discordId, session = getDiscordSession(), operationId = generation
+  if (!await confirmSiteAction('Permanently delete this revoked license record? This cannot be undone. Shared licenses and legacy key records cannot be deleted here.', {
+    title: 'Delete revoked license', confirmText: 'Delete license', requiredText: license.licenseId, danger: true,
+  })) return
+  if (session !== getDiscordSession() || operationId !== generation || user.value?.discordId !== customerId ||
+      selectedLicense.value?.licenseId !== license.licenseId || busy.value) return
+  await mutate<{ notificationWarning?: string }>(`/licenses/${license.licenseId}`, { method: 'DELETE' },
+    result => result.notificationWarning || 'Revoked license record permanently deleted.')
+}
 function addIp() {
   if (!selectedLicense.value) return
   const address = normalizeIpAddress(ipAddress.value)
@@ -906,6 +918,7 @@ onUnmounted(() => {
         <button v-if="can('licenses.status') && selectedLicense.status === 'suspended'" type="button" :disabled="busy || user?.deleted" @click="perform(`/licenses/${selectedLicense.licenseId}/activate`, undefined, 'License reactivated.')">Reactivate license</button>
         <button v-if="can('licenses.revoke') && selectedLicense.status !== 'revoked'" class="staff-danger" type="button" :disabled="busy || user?.deleted" @click="confirmAction('Permanently revoke this license? This cannot be undone.', `/licenses/${selectedLicense.licenseId}/revoke`, 'License revoked.')">Revoke permanently</button>
       </div>
+      <button v-if="can('licenses.delete') && selectedLicense.status === 'revoked' && !testMode" class="staff-danger" type="button" :disabled="busy || user?.deleted" @click="deleteSelectedLicense">Delete revoked license record</button>
       <p class="staff-note">The account reason field above is recorded for suspension/revocation. Reactivation does not change expiry or override an account ban/hold.</p>
       <form v-if="can('licenses.status') && selectedLicense.status !== 'revoked'" class="staff-inline-form" @submit.prevent="saveExpiration">
         <label class="staff-grow">Set expiration · local time<input v-model="editExpiresAt" type="datetime-local" required :disabled="busy || user?.deleted"><small>Choose a future date. This does not issue a new key. Updating a suspended license also reactivates it.</small></label>

@@ -901,6 +901,7 @@ async function adminApi(request, env, origin, path) {
   let licenseGrant
   const holdCustomer = path.match(/^\/admin\/users\/(\d{5,22})\/hold$/)?.[1]
   const revokeLicense = path.match(/^\/admin\/licenses\/([0-9a-f-]{36})\/revoke$/)?.[1]
+  const deleteLicense = request.method === 'DELETE' ? path.match(/^\/admin\/licenses\/([0-9a-f-]{36})$/)?.[1] : null
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     const body = await request.text()
     if (body.length > 8000) return respond({ error: 'Request is too large' }, 413, origin)
@@ -965,7 +966,7 @@ async function adminApi(request, env, origin, path) {
       }
     }
     let licenseAuditId
-    const licenseAction = licenseGrant ? 'license.grant' : revokeLicense ? 'license.revoke' : null
+    const licenseAction = licenseGrant ? 'license.grant' : revokeLicense ? 'license.revoke' : deleteLicense ? 'license.delete' : null
     if (licenseAction) {
       if (!env.COMMUNITY_DB) return respond({ error: 'License audit storage is unavailable; the change was not sent.' }, 503, origin)
       try {
@@ -974,7 +975,7 @@ async function adminApi(request, env, origin, path) {
           `INSERT INTO website_access_audit(id, actor_id, actor_role, action, target, details, created_at)
            VALUES (?, ?, ?, ?, ?, '{}', ?)`,
         ).bind(licenseAuditId, user.id, access.role, `${licenseAction}_requested`,
-          licenseGrant?.customerId || revokeLicense, new Date().toISOString()).run()
+          licenseGrant?.customerId || revokeLicense || deleteLicense, new Date().toISOString()).run()
       } catch (error) {
         console.error('License audit storage is unavailable:', error)
         return respond({ error: 'License audit storage is unavailable; the change was not sent.' }, 503, origin)
@@ -982,15 +983,6 @@ async function adminApi(request, env, origin, path) {
     }
     const upstream = await fetch(upstreamUrl, options)
     let auditWarning
-    if (licenseAuditId) {
-      try {
-        await env.COMMUNITY_DB.prepare('UPDATE website_access_audit SET action = ?, details = ? WHERE id = ?')
-          .bind(`${licenseAction}_${upstream.ok ? 'succeeded' : 'rejected'}`, JSON.stringify({ status: upstream.status }), licenseAuditId).run()
-      } catch (error) {
-        console.error('License action outcome could not be saved to the audit:', error)
-        auditWarning = 'The license action was sent, but its audit outcome could not be saved. Check the license before retrying.'
-      }
-    }
     let holdWarning
     if (upstream.ok && holdCustomer && holdRecipients.length) {
       try {
@@ -1008,7 +1000,7 @@ async function adminApi(request, env, origin, path) {
     if (responseBody.length > 50000) {
       return respond({ error: holdCustomer && upstream.ok
         ? `The hold was placed, but the response was too large. Do not repeat it. ${holdWarning || ''}`
-        : (licenseGrant || revokeLicense) && upstream.ok
+        : (licenseGrant || revokeLicense || deleteLicense) && upstream.ok
           ? 'The license action succeeded, but the response was too large. Check the account and do not repeat it.'
         : 'The licensing service returned an oversized response' }, 502, origin)
     }
@@ -1018,13 +1010,26 @@ async function adminApi(request, env, origin, path) {
     } catch {
       return respond({ error: holdCustomer && upstream.ok
         ? `The hold was placed, but the response was invalid. Do not repeat it. ${holdWarning || ''}`
-        : (licenseGrant || revokeLicense) && upstream.ok
+        : (licenseGrant || revokeLicense || deleteLicense) && upstream.ok
           ? 'The license action succeeded, but the response was invalid. Check the account and do not repeat it.'
         : 'The licensing service returned an invalid response' }, 502, origin)
+    }
+    if (deleteLicense && upstream.ok && (payload?.deleted !== true || payload?.licenseId !== deleteLicense)) {
+      return respond({ error: 'The licensing service did not confirm the deletion. Check the license before retrying.' }, 502, origin)
+    }
+    if (licenseAuditId) {
+      try {
+        await env.COMMUNITY_DB.prepare('UPDATE website_access_audit SET action = ?, details = ? WHERE id = ?')
+          .bind(`${licenseAction}_${upstream.ok ? 'succeeded' : 'rejected'}`, JSON.stringify({ status: upstream.status }), licenseAuditId).run()
+      } catch (error) {
+        console.error('License action outcome could not be saved to the audit:', error)
+        auditWarning = 'The license action was sent, but its audit outcome could not be saved. Check the license before retrying.'
+      }
     }
     if (registryPatch?.name && path.startsWith('/admin/plugins/') && upstream.status === 422) {
       return respond({ error: 'This licensing API does not support plugin name editing yet. Run the plugin-editing VPS updater from worker/README.md, rebuild api and bot, then retry.' }, 422, origin)
     }
+    if (deleteLicense && upstream.status === 405) return respond({ error: 'The licensing API needs the license deletion update before records can be deleted.' }, 503, origin)
     if (upstream.ok && registryPatch?.name && payload?.name !== registryPatch.name) {
       return respond({ error: 'The licensing API did not apply the new name. Refresh the registry and update the VPS API before retrying.' }, 502, origin)
     }
@@ -1063,7 +1068,7 @@ async function adminApi(request, env, origin, path) {
     console.error('Admin licensing service request failed:', error)
     return respond({ error: holdCustomer
       ? 'The hold may have been placed, but confirmation failed. Check the account and alert higher-ranking staff before retrying.'
-      : licenseGrant || revokeLicense
+      : licenseGrant || revokeLicense || deleteLicense
         ? 'The license action may have succeeded, but confirmation failed. Check the account before retrying.'
         : 'The licensing service is temporarily unavailable' }, 503, origin)
   }

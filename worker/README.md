@@ -80,7 +80,7 @@ The eight fixed ranks are **Guest < Client < Jr Support < Support < Sr Support <
 | Guest, Client | No Staff Dashboard access; normal signed-in customer features remain available |
 | Jr Support | Staff guides, ticket reads/replies and escalations; no license keys, license changes or account restrictions |
 | Support | Jr Support capabilities, ticket routing, customer/license reads, key inspection and placing accounts on hold; also retains existing staff operations, audit/registry reads and moderation tools |
-| Sr Support | Support capabilities plus license grants and permanent revocation, customer verification requests and approvals |
+| Sr Support | Support capabilities plus license grants, permanent revocation and deletion of eligible revoked records, and customer verification requests and approvals |
 | Developer | Licensing operations, plugin registration/activation, product creation/activation/linking/unlinking, known issues, notifications, announcements and service status; cannot assign roles or edit role permissions |
 | Studio Lead | All preset permissions, but may manage only lower roles and users |
 | Owner | All permissions; may assign any role. The original owner cannot be changed and Owner permissions are immutable |
@@ -91,7 +91,20 @@ Use **Website settings** (`settings.view`) to inspect role permissions. `setting
 
 Migration `0019_support_roles.sql` retains existing member assignments and custom policies. Existing Support members remain Support, but safety caps immediately exclude license grants, revocation/status changes, IP changes, account bans/releases, verification and role administration even if an old saved policy contained those permissions. Only Studio Lead and Owner can assign roles or manage role permissions. Saved policies still control which allowed capabilities are enabled; legacy policies gain compatible hold, escalation and revocation permissions in memory where relevant until an administrator explicitly saves the policy. New accounts in `ADMIN_DISCORD_IDS` continue to bootstrap as Support.
 
-Successful holds notify higher-ranked staff privately through website notifications. If alert storage cannot be checked, the hold is not sent; if alerts fail after the licensing service confirms the hold, the dashboard warns staff to notify their superiors without repeating it. License grants and revocations record key-free website audit attempts and outcomes; bulk grants retain their existing audit trail. The licensing service currently exposes permanent revocation, not a verified individual-license deletion endpoint, so permanent deletion is not offered or represented as a successful revoke.
+Successful holds notify higher-ranked staff privately through website notifications. If alert storage cannot be checked, the hold is not sent; if alerts fail after the licensing service confirms the hold, the dashboard warns staff to notify their superiors without repeating it. License grants, revocations and deletions record key-free website audit attempts and outcomes; bulk grants retain their existing audit trail.
+
+Deleting a license record requires `licenses.delete` and the separate VPS API update below. Revoke the license first; the deletion removes that revoked record and its legacy per-license IP records but does not erase the customer, the account key, other licenses or account-level IPs. Shared license records with linked products and legacy key records are refused to avoid breaking other access. Both the licensing service and website retain audit records. If the VPS update is absent, deletion fails with an explicit upgrade message.
+
+Existing Sr Support policies with revocation gain deletion until an administrator explicitly saves the policy; afterward the deletion toggle can be controlled independently.
+
+```bash
+cd /opt/lumen-license
+curl --fail --show-error --location https://raw.githubusercontent.com/LumenStudios0/LumenDocs/main/scripts/upgrade-license-deletion.py -o /tmp/lumen-license-deletion.py
+python3 /tmp/lumen-license-deletion.py backend
+docker compose up -d --build --no-deps api
+```
+
+The updater validates the archive-based API layout, creates `api.py.before-license-deletion.bak`, and is safe to rerun. It does not modify database schema or existing licenses.
 
 `settings.site` allows pausing new support tickets/issue submissions and making the forum read-only, with editable customer-facing messages. Existing tickets and replies remain available; ticket managers and forum moderators may continue working. `settings.audit` grants the paginated website access/settings history, independent of the licensing audit. Each mutation and its audit entry commit atomically, and revision checks reject stale saves rather than overwriting another staff member's changes.
 
@@ -110,7 +123,7 @@ To connect the dashboard after the licensing API is available over HTTPS:
    Enter the HTTPS API base URL and the same administrator token used by the licensing API.
 3. If adding other staff, set `ADMIN_DISCORD_IDS` in `wrangler.toml` to comma-separated Discord account IDs. The two built-in owner accounts are always authorized.
 4. Deploy the Worker with `npx wrangler deploy`, then push the site changes so GitHub Pages builds the `/admin/` dashboard. The Pages workflow embeds the deployed Worker `/chat` endpoint at build time.
-5. Apply the licensing backend changes and run its tests before using account controls. To remove an entitlement, revoke its license; records are retained for audit history. Each license supports at most three numeric IPv4/IPv6 addresses.
+5. Apply the licensing backend changes and run its tests before using account controls. To remove an entitlement, revoke its license; eligible revoked records can optionally be deleted after the VPS update above. Each license supports at most three numeric IPv4/IPv6 addresses.
 
 If the dashboard says `LICENSE_SERVICE_UNAVAILABLE`, one or both Worker settings are missing. If both are present but calls time out, check that `/healthz` is reachable from the public internet over HTTPS and that ports 80 and 443 are open on the VPS. GitHub Pages deployment alone does not configure the Worker secrets or deploy the licensing backend.
 

@@ -24,7 +24,7 @@ export function adminPermission(path, method) {
   }
   const registry = path.match(/^\/admin\/(products|plugins)\/[A-Za-z0-9_.-]{1,64}$/)
   if (registry) return method === 'DELETE' ? `${registry[1]}.delete` : method === 'PATCH' ? `${registry[1]}.manage` : null
-  if (/^\/admin\/licenses\/[0-9a-f-]{36}$/.test(path) && method === 'GET') return 'customers.view'
+  if (/^\/admin\/licenses\/[0-9a-f-]{36}$/.test(path)) return method === 'GET' ? 'customers.view' : method === 'DELETE' ? 'licenses.delete' : null
   if (/^\/admin\/licenses\/[0-9a-f-]{36}\/key$/.test(path) && method === 'GET') return 'licenses.keys'
   if (/^\/admin\/licenses\/[0-9a-f-]{36}\/revoke$/.test(path) && method === 'POST') return 'licenses.revoke'
   if (/^\/admin\/licenses\/[0-9a-f-]{36}\/(suspend|activate|renew)$/.test(path) && method === 'POST') return 'licenses.status'
@@ -56,6 +56,8 @@ export async function rolePolicies(env) {
       }
       if (['developer', 'studio_lead'].includes(role.id) && permissions.includes('licenses.status') && !permissions.includes('licenses.revoke')) permissions.push('licenses.revoke')
     }
+    if (saved && (saved.policy_version || 0) < 2 && role.id === 'sr_support' &&
+        permissions.includes('licenses.revoke') && !permissions.includes('licenses.delete')) permissions.push('licenses.delete')
     return { ...role, permissions: role.rank < 2 ? permissions.filter(id => MEMBER_PERMISSIONS.includes(id))
       : permissions.filter(id => roleAllows(role, id)), allowedPermissions: PERMISSIONS.map(p => p.id).filter(id =>
         role.rank < 2 ? MEMBER_PERMISSIONS.includes(id) : roleAllows(role, id)), revision: saved?.revision || 0 }
@@ -212,8 +214,8 @@ export async function websiteAdminApi(request, env, path, user, access, respond,
     if (access.role !== 'owner' && permissions.some(id => !allows(id))) return send({ error: 'You cannot delegate permissions you do not have.' }, 403)
     statements = [
       db.prepare(`INSERT INTO website_role_permissions(role_id, permissions, revision, policy_version)
-        SELECT ?, ?, 1, 1 WHERE ? = 0 OR EXISTS (SELECT 1 FROM website_role_permissions WHERE role_id = ? AND revision = ?)
-        ON CONFLICT(role_id) DO UPDATE SET permissions=excluded.permissions, revision=website_role_permissions.revision+1, policy_version=1
+        SELECT ?, ?, 1, 2 WHERE ? = 0 OR EXISTS (SELECT 1 FROM website_role_permissions WHERE role_id = ? AND revision = ?)
+        ON CONFLICT(role_id) DO UPDATE SET permissions=excluded.permissions, revision=website_role_permissions.revision+1, policy_version=2
         WHERE website_role_permissions.revision = ?`).bind(role.id, JSON.stringify(permissions), body.revision, role.id, body.revision, body.revision),
       auditStatement(db, user, access, 'role.permissions_changed', role.id, { permissions }),
     ]
