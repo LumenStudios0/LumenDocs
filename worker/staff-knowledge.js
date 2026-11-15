@@ -17,7 +17,7 @@ Every ticket type has its own estimated initial staff-response wait. Estimates u
 Only authorized higher-ranked staff may issue a warning to a strictly lower-ranked staff member. Staff can read and acknowledge their own warnings; authorized leadership sees only permitted lower-ranked records. Keep reasons factual and private.
 Submit guide feedback from the guide reader; authorized staff review it in Guide feedback. Onboarding paths and practice scenarios never mutate tickets, licenses, or staff records. Practice progress is visit-only. Dashboard widget choices are stored per verified actor in this browser; they are not shared team state.
 ### Private staff assistant
-Staff accounts automatically use the private staff assistant. Ask for detailed playbooks, exact licensing code, or permission-aware operational counts. Retrieval runs on the studio Worker; private questions and records are not forwarded to the public AI provider. The assistant is read-only and never claims to grant licenses, issue warnings, change tasks, or make customer commitments.`,
+Staff accounts automatically use the private staff assistant. Replies are short by default; explicitly ask for detailed guidance or exact licensing code when needed. You can also request permission-aware operational counts. Retrieval runs on the studio Worker; private questions and records are not forwarded to the public AI provider. The assistant is read-only and never claims to grant licenses, issue warnings, change tasks, or make customer commitments.`,
   },
   {
     id: 'start-here', category: 'Staff handbook', title: 'Start your shift', summary: 'A practical checklist for every support team member.',

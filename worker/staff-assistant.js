@@ -4,26 +4,33 @@ import { staffOperationalSummary } from './staff-operations.js'
 
 const stopWords = new Set(['the', 'and', 'for', 'with', 'that', 'this', 'what', 'how', 'can', 'you', 'please', 'help', 'staff', 'mode', 'need', 'would', 'should', 'have', 'does', 'from', 'some', 'about', 'into'])
 const tokens = text => text.toLowerCase().match(/[a-z0-9][a-z0-9_.-]{2,}/g)?.filter(term => !stopWords.has(term)) || []
+const matches = (text, term) => tokens(text).filter(word => word === term).length
+const shortReply = text => {
+  const words = text.trim().split(/\s+/)
+  return words.length > 100 ? `${words.slice(0, 100).join(' ')}...` : text.trim()
+}
 
 export function rankStaffGuides(question, guides = staffGuides) {
   const terms = [...new Set(tokens(question))]
   return guides.map(guide => {
     const title = guide.title.toLowerCase()
     const body = guide.body.toLowerCase()
-    const score = terms.reduce((sum, term) => sum + (title.includes(term) ? 8 : 0)
-      + Math.min(body.split(term).length - 1, 3), 0)
+    const score = terms.reduce((sum, term) => sum + (matches(title, term) ? 8 : 0)
+      + Math.min(matches(body, term), 3), 0)
       + (guide.id === 'integration' && /\b(java|code|validate|validation|token|integrate)\b/i.test(question) ? 12 : 0)
     return { guide, score }
   }).filter(item => item.score > 0).sort((a, b) => b.score - a.score).slice(0, 4)
 }
 
-function guideSections(guide, question) {
+function guideSections(guide, question, detailed) {
   const terms = tokens(question)
   const sections = guide.body.split(/(?=^### )/m).filter(Boolean)
   const ranked = sections.map((text, index) => ({ text, index,
-    score: terms.reduce((sum, term) => sum + Math.min(text.toLowerCase().split(term).length - 1, 4), 0) }))
+    score: terms.reduce((sum, term) => sum + Math.min(matches(text, term), 4), 0) }))
     .sort((a, b) => b.score - a.score)
-  return ranked.slice(0, 3).sort((a, b) => a.index - b.index).map(item => item.text.trim()).join('\n\n')
+  if (detailed) return ranked.slice(0, 3).sort((a, b) => a.index - b.index).map(item => item.text.trim()).join('\n\n')
+  const paragraphs = ranked[0]?.text.replace(/^### .*\n/, '').split(/\n\s*\n/) || []
+  return shortReply(paragraphs.find(text => text.trim() && !text.includes('```')) || guide.summary)
 }
 
 export async function staffAssistant(request, env, origin, deps) {
@@ -44,8 +51,16 @@ export async function staffAssistant(request, env, origin, deps) {
   const question = typeof payload?.question === 'string' ? payload.question.trim() : ''
   if (!question || question.length > 4000) return send({ error: 'Staff questions must be between 1 and 4000 characters.' }, 400)
 
+  if (/^(?:(?:hey|hi|hello|hiya|yo)(?: there| staff| assistant)?|(?:thanks|thank you)(?: so much)?)[!.,?\s]*$/i.test(question)) {
+    return send({ mode: 'staff', provider: 'server-local-knowledge',
+      answer: /^(thanks|thank you)/i.test(question) ? "You're welcome!" : 'Hey! What can I help you with?',
+      sources: [], links: [] })
+  }
+  const detailed = /\b(full|complete|detailed|in.depth|step.by.step)\b/i.test(question)
+  const codeRequested = /\b(code|implementation)\b/i.test(question)
+    && /\b(show|give|write|send|need|full|complete|exact|copy.ready)\b/i.test(question)
   const ranked = rankStaffGuides(question)
-  const sources = ranked.map(({ guide }) => ({
+  const sources = ranked.slice(0, detailed || codeRequested ? 4 : 1).map(({ guide }) => ({
     id: guide.id, title: guide.title, category: guide.category,
     href: `/staff/?guide=${encodeURIComponent(guide.id)}&category=${encodeURIComponent(guide.category)}`,
   }))
@@ -58,16 +73,16 @@ export async function staffAssistant(request, env, origin, deps) {
     { title: 'Onboarding', href: '/staff/?view=onboarding', permission: 'staff.docs' },
     { title: 'Practice scenarios', href: '/staff/?view=practice', permission: 'staff.docs' },
   ].filter(link => hasPermission(access, link.permission) && (link.href.startsWith('/admin/') ? hasPermission(access, 'dashboard.view') : true))
+    .filter(link => detailed || codeRequested || tokens(link.title).some(term => tokens(question).includes(term)))
+    .slice(0, detailed || codeRequested ? 7 : 2)
     .map(({ title, href }) => ({ title, href }))
   let answer
-  if (/\b(code|java|implementation|copy.ready)\b/i.test(question) && ranked[0]?.guide.id === 'integration') {
+  if (codeRequested && ranked[0]?.guide.id === 'integration') {
     answer = `Here is the verified integration reference, including configuration, dependencies, the Java helper, and lifecycle wiring. Replace package names and registry placeholders before building; never put administrator credentials in the plugin.\n\n${ranked[0].guide.body}`
   } else if (ranked.length) {
-    answer = `Let's work from verified studio guidance. I found ${ranked.length} relevant playbook${ranked.length === 1 ? '' : 's'}. Check your exact plugin release before applying changes.\n\n`
-      + ranked.slice(0, 2).map(({ guide }) => `## ${guide.title}\n\n${guideSections(guide, question)}`).join('\n\n')
-      + '\n\nNext step: record the checks and their results in the private ticket. I have not changed any live records.'
+    answer = ranked.slice(0, detailed ? 2 : 1).map(({ guide }) => guideSections(guide, question, detailed)).join('\n\n')
   } else {
-    answer = 'I cannot establish an answer from the current staff playbooks. Include the plugin name, exact error code, and the workflow you are investigating. For availability, tasks, commissions, or training, use the authorized tools below. I do not guess live status or claim to perform actions.'
+    answer = 'I cannot establish an answer from the staff guides. Which plugin or task do you need help with?'
   }
   let summary
   if (/\b(availability|available|online|team|tasks?|board|commissions?|tickets?|backlog)\b/i.test(question)) {
@@ -83,8 +98,9 @@ export async function staffAssistant(request, env, origin, deps) {
     if (hasPermission(access, 'staff.presence') && summary.members) {
       lines.push(`Team: ${summary.members.total} staff; ${summary.members.online} online; ${summary.members.offline} offline. Reported availability: ${summary.presence.map(row => `${row.availability}: ${row.count}`).join('; ')}.`)
     }
-    answer = `## Live operations snapshot\n${lines.join('\n') || 'Your permissions do not allow these operational summaries.'}\n\nThis snapshot reports current database counts, not completion guarantees. Open the authorized tool below for details.\n\n${answer}`
+    answer = `${lines.join('\n') || 'Your permissions do not allow these operational summaries.'}\n\nCounts are a current snapshot, not guarantees.${detailed ? `\n\n${answer}` : ''}`
   }
+  if (!detailed && !(codeRequested && ranked[0]?.guide.id === 'integration')) answer = shortReply(answer)
   return send({ mode: 'staff', provider: 'server-local-knowledge', answer, sources, links,
     ...(summary ? { summary } : {}),
     privacy: 'Private guide retrieval runs on the studio Worker. No question, guide, or staff record is sent to the public AI provider.' })

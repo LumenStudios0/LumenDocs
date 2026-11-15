@@ -72,9 +72,40 @@ test('staff assistant respects limits, rejects invalid questions, and does not i
   const payload = await (await ask(env, 'zzzzunpublishedfeaturezzzz')).json()
   assert.match(payload.answer, /cannot establish/)
   assert.equal(payload.sources.length, 0)
-  assert.ok(payload.links.some(link => link.title === 'Onboarding'))
+  assert.equal(payload.links.length, 0)
   assert.equal(rankStaffGuides('exact Java licensing code')[0].guide.id, 'integration')
   assert.ok(staffGuides.find(guide => guide.id === 'integration').body.includes('maven-shade-plugin'))
+})
+
+test('greetings stay conversational and cannot substring-match unrelated playbooks', async () => {
+  const { env } = fixture()
+  assert.equal(rankStaffGuides('Hey').length, 0)
+  for (const path of ['/studio/staff/assistant', '/chat']) {
+    for (const question of ['Hey', 'Hello!', 'Hi there', 'Thanks']) {
+      const payload = await (await ask(env, question, path)).json()
+      assert.ok(payload.answer.length < 60)
+      assert.deepEqual(payload.sources, [])
+      assert.deepEqual(payload.links, [])
+      assert.equal(payload.summary, undefined)
+      assert.doesNotMatch(payload.answer, /playbook|availability|commission/i)
+    }
+  }
+})
+
+test('ordinary staff answers are at most 100 words; detailed guidance and exact code are opt-in', async () => {
+  const { env } = fixture()
+  for (const question of ['How do I use staff warnings?', 'How does license validation work?', 'What is team availability?']) {
+    const payload = await (await ask(env, question)).json()
+    assert.ok(payload.answer.split(/\s+/).length <= 100, question)
+    assert.ok(payload.sources.length <= 1)
+    assert.ok(payload.links.length <= 2)
+    assert.doesNotMatch(payload.answer, /Let's work from verified|I found \d relevant|class LicenseClient/)
+  }
+  const detailed = await (await ask(env, 'Give detailed staff warnings guidance')).json()
+  assert.ok(detailed.answer.split(/\s+/).length > 100)
+  const code = await (await ask(env, 'Show exact Java licensing integration code')).json()
+  assert.match(code.answer, /class LicenseClient/)
+  assert.match(code.answer, /X-Plugin-Token/)
 })
 
 test('staff operational answers include authorized live counts without inventing revoked presence access', async t => {
