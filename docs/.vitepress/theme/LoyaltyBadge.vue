@@ -1,9 +1,9 @@
 <script setup lang="ts">
-defineProps<{ tier: { id: string; name: string }; compact?: boolean }>()
+defineProps<{ tier: { id: string; name: string }; compact?: boolean; size?: 'small' | 'medium' | 'large'; iconOnly?: boolean }>()
 </script>
 
 <template>
-  <span class="loyalty-badge" :class="{ 'loyalty-badge--compact': compact }" :data-tier="tier.id">
+  <span class="loyalty-badge" :class="{ 'loyalty-badge--compact': compact, 'loyalty-badge--icon-only': iconOnly }" :data-tier="tier.id" :data-size="compact ? undefined : size" :title="iconOnly ? tier.name : undefined" :aria-label="iconOnly ? tier.name : undefined" :role="iconOnly ? 'img' : undefined">
     <svg class="badge-effects" viewBox="0 0 160 40" preserveAspectRatio="none" aria-hidden="true">
       <path class="badge-circuit" d="M0 31H25L36 20H72M88 20H120L133 7H160" />
       <path class="badge-trace" d="M0 31H25L36 20H72M88 20H120L133 7H160" />
@@ -100,7 +100,7 @@ defineProps<{ tier: { id: string; name: string }; compact?: boolean }>()
         <circle class="lead-radar" cx="16" cy="16" r="13" /><path class="badge-ink" d="M16 7V16L23 20" /><path class="elite-sparks" d="M5 4V9M2 7H8" />
       </g>
     </svg>
-    <span class="badge-label">{{ tier.name }}</span>
+    <span v-if="!iconOnly" class="badge-label">{{ tier.name }}</span>
   </span>
 </template>
 
@@ -178,6 +178,13 @@ defineProps<{ tier: { id: string; name: string }; compact?: boolean }>()
 .owner-star { fill: var(--badge-secondary); stroke: none; animation: badge-crystal-glow 5s ease-in-out infinite; }
 .loyalty-badge--compact { gap: 4px; padding: 2px 7px 2px 4px; font-size: 10px; border-radius: 5px 8px; }
 .loyalty-badge--compact .badge-art { width: 18px; height: 18px; }
+.loyalty-badge[data-size=small] { gap: 5px; padding: 3px 8px 3px 5px; font-size: 10px; }
+.loyalty-badge[data-size=small] .badge-art { width: 20px; height: 20px; }
+.loyalty-badge[data-size=large] { gap: 10px; padding: 8px 15px 8px 10px; font-size: 15px; }
+.loyalty-badge[data-size=large] .badge-art { width: 36px; height: 36px; }
+.loyalty-badge--icon-only { padding: 6px; }
+.loyalty-badge--compact.loyalty-badge--icon-only, .loyalty-badge[data-size=small].loyalty-badge--icon-only { padding: 4px; }
+.loyalty-badge[data-size=large].loyalty-badge--icon-only { padding: 8px; }
 @keyframes badge-ink-draw { 0%, 100% { stroke-dashoffset: 0; } 35% { stroke-dashoffset: 90; opacity: .4; } 65% { stroke-dashoffset: 0; opacity: 1; } }
 @keyframes badge-circuit-travel { to { stroke-dashoffset: -232; } }
 @keyframes badge-sheen-travel { 0%, 35% { transform: translateX(-110%); } 75%, 100% { transform: translateX(110%); } }

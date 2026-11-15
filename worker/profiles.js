@@ -1,18 +1,10 @@
 import { loyaltyStatus } from './loyalty.js'
 import { memberRole } from './access-control.js'
-import { ROLES } from '../shared/permissions.mjs'
+import { PROFILE_STAFF_BADGES, ROLES } from '../shared/permissions.mjs'
 import { backgrounds, frames, decorations, achievements } from '../shared/profile-cosmetics.mjs'
 
 const ids = /^\d{5,22}$/
 const tierNames = { spark: 'Spark', radiance: 'Radiance', nova: 'Nova', elite: 'Lumen Elite' }
-const staffBadges = [
-  { id: 'jr_staff', name: 'Jr Staff', rank: 2 },
-  { id: 'staff', name: 'Staff', rank: 3 },
-  { id: 'sr_staff', name: 'Sr Staff', rank: 4 },
-  { id: 'developer', name: 'Developer', rank: 5 },
-  { id: 'studio_lead', name: 'Studio Lead', rank: 6 },
-  { id: 'owner', name: 'Owner', rank: 7 },
-]
 const profileSelect = `SELECT p.*, m.role_id,
   EXISTS(SELECT 1 FROM community_threads t WHERE t.author_id=p.user_id AND t.hidden=0) AS has_thread,
   EXISTS(SELECT 1 FROM community_thread_posts r JOIN community_threads t ON t.id=r.thread_id
@@ -39,6 +31,8 @@ function view(row, env, owner = false) {
     frame: cosmeticAccess.frames ? savedAppearance.frame : 'none',
     decoration: cosmeticAccess.decorations ? savedAppearance.decoration : 'none',
     ...(savedAppearance.colors ? { colors: cosmeticAccess.backgrounds ? savedAppearance.colors : null } : {}),
+    badgeSize: savedAppearance.badgeSize || 'medium',
+    badgeIconOnly: savedAppearance.badgeIconOnly ?? false,
   }
   const earnedIds = [
     ...(row.bio.trim().length >= 40 ? ['introduced'] : []),
@@ -50,10 +44,10 @@ function view(row, env, owner = false) {
   const earned = achievements.filter(badge => earnedIds.includes(badge.id))
   const availableBadges = [
     ...tierEntries.slice(0, tierIndex + 1).map(([id, name]) => ({ id, name })),
-    ...staffBadges.filter(badge => badge.rank <= role.rank).map(({ id, name }) => ({ id, name })),
+    ...PROFILE_STAFF_BADGES.filter(badge => badge.rank <= role.rank).map(({ id, name }) => ({ id, name })),
     ...earned.map(({ id, name }) => ({ id, name })),
   ]
-  const defaultIds = [tier?.id, staffBadges.find(badge => badge.rank === role.rank)?.id].filter(Boolean)
+  const defaultIds = [tier?.id, PROFILE_STAFF_BADGES.find(badge => badge.rank === role.rank)?.id].filter(Boolean)
   const selected = row.badge_selection === null ? defaultIds : JSON.parse(row.badge_selection)
   if (!Array.isArray(selected) || selected.some(id => typeof id !== 'string')) throw new Error('Invalid saved profile badges')
   const badges = availableBadges.filter(badge => selected.includes(badge.id))
@@ -64,7 +58,7 @@ function view(row, env, owner = false) {
     tier, badges, appearance, servers, bannerVersion: row.banner_version,
     tierCheckedAt: row.tier_checked_at, joinedAt: row.created_at,
     ...(owner ? { public: Boolean(row.public), revision: row.revision, availableBadges, cosmeticAccess,
-      savedAppearance,
+      savedAppearance, badgeRole: { name: role.name, rank: role.rank },
       achievements: achievements.map(badge => ({ ...badge, earned: earnedIds.includes(badge.id) })) } : {}),
   }
 }
@@ -154,7 +148,7 @@ export async function messageProfiles(db, userIds, env = {}) {
   return new Map(rows.map(row => {
     const profile = view(row, env)
     return [row.user_id, { id: row.user_id, displayName: row.display_name, accent: row.accent, avatarUrl: row.avatar_url,
-      tier: profile.tier, badges: profile.badges }]
+      tier: profile.tier, badges: profile.badges, badgeIconOnly: profile.appearance.badgeIconOnly }]
   }))
 }
 export async function handleProfiles(request, env, origin, path, deps) {
@@ -223,12 +217,18 @@ export async function handleProfiles(request, env, origin, path, deps) {
         const currentView = view(current, env, true)
         const available = currentView.availableBadges
         const saved = JSON.parse(current.appearance)
-        const appearance = body.appearance === undefined ? saved
-          : { ...body.appearance, ...(body.appearance?.colors === undefined && saved.colors ? { colors: saved.colors } : {}) }
+        const appearance = body.appearance === undefined ? saved : {
+          ...body.appearance,
+          ...Object.fromEntries(['colors', 'badgeSize', 'badgeIconOnly']
+            .filter(key => body.appearance?.[key] === undefined && saved[key] !== undefined)
+            .map(key => [key, saved[key]])),
+        }
         if (body.appearance !== undefined && (!body.appearance || typeof body.appearance !== 'object' || Array.isArray(body.appearance) ||
-          Object.keys(appearance).some(key => !['background', 'frame', 'decoration', 'colors'].includes(key)) ||
+          Object.keys(appearance).some(key => !['background', 'frame', 'decoration', 'colors', 'badgeSize', 'badgeIconOnly'].includes(key)) ||
           !backgrounds.some(preset => preset.id === appearance.background) || !frames.some(preset => preset.id === appearance.frame) ||
           !decorations.some(preset => preset.id === appearance.decoration) ||
+          appearance.badgeSize !== undefined && !['small', 'medium', 'large'].includes(appearance.badgeSize) ||
+          appearance.badgeIconOnly !== undefined && typeof appearance.badgeIconOnly !== 'boolean' ||
           appearance.colors !== undefined && appearance.colors !== null &&
             (typeof appearance.colors !== 'object' || Array.isArray(appearance.colors) ||
               Object.keys(appearance.colors).length !== 3 ||

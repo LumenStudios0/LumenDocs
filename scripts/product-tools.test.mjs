@@ -334,15 +334,21 @@ test('badge selection unlocks lower tiers and staff ranks and filters downgrades
   sqlite.prepare("UPDATE website_members SET role_id='sr_support' WHERE discord_id=?").run(customer)
   const senior = (await (await call('/studio/profiles/me', 'GET', undefined, customer)).json()).profile
   assert.deepEqual(senior.availableBadges.map(b => b.id), ['jr_staff', 'staff', 'sr_staff'])
+  assert.equal(senior.badgeRole.name, 'Sr Support')
+  assert.equal((await call('/studio/profiles/me', 'PUT', { ...body, revision: 1, badgeIds: ['jr_staff', 'sr_staff'] }, customer)).status, 200)
+  assert.deepEqual((await messageProfiles(env.COMMUNITY_DB, [customer], env)).get(customer).badges.map(b => b.id), ['jr_staff', 'sr_staff'])
+  sqlite.prepare("UPDATE website_members SET role_id='jr_support' WHERE discord_id=?").run(customer)
+  assert.equal((await call('/studio/profiles/me', 'PUT', { ...body, revision: 2, badgeIds: ['sr_staff'] }, customer)).status, 403)
+  assert.deepEqual((await messageProfiles(env.COMMUNITY_DB, [customer], env)).get(customer).badges.map(b => b.id), ['jr_staff'])
   sqlite.prepare("UPDATE website_members SET role_id='developer' WHERE discord_id=?").run(customer)
   const developer = (await (await call('/studio/profiles/me', 'GET', undefined, customer)).json()).profile
   assert.deepEqual(developer.availableBadges.map(b => b.id), ['jr_staff', 'staff', 'sr_staff', 'developer'])
-  assert.equal((await call('/studio/profiles/me', 'PUT', { ...body, revision: 1, badgeIds: ['staff', 'developer'] }, customer)).status, 200)
+  assert.equal((await call('/studio/profiles/me', 'PUT', { ...body, revision: 2, badgeIds: ['staff', 'developer'] }, customer)).status, 200)
   sqlite.prepare("UPDATE website_members SET role_id='client' WHERE discord_id=?").run(customer)
   publicProfile = (await (await call('/studio/profiles/' + customer, 'GET', undefined, '')).json()).profile
   assert.deepEqual(publicProfile.badges, [])
   assert.deepEqual((await messageProfiles(env.COMMUNITY_DB, [customer], env)).get(customer).badges, [])
-  assert.equal((await call('/studio/profiles/me', 'PUT', { ...body, revision: 2, badgeIds: ['developer'] }, customer)).status, 403)
+  assert.equal((await call('/studio/profiles/me', 'PUT', { ...body, revision: 3, badgeIds: ['developer'] }, customer)).status, 403)
   sqlite.prepare("UPDATE website_members SET role_id='studio_lead' WHERE discord_id=?").run(customer)
   const lead = (await (await call('/studio/profiles/me', 'GET', undefined, customer)).json()).profile
   assert.deepEqual(lead.availableBadges.map(b => b.id), ['jr_staff', 'staff', 'sr_staff', 'developer', 'studio_lead'])
@@ -354,6 +360,32 @@ test('badge selection unlocks lower tiers and staff ranks and filters downgrades
   assert.equal((await messageProfiles(env.COMMUNITY_DB, [owner], env)).get(owner).badges.length, 10)
   assert.equal((await call('/studio/profiles/me', 'PUT', { ...body, revision: 1, badgeIds: [] }, owner)).status, 200)
   assert.deepEqual((await messageProfiles(env.COMMUNITY_DB, [owner], env)).get(owner).badges, [])
+})
+
+test('badge display settings persist across profile reads and older edits', async t => {
+  const { call, env, customer } = await fixture(t)
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  globalThis.fetch = async () => Response.json({ error: 'Unavailable' }, { status: 503 })
+  const initial = (await (await call('/studio/profiles/me', 'GET', undefined, customer)).json()).profile
+  assert.equal(initial.appearance.badgeSize, 'medium')
+  assert.equal(initial.appearance.badgeIconOnly, false)
+  const body = { displayName: 'Builder', bio: '', pronouns: '', status: '', accent: '#123456', banner: '#654321',
+    website: '', showcase: '', favoritePlugin: '', public: true, revision: 0,
+    appearance: { background: 'none', frame: 'none', decoration: 'none', badgeSize: 'large', badgeIconOnly: true } }
+  for (const change of [{ badgeSize: 'huge' }, { badgeSize: null }, { badgeIconOnly: 'true' }]) {
+    assert.equal((await call('/studio/profiles/me', 'PUT', { ...body, appearance: { ...body.appearance, ...change } }, customer)).status, 400)
+  }
+  assert.equal((await call('/studio/profiles/me', 'PUT', body, customer)).status, 200)
+  const publicProfile = (await (await call('/studio/profiles/' + customer, 'GET', undefined, '')).json()).profile
+  assert.equal(publicProfile.appearance.badgeSize, 'large')
+  assert.equal(publicProfile.appearance.badgeIconOnly, true)
+  assert.equal((await messageProfiles(env.COMMUNITY_DB, [customer], env)).get(customer).badgeIconOnly, true)
+  assert.equal((await call('/studio/profiles/me', 'PUT', { ...body, revision: 1,
+    appearance: { background: 'none', frame: 'none', decoration: 'none' } }, customer)).status, 200)
+  const preserved = (await (await call('/studio/profiles/' + customer, 'GET', undefined, '')).json()).profile
+  assert.equal(preserved.appearance.badgeSize, 'large')
+  assert.equal(preserved.appearance.badgeIconOnly, true)
 })
 
 test('profile cosmetics enforce Spark and Radiance unlocks, persist presets and suppress them after expiry', async t => {
@@ -400,12 +432,12 @@ test('profile cosmetics enforce Spark and Radiance unlocks, persist presets and 
   assert.equal((await save()).status,200); revision++
   sqlite.prepare('UPDATE member_profiles SET tier_checked_at=? WHERE user_id=?').run('2000-01-01',customer)
   let publicProfile=(await (await call('/studio/profiles/'+customer,'GET',undefined,'')).json()).profile
-  assert.deepEqual(publicProfile.appearance,{background:'none',frame:'none',decoration:'none'})
+  assert.deepEqual(publicProfile.appearance,{background:'none',frame:'none',decoration:'none',badgeSize:'medium',badgeIconOnly:false})
   assert.equal((await save()).status,200); revision++
   count=3
   await call('/studio/profiles/me','GET',undefined,customer)
   publicProfile=(await (await call('/studio/profiles/'+customer,'GET',undefined,'')).json()).profile
-  assert.deepEqual(publicProfile.appearance,appearance)
+  assert.deepEqual(publicProfile.appearance,{...appearance,badgeSize:'medium',badgeIconOnly:false})
   assert.equal((await messageProfiles(env.COMMUNITY_DB,[customer],env)).get(customer).appearance,undefined)
 })
 

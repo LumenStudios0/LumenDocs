@@ -7,7 +7,7 @@ defineProps<{ name: string; profile?: MemberIdentity | null; linked?: boolean }>
   <span class="member-identity">
     <a v-if="profile && linked !== false" :href="`/members/?id=${profile.id}`" :style="{ borderColor: profile.accent }">{{ profile.displayName }}</a>
     <strong v-else>{{ profile?.displayName || name }}</strong>
-    <LoyaltyBadge v-for="badge in profile?.badges ?? (profile?.tier ? [profile.tier] : [])" :key="badge.id" :tier="badge" compact />
+    <LoyaltyBadge v-for="badge in profile?.badges ?? (profile?.tier ? [profile.tier] : [])" :key="badge.id" :tier="badge" :icon-only="profile?.badgeIconOnly" compact />
   </span>
 </template>
 <style scoped>

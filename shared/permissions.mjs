@@ -48,6 +48,14 @@ export const PERMISSIONS = [
 ].map(([id, name, group]) => ({ id, name, group }))
 
 export const MEMBER_PERMISSIONS = ['support.create', 'trials.request', 'forum.post']
+export const PROFILE_STAFF_BADGES = [
+  { id: 'jr_staff', name: 'Jr Staff', rank: 2, requiredRole: 'Jr Support' },
+  { id: 'staff', name: 'Staff', rank: 3, requiredRole: 'Support' },
+  { id: 'sr_staff', name: 'Sr Staff', rank: 4, requiredRole: 'Sr Support' },
+  { id: 'developer', name: 'Developer', rank: 5, requiredRole: 'Developer' },
+  { id: 'studio_lead', name: 'Studio Lead', rank: 6, requiredRole: 'Studio Lead' },
+  { id: 'owner', name: 'Owner', rank: 7, requiredRole: 'Owner' },
+]
 const previousSupport = [
   ...MEMBER_PERMISSIONS, 'staff.docs', 'staff.presence', 'staff.tasks', 'staff.commissions', 'staff.feedback',
   'dashboard.view', 'customers.view', 'customers.verify', 'licenses.grant', 'licenses.keys', 'licenses.status', 'licenses.ips',
