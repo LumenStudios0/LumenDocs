@@ -999,6 +999,19 @@ function findSections(question: string): DocSection[] {
     .map(result => result.section)
 }
 
+async function scrollToLatestResponse(generation: number) {
+  await nextTick()
+  if (generation !== assistantGeneration) return
+  const container = conversation.value
+  const response = container?.querySelectorAll<HTMLElement>('.assistant-response').item(answers.value.length - 1)
+  if (!container || !response) return
+  const responseTop = response.getBoundingClientRect().top - container.getBoundingClientRect().top
+  container.scrollTo({
+    top: container.scrollTop + responseTop - 8,
+    behavior: 'smooth',
+  })
+}
+
 async function askQuestion() {
   const question = query.value.trim()
   if (!question || searching.value) return
@@ -1033,8 +1046,7 @@ async function askQuestion() {
     } finally {
       if (generation === assistantGeneration) searching.value = false
     }
-    await nextTick()
-    conversation.value?.scrollTo({ top: conversation.value.scrollHeight, behavior: 'smooth' })
+    await scrollToLatestResponse(generation)
     return
   }
   if (question.toLowerCase() === '#1 tracklist') {
@@ -1046,11 +1058,7 @@ async function askQuestion() {
     })
     query.value = ''
     searching.value = false
-    await nextTick()
-    conversation.value?.scrollTo({
-      top: conversation.value.scrollHeight,
-      behavior: 'smooth',
-    })
+    await scrollToLatestResponse(generation)
     return
   }
 
@@ -1108,15 +1116,7 @@ async function askQuestion() {
   answers.value.push({ question, results, reply })
   query.value = ''
   searching.value = false
-  await nextTick()
-  const responseElement = conversation.value?.querySelectorAll<HTMLElement>('.assistant-response').item(answers.value.length - 1)
-  if (!conversation.value || !responseElement) return
-
-  const responseTop = responseElement.getBoundingClientRect().top - conversation.value.getBoundingClientRect().top
-  conversation.value.scrollTo({
-    top: conversation.value.scrollTop + responseTop - 8,
-    behavior: 'smooth',
-  })
+  await scrollToLatestResponse(generation)
 }
 
 async function playTrackFromTracklist(trackName: string) {
