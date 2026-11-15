@@ -28,8 +28,8 @@ onUnmounted(() => { loyaltyGeneration++; window.removeEventListener('lumen-disco
 const destinations = [
   { mark: '01', title: 'Licenses & purchases', text: 'Reveal your shared key, refresh purchases, and manage server IPs.', href: '/account/licenses', action: 'Open license center' },
   { mark: '02', title: 'Plugin catalog', text: 'Explore the Lumen collection and jump straight into installation guides.', href: '/account/products', action: 'Explore plugins' },
-  { mark: '03', title: 'Account settings', text: 'Sync your Discord identity and manage your account data.', href: '/account/settings', action: 'Manage account' },
-  { mark: '04', title: 'Website support', text: 'Create private tickets and follow staff replies on the website.', href: '/account/tickets', action: 'Open my tickets' },
+  { mark: '03', title: 'Support tickets', text: 'Ask for help or check your replies.', href: '/account/tickets', action: 'Open my tickets' },
+  { mark: '04', title: 'Account settings', text: 'Sync your Discord identity and manage your account data.', href: '/account/settings', action: 'Manage account' },
   { mark: '05', title: 'Notifications', text: 'Choose plugin update topics, announcements, and ticket alerts.', href: '/account/notifications', action: 'Read updates' },
   { mark: '06', title: 'Server health tools', text: 'Check plugin requirements and view studio service status.', href: '/getting-started/compatibility', action: 'Check compatibility' },
   { mark: '07', title: 'Lumen Loyalty', text: 'See your tier, explore perks, and manage plugin sub-clients.', href: '/account/loyalty', action: 'Explore loyalty' },
@@ -42,20 +42,30 @@ const destinations = [
     <header class="customer-hero">
       <div class="customer-hero-orbit" aria-hidden="true"><span>LS</span></div>
       <p class="customer-eyebrow">LUMEN STUDIOS / CUSTOMER WORKSPACE</p>
-      <h1>Your plugins.<br><span>Your control center.</span></h1>
-      <p>Real license information, purchase verification, and server access. All in one place.</p>
+      <h1>Welcome to<br><span>your account.</span></h1>
+      <p>Find your licenses, downloads, and support here.</p>
       <a v-if="loyalty || loyaltyError" class="customer-loyalty-badge" href="/account/loyalty"><LoyaltyBadge v-if="loyalty" :tier="loyalty" /><span v-else>{{ loyaltyError }}</span></a>
       <a href="/account/licenses">Manage my licenses <span aria-hidden="true">→</span></a>
     </header>
-    <AccountLicenseOverview />
-    <nav class="customer-destinations" aria-label="Account tools">
-      <a v-for="destination in destinations" :key="destination.href" :href="destination.href">
+    <h2 class="customer-tools-heading">What do you need?</h2>
+    <nav class="customer-destinations" aria-label="Popular account tools">
+      <a v-for="destination in destinations.slice(0, 3)" :key="destination.href" :href="destination.href">
         <span class="destination-mark">{{ destination.mark }} <span aria-hidden="true">↗</span></span>
         <h2>{{ destination.title }}</h2>
         <p>{{ destination.text }}</p>
         <strong>{{ destination.action }} →</strong>
       </a>
     </nav>
+    <details class="customer-more">
+      <summary>More account tools</summary>
+      <nav class="customer-destinations" aria-label="More account tools">
+        <a v-for="destination in destinations.slice(3)" :key="destination.href" :href="destination.href">
+          <span class="destination-mark">{{ destination.mark }} <span aria-hidden="true">↗</span></span>
+          <h2>{{ destination.title }}</h2><p>{{ destination.text }}</p><strong>{{ destination.action }} →</strong>
+        </a>
+      </nav>
+    </details>
+    <AccountLicenseOverview />
     <AccountConnectedServers />
     <aside class="customer-support"><div><strong>Need a hand getting connected?</strong><p>Copy safe diagnostics from your license summary before contacting support. Never share your license key.</p></div><a href="/support">Get support →</a></aside>
   </main>
@@ -75,6 +85,10 @@ const destinations = [
 .customer-hero-orbit::after { inset: -72px; animation-direction: reverse; animation-duration: 24s; opacity: .5; }
 .customer-hero-orbit span { padding: 22px; border: 1px solid #9a6bf344; border-radius: 24px; background: var(--vp-c-brand-soft); color: var(--vp-c-brand-1); font-size: 2rem; font-weight: 800; transform: rotate(12deg); opacity: .5; }
 .customer-destinations { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.customer-tools-heading { border: 0; font-size: 1.3rem; margin: 28px 0 12px; }
+.customer-more { margin: 16px 0; }
+.customer-more > summary { cursor: pointer; padding: 14px 18px; border: 1px solid var(--vp-c-divider); border-radius: 12px; font-weight: 700; }
+.customer-more[open] > summary { margin-bottom: 12px; }
 .customer-destinations > a { display: flex; flex-direction: column; padding: 22px; border: 1px solid var(--vp-c-divider); border-radius: 17px; color: var(--vp-c-text-1); text-decoration: none; transition: border-color .2s, transform .2s; }
 .customer-destinations > a:hover { transform: translateY(-4px); border-color: var(--vp-c-brand-1); }
 .destination-mark { display: flex; justify-content: space-between; color: var(--vp-c-brand-1); font: .75rem var(--vp-font-family-mono); }

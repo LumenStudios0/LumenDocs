@@ -101,10 +101,10 @@ onUnmounted(() => {
       <div class="launch-copy">
         <a class="launch-label" href="/plugins/"><span /> LUMEN STUDIOS <i>/</i> MINECRAFT PLUGINS <span aria-hidden="true">↗</span></a>
         <h1 id="launch-title" class="launch-title"><span class="launch-name">Lumen Studios</span><br><span class="launch-statement">Your server.<br>In good hands.</span></h1>
-        <p class="launch-description">One license key for your Lumen plugins, thoughtful Minecraft tools, and clear guides to get everything running.</p>
+        <p class="launch-description">Minecraft plugins, setup guides, and support—all in one place.</p>
         <div class="launch-actions">
-          <a class="home-button home-button-primary" href="/docs/">Explore documentation <span aria-hidden="true">→</span></a>
-          <a class="home-button launch-secondary" href="/account/">Open customer portal <span aria-hidden="true">↗</span></a>
+          <a class="home-button home-button-primary" href="/plugins/">Browse plugins <span aria-hidden="true">→</span></a>
+          <a class="home-button launch-secondary" href="/account/">My account <span aria-hidden="true">↗</span></a>
         </div>
         <div class="launch-notes"><span>One license key</span><span>Plugin-by-plugin guides</span><span>Built for your community</span></div>
       </div>
@@ -134,20 +134,20 @@ onUnmounted(() => {
       </div>
     </section>
 
-    <nav class="home-entry home-reveal" aria-label="Explore Lumen Studios">
-      <a class="home-entry-card" href="/docs/">
+    <nav class="home-entry home-reveal" aria-label="Choose what you need">
+      <a class="home-entry-card" href="/getting-started/installation">
         <span class="home-entry-icon home-entry-icon-docs" aria-hidden="true">⌘</span>
-        <span class="home-entry-copy"><strong>Documentation</strong><small>Setup guides and answers</small></span>
+        <span class="home-entry-copy"><strong>Set up a plugin</strong><small>Start with the installation guide</small></span>
         <span class="home-entry-arrow" aria-hidden="true">↗</span>
       </a>
       <a class="home-entry-card" href="/plugins/">
         <span class="home-entry-icon home-entry-icon-plugins" aria-hidden="true">✦</span>
-        <span class="home-entry-copy"><strong>Plugin library</strong><small>Find tools for your server</small></span>
+        <span class="home-entry-copy"><strong>Browse plugins</strong><small>Find a plugin for your server</small></span>
         <span class="home-entry-arrow" aria-hidden="true">↗</span>
       </a>
       <a class="home-entry-card" href="/account/">
         <span class="home-entry-icon home-entry-icon-account" aria-hidden="true">◈</span>
-        <span class="home-entry-copy"><strong>Customer portal</strong><small>Your products and account</small></span>
+        <span class="home-entry-copy"><strong>My account</strong><small>Licenses, downloads, and support</small></span>
         <span class="home-entry-arrow" aria-hidden="true">↗</span>
       </a>
     </nav>

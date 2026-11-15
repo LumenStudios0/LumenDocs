@@ -106,7 +106,7 @@ async function save() {
     if (session !== getDiscordSession() || request !== generation) return
     own.value = data.profile; selected.value = data.profile; editing.value = false
     notice.value = 'Profile saved.'
-    void directory(page.value)
+    if (!props.editOwn) void directory(page.value)
   } catch (value) {
     if (session === getDiscordSession() && request === generation) error.value = value instanceof Error ? value.message : 'Save could not be confirmed. Refresh before retrying.'
   } finally { saving.value = false }
@@ -117,6 +117,13 @@ async function copyLink() {
   catch { error.value = 'Clipboard access was denied.' }
 }
 function resetAppearance() { draft.accent = '#9f72ff'; draft.banner = '#38205c' }
+function revealInvalid(event: Event) {
+  let node = event.target instanceof Element ? event.target.parentElement : null
+  while (node) {
+    if (node instanceof HTMLDetailsElement) node.open = true
+    node = node.parentElement
+  }
+}
 function toggleProfileColors(event: Event) {
   if (event.target instanceof HTMLInputElement) draft.appearance.colors = event.target.checked
     ? { surface: '#191326', text: '#f5efff', links: '#c2a1ff' } : null
@@ -157,7 +164,7 @@ async function init() {
   bannerImage.value = undefined
   Object.assign(draft, { displayName: '', bio: '', pronouns: '', status: '', accent: '#9f72ff', banner: '#38205c', website: '', showcase: '', favoritePlugin: '', public: true, revision: 0, badgeIds: [],
     appearance: { background: 'none', frame: 'none', decoration: 'none', colors: null }, servers: [] })
-  await directory()
+  if (!props.editOwn) await directory()
   if (request !== initialization) return
   await mine()
   if (request !== initialization) return
@@ -171,11 +178,11 @@ onUnmounted(() => { generation++; initialization++; window.removeEventListener('
 </script>
 <template>
   <main class="members">
-    <header class="members-heading"><div><p>LUMEN / COMMUNITY MEMBERS</p><h1>{{ props.editOwn ? 'My profile' : 'Meet the people behind the servers.' }}</h1><span>Profiles are visible to everyone. Only you can edit yours.</span></div><button v-if="own" :disabled="saving || processingBanner" @click="edit">Edit my profile</button></header>
-    <form class="member-search" @submit.prevent="directory(1)"><label for="member-search">Search names or Discord user IDs</label><div><input id="member-search" v-model="search" maxlength="60" placeholder="Find a member…"><button :disabled="loading || saving">Search</button></div></form>
+    <header class="members-heading"><div><p>LUMEN / COMMUNITY MEMBERS</p><h1>{{ props.editOwn ? 'My profile' : 'Meet the people behind the servers.' }}</h1><span>Profiles are public. Only you can edit yours.</span><p v-if="props.editOwn"><a href="/members/">Browse member profiles →</a></p></div><button v-if="own && !editing" :disabled="saving || processingBanner" @click="edit">Edit my profile</button></header>
+    <form v-if="!props.editOwn" class="member-search" @submit.prevent="directory(1)"><label for="member-search">Search names or Discord user IDs</label><div><input id="member-search" v-model="search" maxlength="60" placeholder="Find a member…"><button :disabled="loading || saving">Search</button></div></form>
     <p v-if="error" class="members-error" role="alert">{{ error }}</p><p v-if="notice" role="status">{{ notice }}</p><p v-if="loading" role="status">Loading members…</p>
-    <div class="members-layout">
-      <section class="members-directory" aria-label="Member search results"><button v-for="member in results" :key="member.id" :disabled="saving" @click="open(member.id)" :style="{ borderLeftColor: member.accent }"><img v-if="member.avatarUrl" :src="member.avatarUrl" alt="" referrerpolicy="no-referrer"><span v-else class="member-initial">{{ member.displayName.slice(0,2) }}</span><span><strong>{{ member.displayName }}</strong><small>@{{ member.username }}</small><span class="profile-badges"><LoyaltyBadge v-for="badge in member.badges ?? (member.tier ? [member.tier] : [])" :key="badge.id" :tier="badge" compact /></span></span></button><p v-if="!loading && !results.length">No published profiles found.</p><nav v-if="total > 20"><button :disabled="page === 1 || loading || saving" @click="directory(page-1)">Previous</button><span>{{ page }} / {{ Math.ceil(total/20) }}</span><button :disabled="page*20 >= total || loading || saving" @click="directory(page+1)">Next</button></nav></section>
+    <div class="members-layout" :class="{ 'members-layout-own': props.editOwn }">
+      <section v-if="!props.editOwn" class="members-directory" aria-label="Member search results"><button v-for="member in results" :key="member.id" :disabled="saving" @click="open(member.id)" :style="{ borderLeftColor: member.accent }"><img v-if="member.avatarUrl" :src="member.avatarUrl" alt="" referrerpolicy="no-referrer"><span v-else class="member-initial">{{ member.displayName.slice(0,2) }}</span><span><strong>{{ member.displayName }}</strong><small>@{{ member.username }}</small><span class="profile-badges"><LoyaltyBadge v-for="badge in member.badges ?? (member.tier ? [member.tier] : [])" :key="badge.id" :tier="badge" compact /></span></span></button><p v-if="!loading && !results.length">No published profiles found.</p><nav v-if="total > 20"><button :disabled="page === 1 || loading || saving" @click="directory(page-1)">Previous</button><span>{{ page }} / {{ Math.ceil(total/20) }}</span><button :disabled="page*20 >= total || loading || saving" @click="directory(page+1)">Next</button></nav></section>
       <div>
         <article v-if="preview" class="member-profile" :style="{ '--profile-accent': preview.accent, '--profile-banner': preview.banner,
           ...(preview.appearance?.colors ? { '--vp-c-bg-soft': preview.appearance.colors.surface, '--vp-c-text-1': preview.appearance.colors.text,
@@ -194,11 +201,13 @@ onUnmounted(() => { generation++; initialization++; window.removeEventListener('
             <button v-if="!editing" @click="copyLink">Copy profile link</button>
           </div>
         </article>
-        <p v-else class="member-placeholder">Choose a member to open their profile, or edit your own after signing in.</p>
-        <form v-if="editing && own" class="member-editor" @submit.prevent="save"><h2>Customize your profile</h2><fieldset :disabled="saving || processingBanner">
-          <section class="profile-cosmetics" aria-label="Profile appearance">
-            <h3>Profile appearance</h3>
-            <p>Backgrounds and frames unlock at Spark. Avatar decorations unlock at Radiance. Higher tiers inherit these options.</p>
+        <p v-else class="member-placeholder">{{ props.editOwn ? (error ? 'Your profile could not be loaded. See the message above.' : 'Sign in with Discord using the button above to edit your profile.') : 'Choose a member to view their profile, or sign in to edit your own.' }}</p>
+        <form v-if="editing && own" class="member-editor" @submit.prevent="save" @invalid.capture="revealInvalid"><h2>Edit your profile</h2><p>Start with the basics. Everything else is optional.</p><fieldset :disabled="saving || processingBanner">
+          <label>Display name<input v-model="draft.displayName" required maxlength="60"></label><label>Pronouns<input v-model="draft.pronouns" maxlength="40" placeholder="Optional"></label><label>Custom status<input v-model="draft.status" maxlength="80" placeholder="What are you building?"></label>
+          <label>About me <small>{{ draft.bio.length }} / 600</small><textarea v-model="draft.bio" maxlength="600" rows="5" placeholder="Tell the community about yourself. No private information or credentials." /></label>
+          <details class="profile-section profile-cosmetics">
+            <summary>Appearance <small>Banner, colors, backgrounds and avatar</small></summary>
+            <p>Backgrounds and frames need Spark; decorations need Radiance.</p>
             <label>Upload banner image<input type="file" accept="image/png,image/jpeg,image/webp" @change="uploadBanner"></label>
             <p>PNG, JPEG or WebP up to 8 MiB. The full image is fitted into a 1200 x 400 static WebP. Save to upload.</p>
             <button type="button" @click="bannerImage=null">Remove banner image</button>
@@ -211,21 +220,10 @@ onUnmounted(() => { generation++; initialization++; window.removeEventListener('
             <label>Avatar decoration<select v-model="draft.appearance.decoration" :disabled="!own.cosmeticAccess?.decorations"><option v-for="decoration in decorations" :key="decoration.id" :value="decoration.id">{{ decoration.name }}</option></select></label>
             <div class="avatar-picker"><button v-for="decoration in decorations.filter(decoration=>decoration.id!=='none')" :key="decoration.id" type="button" :disabled="!own.cosmeticAccess?.decorations" :aria-pressed="draft.appearance.decoration===decoration.id" @click="draft.appearance.decoration=decoration.id"><ProfileAvatar :name="own.displayName" :url="own.avatarUrl" frame="none" :decoration="decoration.id" compact /><span>{{ decoration.name }}</span></button></div>
             <button type="button" @click="draft.appearance.decoration='none'">No decoration</button>
-          </section>
-          <section class="badge-picker" aria-labelledby="profile-badge-picker"><h3 id="profile-badge-picker">Displayed badges</h3><p>Choose any unlocked badges and earned achievements. Higher tiers include lower tiers; staff ranks include lower staff badges. Owner can select all eight rank/tier badges. Badges never grant permissions or loyalty perks.</p>
-            <div class="badge-options"><label v-for="badge in own.availableBadges || []" :key="badge.id"><input v-model="draft.badgeIds" type="checkbox" :value="badge.id"><LoyaltyBadge :tier="badge" compact /></label></div>
-            <p v-if="!own.availableBadges?.length">No badges unlocked yet.</p>
-            <button v-if="own.availableBadges?.length" type="button" @click="draft.badgeIds=own.availableBadges.map(badge=>badge.id)">Show all unlocked</button><button type="button" @click="draft.badgeIds=[]">Hide badges</button>
-          </section>
-          <section class="profile-achievements" aria-labelledby="profile-achievements"><h3 id="profile-achievements">Achievements</h3><p>Save your changes to unlock profile achievements, then select them above. Community achievements count only visible public posts.</p>
-            <article v-for="achievement in own.achievements || []" :key="achievement.id" :class="{earned:achievement.earned}"><LoyaltyBadge :tier="achievement" compact /><span>{{ achievement.description }}</span><strong>{{ achievement.earned ? 'Earned' : 'Locked' }}</strong></article>
-          </section>
-          <label>Display name<input v-model="draft.displayName" required maxlength="60"></label><label>Pronouns<input v-model="draft.pronouns" maxlength="40" placeholder="Optional"></label><label>Custom status<input v-model="draft.status" maxlength="80" placeholder="What are you building?"></label>
-          <label>About me <small>{{ draft.bio.length }} / 600</small><textarea v-model="draft.bio" maxlength="600" rows="5" placeholder="Tell the community about yourself. No private information or credentials." /></label>
           <div class="member-colors"><label>Accent color<input v-model="draft.accent" type="color"></label><label>Banner color<input v-model="draft.banner" type="color"></label><button type="button" @click="resetAppearance">Reset colors</button></div>
           <div class="profile-custom-colors">
             <label class="profile-color-toggle"><input type="checkbox" :checked="!!draft.appearance.colors" :disabled="!own.cosmeticAccess?.backgrounds" @change="toggleProfileColors"> Custom profile colors (Spark+)</label>
-            <p>Set the card, text, and link colors. Pick contrasting colors so your profile stays readable.</p>
+            <p>Choose contrasting card, text, and link colors.</p>
             <div v-if="draft.appearance.colors" class="member-colors">
               <label>Card color<input v-model="draft.appearance.colors.surface" type="color" :disabled="!own.cosmeticAccess?.backgrounds"></label>
               <label>Text color<input v-model="draft.appearance.colors.text" type="color" :disabled="!own.cosmeticAccess?.backgrounds"></label>
@@ -233,9 +231,23 @@ onUnmounted(() => { generation++; initialization++; window.removeEventListener('
               <button type="button" @click="draft.appearance.colors=null">Use default profile colors</button>
             </div>
           </div>
+          </details>
+          <details class="profile-section badge-picker"><summary>Badges & achievements <small>Choose what appears on your profile</small></summary><p>Choose your unlocked badges. Badges are cosmetic.</p>
+            <div class="badge-options"><label v-for="badge in own.availableBadges || []" :key="badge.id"><input v-model="draft.badgeIds" type="checkbox" :value="badge.id"><LoyaltyBadge :tier="badge" compact /></label></div>
+            <p v-if="!own.availableBadges?.length">No badges unlocked yet.</p>
+            <button v-if="own.availableBadges?.length" type="button" @click="draft.badgeIds=own.availableBadges.map(badge=>badge.id)">Show all unlocked</button><button type="button" @click="draft.badgeIds=[]">Hide badges</button>
+
+          <section class="profile-achievements" aria-labelledby="profile-achievements"><h3 id="profile-achievements">Achievements</h3><p>Save your changes to unlock profile achievements, then select them above. Community achievements count only visible public posts.</p>
+            <article v-for="achievement in own.achievements || []" :key="achievement.id" :class="{earned:achievement.earned}"><LoyaltyBadge :tier="achievement" compact /><span>{{ achievement.description }}</span><strong>{{ achievement.earned ? 'Earned' : 'Locked' }}</strong></article>
+          </section>
+          </details>
+          <details class="profile-section"><summary>Links & favorite plugin <small>Add your website and links</small></summary>
           <label>Website<input v-model="draft.website" type="url" maxlength="500" placeholder="https://…"></label><label>Server showcase link<input v-model="draft.showcase" type="url" maxlength="500" placeholder="https://…"></label><label>Favorite plugin<input v-model="draft.favoritePlugin" maxlength="80"></label>
+          </details>
+          <details class="profile-section"><summary>Minecraft servers <small>Showcase your servers</small></summary>
           <ServerShowcases :servers="draft.servers" editable @change="draft.servers=$event" />
-          <p>Your profile and badge are public. Only you can edit this information. Ticket content, licenses, purchases and last-online activity are never included.</p>
+          </details>
+          <p>Your profile is public. Tickets and licenses stay private.</p>
           <button type="submit">{{ saving ? 'Saving…' : 'Save profile' }}</button><button type="button" @click="editing=false">Cancel</button>
         </fieldset></form>
       </div>
@@ -243,6 +255,7 @@ onUnmounted(() => { generation++; initialization++; window.removeEventListener('
   </main>
 </template>
 <style scoped>
+.members-layout-own{grid-template-columns:minmax(0,1fr);max-width:760px;margin-left:auto;margin-right:auto}.profile-section{margin:12px 0;padding:14px;border:1px solid var(--vp-c-divider);border-radius:12px}.profile-section>summary{cursor:pointer;font-size:13px;font-weight:700}.profile-section>summary small{display:block;margin:4px 0 0 17px;font-size:11px;font-weight:400}.profile-section[open]>summary{margin-bottom:14px}
 .member-banner.has-image::after{display:none}.member-profile:has(>.profile-backdrop) .member-banner.has-image{background:var(--profile-banner)}.member-editor .profile-color-toggle{display:flex;align-items:center;gap:8px}
 .member-profile-body{color:var(--vp-c-text-1)}.member-profile-body :deep(.showcase-links a),.member-profile-body .member-links a{color:var(--vp-c-brand-1)}.member-profile-body .member-status,.member-profile-body :deep(.server-showcase){border-color:var(--vp-c-divider)}
 .member-profile{position:relative;isolation:isolate}.member-profile>.profile-backdrop{opacity:.65}.member-profile:has(>.profile-backdrop) .member-banner{background:linear-gradient(130deg,color-mix(in srgb,var(--profile-banner) 55%,transparent),color-mix(in srgb,var(--profile-accent) 40%,transparent))}.member-profile-body{position:relative;background:color-mix(in srgb,var(--vp-c-bg-soft) 65%,transparent)}.member-banner img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}.member-avatar-display{margin-top:-40px;z-index:2}
