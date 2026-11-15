@@ -1,5 +1,6 @@
 import { hasPermission, resolveAccess } from './access-control.js'
 import { trialProducts } from '../shared/trial-products.mjs'
+import { delegatedProducts } from './loyalty.js'
 
 const CHUNK_SIZE = 65536
 const MAX_JAR_SIZE = 32 * 1024 * 1024
@@ -258,9 +259,7 @@ export async function handlePluginDownloads(request, env, origin, path, deps) {
       console.error('Download entitlement lookup failed:', error instanceof Error ? error.name : 'Unknown error')
       return send({ error: 'Your license access could not be verified. Please try again later.' }, 503)
     }
-    if (profile.status === 404) {
-      if (match) return send({ error: 'An active license is required for this download.' }, 403)
-    } else {
+    if (profile.status !== 404) {
       if (!profile.ok || profile.data?.customerDiscordId !== user.id || !Array.isArray(profile.data.products) ||
           typeof profile.data.verificationRequired !== 'boolean') {
         return send({ error: 'Your license access could not be verified. Please try again later.' }, 503)
@@ -279,6 +278,12 @@ export async function handlePluginDownloads(request, env, origin, path, deps) {
         }
       }
     }
+    try { owned.push(...await delegatedProducts(env, user.id)) }
+    catch (error) {
+      console.error('Delegated download access verification failed:', error instanceof Error ? error.name : 'Unknown error')
+      return send({ error: 'Shared plugin access could not be verified. Please try again later.' }, 503)
+    }
+    if (profile.status === 404 && match && !owned.length) return send({ error: 'An active license or shared plugin access is required for this download.' }, 403)
   }
   if (!match) {
     const url = new URL(request.url)

@@ -84,6 +84,7 @@ export default defineConfig({
             { text: 'Dashboard', link: '/account/' },
             { text: 'My licenses', link: '/account/licenses' },
             { text: 'Products purchased', link: '/account/products' },
+            { text: 'Lumen Loyalty', link: '/account/loyalty' },
             { text: 'Plugin trial requests', link: '/account/trials' },
             { text: 'Account settings', link: '/account/settings' },
             { text: 'My tickets', link: '/account/tickets' },

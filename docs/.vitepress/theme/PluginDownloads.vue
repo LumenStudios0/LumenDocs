@@ -122,7 +122,7 @@ onUnmounted(() => { generation++; controller?.abort(); uploadController?.abort()
 
 <template>
   <section class="website-workspace plugin-downloads" aria-label="Plugin downloads">
-    <header><p class="website-kicker">{{ staff ? 'STAFF / BUILDS' : 'YOUR PLUGIN BUILDS' }}</p><h2>Plugin downloads</h2><p class="website-note">Plugin JARs stored privately. {{ staff ? 'Authorized release staff can upload JARs or inspect published builds.' : 'Only plugins covered by your active licenses are shown.' }} Every download is checked against its SHA-256 fingerprint before saving.</p></header>
+    <header><p class="website-kicker">{{ staff ? 'STAFF / BUILDS' : 'YOUR PLUGIN BUILDS' }}</p><h2>Plugin downloads</h2><p class="website-note">Plugin JARs stored privately. {{ staff ? 'Authorized release staff can upload JARs or inspect published builds.' : 'Only plugins covered by your active licenses or shared with you by an eligible owner are shown.' }} Every download is checked against its SHA-256 fingerprint before saving.</p></header>
     <p v-if="!signedIn" class="website-note">Sign in with Discord to view available downloads.</p>
     <p v-if="error" class="website-message website-error" role="alert">{{ error }}</p>
     <p v-if="notice" class="website-message" role="status">{{ notice }}</p>

@@ -207,6 +207,69 @@ async function seedDownload(sqlite, productId = '1', published = 1) {
   return { id, bytes, sha256 }
 }
 
+test('loyalty counts distinct active registry entitlements and fails closed on incomplete registry', async t => {
+  const { call, customer } = await fixture(t)
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  const products = Array.from({ length: 8 }, (_, index) => ({ productId: `p${index}`, name: `Plugin ${index}`, active: true, plugins: ['p'] }))
+  let ownedCount = 1, badRegistry = false
+  globalThis.fetch = async input => {
+    const url = new URL(input)
+    if (url.pathname.endsWith('/products')) return Response.json({ items: products, total: products.length + (badRegistry ? 1 : 0) })
+    return Response.json({ customerDiscordId: customer, status: 'active', verificationRequired: false,
+      products: [...products.slice(0, ownedCount).map(product => ({ productId: product.productId, productActive: true, status: 'active', expiresAt: null })),
+        { productId: 'p0', productActive: true, status: 'active', expiresAt: null },
+        { productId: 'unknown', productActive: true, status: 'active', expiresAt: null }] })
+  }
+  for (const [count, tier] of [[1, 'spark'], [3, 'radiance'], [7, 'nova'], [8, 'elite']]) {
+    ownedCount = count
+    const response = await call('/studio/loyalty', 'GET', undefined, customer)
+    assert.equal(response.status, 200)
+    const status = await response.json()
+    assert.equal(status.tier.id, tier)
+    assert.equal(status.count, count)
+  }
+  badRegistry = true
+  assert.equal((await call('/studio/loyalty', 'GET', undefined, customer)).status, 503)
+  assert.equal((await call('/studio/loyalty', 'GET', undefined, '')).status, 401)
+})
+
+test('sub-clients receive only explicitly shared downloads while owner eligibility and tier limits remain valid', async t => {
+  const { call, sqlite, customer } = await fixture(t)
+  const member = '223456789012345678', other = '323456789012345678'
+  sqlite.prepare('INSERT INTO website_members(discord_id) VALUES (?)').run(member)
+  sqlite.prepare('INSERT INTO website_members(discord_id) VALUES (?)').run(other)
+  const artifact = await seedDownload(sqlite, 'p0')
+  const another = await seedDownload(sqlite, 'p1')
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  let count = 3, ownerStatus = 'active'
+  const products = Array.from({ length: 8 }, (_, index) => ({ productId: `p${index}`, name: `Plugin ${index}`, active: true, plugins: ['p'] }))
+  globalThis.fetch = async input => {
+    const url = new URL(input)
+    if (url.pathname.endsWith('/products')) return Response.json({ items: products, total: products.length })
+    if (url.pathname.endsWith('/customers/' + customer)) return Response.json({ customerDiscordId: customer, status: ownerStatus, verificationRequired: false,
+      products: products.slice(0, count).map(product => ({ productId: product.productId, productActive: true, status: 'active', expiresAt: null })) })
+    return Response.json({}, { status: 404 })
+  }
+  const share = (action, productId, memberId, actor = customer) => call('/studio/loyalty/subclients', 'POST', { action, productId, memberId }, actor)
+  assert.equal((await share('add', 'p0', member)).status, 201)
+  assert.equal((await share('add', 'p0', other)).status, 201)
+  assert.equal((await share('add', 'p0', '423456789012345678')).status, 404)
+  assert.equal((await share('add', 'p7', member)).status, 403)
+  assert.equal((await share('add', 'p0', member)).status, 409)
+  assert.equal((await share('remove', 'p0', member, other)).status, 404)
+  assert.equal((await call('/studio/downloads/' + artifact.id, 'HEAD', undefined, member)).status, 200)
+  assert.equal((await call('/studio/downloads/' + another.id, 'HEAD', undefined, member)).status, 404)
+  count = 1
+  assert.equal((await call('/studio/downloads/' + artifact.id, 'HEAD', undefined, member)).status, 200)
+  assert.equal((await call('/studio/downloads/' + artifact.id, 'HEAD', undefined, other)).status, 403)
+  ownerStatus = 'banned'
+  assert.equal((await call('/studio/downloads/' + artifact.id, 'HEAD', undefined, member)).status, 403)
+  assert.equal((await share('remove', 'p0', member)).status, 200)
+  assert.equal((await call('/studio/downloads/' + artifact.id, 'HEAD', undefined, member)).status, 403)
+})
+
 test('plugin downloads require current canonical entitlements and stream the exact private artifact', async t => {
   const { call, sqlite, customer } = await fixture(t)
   const artifact = await seedDownload(sqlite)

@@ -2,6 +2,7 @@ import { hasPermission, resolveAccess } from './access-control.js'
 import { handlePluginDownloads } from './plugin-downloads.js'
 import { staffKnowledge } from './staff-knowledge.js'
 import { handleStaffOperations } from './staff-operations.js'
+import { handleLoyalty } from './loyalty.js'
 
 const productPattern = /^[A-Za-z0-9_.-]{1,64}$/
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -148,6 +149,7 @@ async function bulkGrant(request, env, user, access, send) {
 
 export async function handleProductTools(request, env, origin, path, deps) {
   const send = (payload, status = 200) => deps.respond(payload, status, origin)
+  if (path === '/studio/loyalty' || path === '/studio/loyalty/subclients') return handleLoyalty(request, env, origin, path, deps)
   if (path === '/studio/staff/docs') return staffKnowledge(request, env, origin, deps)
   if (/^\/studio\/staff\/(operations|presence|tasks|warnings|commissions|guide-feedback|tickets)(\/|$)/.test(path)) {
     return handleStaffOperations(request, env, origin, path, deps)
