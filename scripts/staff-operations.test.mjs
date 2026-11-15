@@ -273,7 +273,7 @@ test('independent staff permissions allow snapshots and own warnings without exp
   sqlite.prepare("INSERT INTO website_role_permissions(role_id,permissions) VALUES ('support_team',?)").run('["staff.tasks"]')
   const snapshot = await (await api('/studio/staff/operations', 'GET', undefined, support)).json()
   assert.deepEqual(snapshot.warnings.map(w => w.id), [warning.id])
-  assert.ok(snapshot.members.some(m => m.id === developer && m.name && m.rank === 3))
+  assert.ok(snapshot.members.some(m => m.id === developer && m.name && m.rank === 5))
   for (const m of snapshot.members) {
     for (const key of ['availability', 'lastOnline', 'lastDid', 'lastActivityAt', 'online']) assert.ok(!(key in m))
   }

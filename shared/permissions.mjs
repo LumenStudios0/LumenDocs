@@ -10,12 +10,14 @@ export const PERMISSIONS = [
   ['staff.feedback', 'Submit and read private guide feedback', 'Staff operations'],
   ['dashboard.view', 'Open Staff Dashboard', 'Dashboard'],
   ['customers.view', 'View customers and their license data', 'Licensing'],
-  ['customers.restrict', 'Ban, hold and release customer accounts', 'Licensing'],
+  ['customers.restrict', 'Ban, unban or release customer accounts', 'Licensing'],
+  ['customers.hold', 'Place customer accounts on hold', 'Licensing'],
   ['customers.verify', 'Request or approve customer verification', 'Licensing'],
   ['customers.delete', 'Delete customer accounts', 'Licensing'],
   ['licenses.grant', 'Grant customer licenses', 'Licensing'],
   ['licenses.keys', 'View customer license keys in the inspector', 'Licensing'],
-  ['licenses.status', 'Activate, suspend and revoke licenses', 'Licensing'],
+  ['licenses.status', 'Activate, suspend and renew licenses', 'Licensing'],
+  ['licenses.revoke', 'Permanently revoke licenses', 'Licensing'],
   ['licenses.ips', 'Add and remove license IP addresses', 'Licensing'],
   ['audit.view', 'Read licensing audit history', 'Licensing'],
   ['plugins.view', 'View the plugin and product registry', 'Registry'],
@@ -29,6 +31,7 @@ export const PERMISSIONS = [
   ['products.unlink', 'Unlink plugins from inactive products', 'Registry'],
   ['tickets.view', 'Read private website support tickets', 'Community'],
   ['tickets.reply', 'Reply as support to customer tickets', 'Community'],
+  ['tickets.escalate', 'Escalate support tickets', 'Community'],
   ['tickets.manage', 'Edit ticket status, assignment and labels', 'Community'],
   ['tickets.alerts', 'Retry Discord ticket alerts', 'Community'],
   ['issues.manage', 'Publish and edit known issues', 'Community'],
@@ -44,19 +47,25 @@ export const PERMISSIONS = [
 ].map(([id, name, group]) => ({ id, name, group }))
 
 export const MEMBER_PERMISSIONS = ['support.create', 'trials.request', 'forum.post']
-const support = [
+const previousSupport = [
   ...MEMBER_PERMISSIONS, 'staff.docs', 'staff.presence', 'staff.tasks', 'staff.commissions', 'staff.feedback',
   'dashboard.view', 'customers.view', 'customers.verify', 'licenses.grant', 'licenses.keys', 'licenses.status', 'licenses.ips',
   'audit.view', 'plugins.view', 'tickets.view', 'tickets.reply', 'tickets.manage', 'tickets.alerts',
   'forum.moderate', 'roles.assign',
 ]
-const developer = [...support, 'plugins.register', 'plugins.manage', 'products.create', 'products.manage',
+const junior = [...MEMBER_PERMISSIONS, 'staff.docs', 'dashboard.view', 'tickets.view', 'tickets.reply', 'tickets.escalate']
+const support = [...previousSupport.filter(id => !['customers.verify', 'licenses.grant', 'licenses.status', 'licenses.ips', 'roles.assign'].includes(id)),
+  'customers.hold', 'tickets.escalate']
+const senior = [...support, 'customers.verify', 'licenses.grant', 'licenses.revoke']
+const developer = [...previousSupport.filter(id => id !== 'roles.assign'), 'customers.hold', 'licenses.revoke', 'tickets.escalate', 'plugins.register', 'plugins.manage', 'products.create', 'products.manage',
   'products.link', 'products.unlink', 'issues.manage', 'notifications.manage', 'forum.announce', 'status.manage']
 export const ROLES = [
   { id: 'guest', name: 'Guest', rank: 0, permissions: MEMBER_PERMISSIONS },
   { id: 'client', name: 'Client', rank: 1, permissions: MEMBER_PERMISSIONS },
-  { id: 'support_team', name: 'Support team', rank: 2, permissions: support },
-  { id: 'developer', name: 'Developer', rank: 3, permissions: developer },
-  { id: 'studio_lead', name: 'Studio Lead', rank: 4, permissions: PERMISSIONS.map(item => item.id) },
-  { id: 'owner', name: 'Owner', rank: 5, permissions: PERMISSIONS.map(item => item.id) },
+  { id: 'jr_support', name: 'Jr Support', rank: 2, permissions: junior },
+  { id: 'support_team', name: 'Support', rank: 3, permissions: support },
+  { id: 'sr_support', name: 'Sr Support', rank: 4, permissions: senior },
+  { id: 'developer', name: 'Developer', rank: 5, permissions: developer },
+  { id: 'studio_lead', name: 'Studio Lead', rank: 6, permissions: PERMISSIONS.map(item => item.id) },
+  { id: 'owner', name: 'Owner', rank: 7, permissions: PERMISSIONS.map(item => item.id) },
 ]

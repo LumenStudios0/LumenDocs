@@ -421,7 +421,7 @@ export async function staffKnowledge(request, env, origin, deps) {
   if (!user) return send({ error: 'Sign in with your staff Discord account.' }, 401)
   if (!env.COMMUNITY_DB) return send({ error: 'Staff access could not be verified.' }, 503)
   const access = await resolveAccess(user.id, env)
-  if (access.rank < 2 || !hasPermission(access, 'staff.docs')) return send({ error: 'Staff mode requires Support team rank or higher and staff.docs permission.' }, 403)
+  if (access.rank < 2 || !hasPermission(access, 'staff.docs')) return send({ error: 'Staff mode requires Jr Support rank or higher and staff.docs permission.' }, 403)
   if (!env.ADMIN_READ_LIMITER) return send({ error: 'Staff request limiting is unavailable.' }, 503)
   if (!(await env.ADMIN_READ_LIMITER.limit({ key: `staff-guides:${user.id}` })).success) return send({ error: 'Too many staff guide requests. Please wait a minute.' }, 429)
   return send({ actor: { id: user.id, role: access.role, roleName: access.roleName, rank: access.rank, permissions: access.permissions }, guides: staffGuides, onboardingPaths, scenarios })

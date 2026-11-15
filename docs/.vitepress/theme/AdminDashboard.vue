@@ -498,7 +498,8 @@ async function mutate<T>(path: string, init: RequestInit, success: string | ((re
   }
 }
 function perform(path: string, payload: Record<string, unknown> | undefined, success: string) {
-  return mutate(path, { method: 'POST', ...(payload ? { body: JSON.stringify(payload) } : {}) }, success)
+  return mutate<{ notificationWarning?: string }>(path, { method: 'POST', ...(payload ? { body: JSON.stringify(payload) } : {}) },
+    result => result.notificationWarning || success)
 }
 async function confirmAction(message: string, path: string, success: string) {
   if (await confirmSiteAction(message, { danger: true })) void perform(path, { reason: reason.value.trim() || undefined }, success)
@@ -541,7 +542,7 @@ async function saveExpiration() {
   await perform(`/licenses/${licenseId}/renew`, { expiresAt: expiry.toISOString() }, 'License expiration updated.')
 }
 async function customerLicenseBatch(action: 'grant' | 'revoke') {
-  if (!user.value || busy.value || !can(action === 'grant' ? 'licenses.grant' : 'licenses.status')) return
+  if (!user.value || busy.value || !can(action === 'grant' ? 'licenses.grant' : 'licenses.revoke')) return
   const customerId = user.value.discordId
   const session = getDiscordSession(), operationId = generation
   const ids = [...(action === 'grant' ? selectedGrantProducts.value : selectedLicenseIds.value)]
@@ -564,8 +565,8 @@ async function customerLicenseBatch(action: 'grant' | 'revoke') {
   try {
     const results = await runLicenseBatch(ids, async (id: string) => {
       if (action === 'revoke') {
-        await adminRequest(`/licenses/${id}/revoke`, { method: 'POST', body: JSON.stringify({ reason: revokeReason || undefined }) })
-        return { state: 'revoked', message: 'License permanently revoked.' }
+        const result = await adminRequest<{ notificationWarning?: string }>(`/licenses/${id}/revoke`, { method: 'POST', body: JSON.stringify({ reason: revokeReason || undefined }) })
+        return { state: 'revoked', message: result.notificationWarning || 'License permanently revoked.' }
       }
       if (testMode.value) {
         if (user.value?.licenses.some(license => license.productId === id && effectiveLicenseStatus(license, Date.now()) === 'active')) {
@@ -828,7 +829,7 @@ onUnmounted(() => {
           <label class="staff-field">Reason for next action<input v-model="reason" maxlength="500" placeholder="Reason recorded in audit history" :disabled="busy"></label>
           <div class="staff-actions">
             <button type="button" :disabled="busy || user.deleted || !can('customers.restrict')" :class="{ 'staff-danger': !user.banned }" @click="user.banned ? perform(`/users/${user.discordId}/unban`, undefined, 'Account unbanned.') : confirmAction('Ban this customer? Future license validation will be blocked.', `/users/${user.discordId}/ban`, 'Account banned.')">{{ user.banned ? 'Remove ban' : 'Ban account' }}</button>
-            <button type="button" :disabled="busy || user.deleted || !can('customers.restrict')" @click="user.onHold ? perform(`/users/${user.discordId}/release`, undefined, 'Hold released.') : confirmAction('Place this customer on hold? Future license validation will be blocked.', `/users/${user.discordId}/hold`, 'Customer placed on hold.')">{{ user.onHold ? 'Release hold' : 'Place on hold' }}</button>
+            <button type="button" :disabled="busy || user.deleted || !can(user.onHold ? 'customers.restrict' : 'customers.hold')" @click="user.onHold ? perform(`/users/${user.discordId}/release`, undefined, 'Hold released.') : confirmAction('Place this customer on hold? Future license validation will be blocked.', `/users/${user.discordId}/hold`, 'Customer placed on hold.')">{{ user.onHold ? 'Release hold' : 'Place on hold' }}</button>
             <button type="button" :disabled="busy || user.deleted || !can('customers.verify')" @click="perform(`/users/${user.discordId}/verification-request`, { reason: reason.trim() || undefined }, 'Verification request recorded; no automatic notification was sent.')">Request verification</button>
             <button type="button" :disabled="busy || user.deleted || !can('customers.verify') || user.verificationStatus === 'verified'" @click="perform(`/users/${user.discordId}/verify`, undefined, 'Account marked verified.')">Mark verified</button>
           </div>
@@ -862,7 +863,7 @@ onUnmounted(() => {
     <section v-if="loaded && (user ? profileArea === 'licenses' : view === 'licenses')" class="staff-panel">
       <header><div><p class="staff-eyebrow">{{ user ? 'CUSTOMER ENTITLEMENTS' : 'LICENSE INVENTORY' }}</p><h2>Licenses &amp; plugins</h2></div><button type="button" :disabled="busy || !filteredLicenses.length" @click="exportLicenses">Export displayed CSV</button></header>
       <p class="staff-note">{{ user ? 'Metrics cover this customer profile.' : 'Metrics, filters, and sorting cover the loaded inventory page. Open a customer to grant or take their licenses.' }} Expiring means active and due within 30 days.</p>
-      <div v-if="user && can('licenses.status')" class="staff-toolbar">
+      <div v-if="user && can('licenses.revoke')" class="staff-toolbar">
         <label>Reason for taking licenses<input v-model="reason" maxlength="500" :disabled="busy" placeholder="Optional reason saved in licensing audit"></label>
         <button type="button" class="staff-danger" :disabled="busy || user.deleted || !selectedLicenseIds.length" @click="customerLicenseBatch('revoke')">Take selected licenses · {{ selectedLicenseIds.length }}</button>
         <button type="button" :disabled="busy || !selectedLicenseIds.length" @click="selectedLicenseIds = []">Clear selection</button>
@@ -881,8 +882,8 @@ onUnmounted(() => {
       </div>
       <div class="staff-results"><span>{{ filteredLicenses.length }} / {{ sourceLicenses.length }} licenses shown</span><button type="button" @click="resetLicenseFilters">Clear filters</button></div>
       <div v-if="filteredLicenses.length" class="staff-table-scroll" tabindex="0" aria-label="License inventory table">
-        <table class="staff-table"><thead><tr><th v-if="user && can('licenses.status')">Select</th><th>Product / license</th><th>Customer</th><th>Status</th><th>Expiry</th><th>IPs</th><th>Last validation</th><th><span class="staff-sr-only">Actions</span></th></tr></thead><tbody>
-          <tr v-for="license in filteredLicenses" :key="license.licenseId" :class="{ 'staff-selected': selectedLicenseId === license.licenseId }"><td v-if="user && can('licenses.status')"><input v-model="selectedLicenseIds" type="checkbox" :value="license.licenseId" :aria-label="`Select ${productName(license.productId)} license ${license.licenseId}`" :disabled="busy || user.deleted || license.status === 'revoked' || (!selectedLicenseIds.includes(license.licenseId) && selectedLicenseIds.length >= 10)"></td><td><strong>{{ productName(license.productId) }}</strong><small>{{ license.licenseId }}</small></td><td><strong>{{ user?.globalName || user?.username || license.customerDiscordId }}</strong><small v-if="user?.username">@{{ user.username }}</small></td><td><span class="staff-badge" :data-status="effectiveLicenseStatus(license, clock)">{{ effectiveLicenseStatus(license, clock) }}</span></td><td>{{ formatDate(license.expiresAt, 'Lifetime') }}</td><td>{{ license.allowedIps.length }} / 3</td><td>{{ formatDate(license.lastValidatedAt) }}</td><td><button type="button" :disabled="busy" @click="inspectLicense(license)">{{ user ? 'Manage →' : 'Open customer →' }}</button></td></tr>
+        <table class="staff-table"><thead><tr><th v-if="user && can('licenses.revoke')">Select</th><th>Product / license</th><th>Customer</th><th>Status</th><th>Expiry</th><th>IPs</th><th>Last validation</th><th><span class="staff-sr-only">Actions</span></th></tr></thead><tbody>
+          <tr v-for="license in filteredLicenses" :key="license.licenseId" :class="{ 'staff-selected': selectedLicenseId === license.licenseId }"><td v-if="user && can('licenses.revoke')"><input v-model="selectedLicenseIds" type="checkbox" :value="license.licenseId" :aria-label="`Select ${productName(license.productId)} license ${license.licenseId}`" :disabled="busy || user.deleted || license.status === 'revoked' || (!selectedLicenseIds.includes(license.licenseId) && selectedLicenseIds.length >= 10)"></td><td><strong>{{ productName(license.productId) }}</strong><small>{{ license.licenseId }}</small></td><td><strong>{{ user?.globalName || user?.username || license.customerDiscordId }}</strong><small v-if="user?.username">@{{ user.username }}</small></td><td><span class="staff-badge" :data-status="effectiveLicenseStatus(license, clock)">{{ effectiveLicenseStatus(license, clock) }}</span></td><td>{{ formatDate(license.expiresAt, 'Lifetime') }}</td><td>{{ license.allowedIps.length }} / 3</td><td>{{ formatDate(license.lastValidatedAt) }}</td><td><button type="button" :disabled="busy" @click="inspectLicense(license)">{{ user ? 'Manage →' : 'Open customer →' }}</button></td></tr>
         </tbody></table>
       </div>
       <p v-else class="staff-empty">No licenses match these filters.</p>
@@ -900,10 +901,10 @@ onUnmounted(() => {
         <div class="staff-actions"><button v-if="inspectedLicenseKey" type="button" @click="copyText(inspectedLicenseKey, 'License key')">Copy license key</button><button v-if="!inspectedLicenseKey" type="button" :disabled="inspectedKeyLoading" @click="loadInspectedKey">Load key</button><button v-if="inspectedLicenseKey" type="button" @click="clearInspectionKey">Hide key</button></div>
       </div>
       <dl class="staff-facts staff-network-facts"><div><dt>API status</dt><dd>{{ selectedLicense.status }}</dd></div><div><dt>Expires</dt><dd>{{ formatDate(selectedLicense.expiresAt, 'Lifetime') }}</dd></div><div><dt>Bound server</dt><dd>{{ selectedLicense.serverId || 'Not bound' }}</dd></div><div><dt>Last validated server</dt><dd>{{ selectedLicense.lastValidatedServerId || 'Not reported' }}</dd></div><div><dt>Last validated</dt><dd>{{ formatDate(selectedLicense.lastValidatedAt) }}</dd></div></dl>
-      <div v-if="can('licenses.status')" class="staff-actions">
-        <button v-if="selectedLicense.status === 'active'" type="button" :disabled="busy || user?.deleted" @click="confirmAction('Suspend this license? It will stop validating until reactivated.', `/licenses/${selectedLicense.licenseId}/suspend`, 'License suspended.')">Suspend license</button>
-        <button v-if="selectedLicense.status === 'suspended'" type="button" :disabled="busy || user?.deleted" @click="perform(`/licenses/${selectedLicense.licenseId}/activate`, undefined, 'License reactivated.')">Reactivate license</button>
-        <button v-if="selectedLicense.status !== 'revoked'" class="staff-danger" type="button" :disabled="busy || user?.deleted" @click="confirmAction('Permanently revoke this license? This cannot be undone.', `/licenses/${selectedLicense.licenseId}/revoke`, 'License revoked.')">Revoke permanently</button>
+      <div v-if="can('licenses.status') || can('licenses.revoke')" class="staff-actions">
+        <button v-if="can('licenses.status') && selectedLicense.status === 'active'" type="button" :disabled="busy || user?.deleted" @click="confirmAction('Suspend this license? It will stop validating until reactivated.', `/licenses/${selectedLicense.licenseId}/suspend`, 'License suspended.')">Suspend license</button>
+        <button v-if="can('licenses.status') && selectedLicense.status === 'suspended'" type="button" :disabled="busy || user?.deleted" @click="perform(`/licenses/${selectedLicense.licenseId}/activate`, undefined, 'License reactivated.')">Reactivate license</button>
+        <button v-if="can('licenses.revoke') && selectedLicense.status !== 'revoked'" class="staff-danger" type="button" :disabled="busy || user?.deleted" @click="confirmAction('Permanently revoke this license? This cannot be undone.', `/licenses/${selectedLicense.licenseId}/revoke`, 'License revoked.')">Revoke permanently</button>
       </div>
       <p class="staff-note">The account reason field above is recorded for suspension/revocation. Reactivation does not change expiry or override an account ban/hold.</p>
       <form v-if="can('licenses.status') && selectedLicense.status !== 'revoked'" class="staff-inline-form" @submit.prevent="saveExpiration">

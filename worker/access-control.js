@@ -5,12 +5,16 @@ const LEAD_DISCORD_ID = '1012053634911064114'
 const permissionIds = new Set(PERMISSIONS.map(item => item.id))
 const roleById = id => ROLES.find(role => role.id === id)
 export const hasPermission = (access, permission) => access.permissions.includes(permission)
+const cappedRoles = new Set(['jr_support', 'support_team', 'sr_support'])
+const roleAllows = (role, permission) => cappedRoles.has(role.id)
+  ? role.permissions.includes(permission) || role.id === 'support_team' && permission === 'staff.warnings'
+  : !['roles.assign', 'settings.roles'].includes(permission) || role.rank >= 6
 
 export function adminPermission(path, method) {
   if (path === '/admin/users' && method === 'GET') return 'customers.view'
   if (/^\/admin\/users\/\d{5,22}$/.test(path)) return method === 'GET' ? 'customers.view' : method === 'DELETE' ? 'customers.delete' : null
   const control = path.match(/^\/admin\/users\/\d{5,22}\/(ban|unban|hold|release|verification-request|verify)$/)
-  if (control && method === 'POST') return ['verify', 'verification-request'].includes(control[1]) ? 'customers.verify' : 'customers.restrict'
+  if (control && method === 'POST') return ['verify', 'verification-request'].includes(control[1]) ? 'customers.verify' : control[1] === 'hold' ? 'customers.hold' : 'customers.restrict'
   if (path === '/admin/licenses') return method === 'GET' ? 'customers.view' : method === 'POST' ? 'licenses.grant' : null
   if (path === '/admin/plugins' || path === '/admin/products') {
     return method === 'GET' ? 'plugins.view' : method === 'POST' ? path.endsWith('/plugins') ? 'plugins.register' : 'products.create' : null
@@ -22,7 +26,8 @@ export function adminPermission(path, method) {
   if (registry) return method === 'DELETE' ? `${registry[1]}.delete` : method === 'PATCH' ? `${registry[1]}.manage` : null
   if (/^\/admin\/licenses\/[0-9a-f-]{36}$/.test(path) && method === 'GET') return 'customers.view'
   if (/^\/admin\/licenses\/[0-9a-f-]{36}\/key$/.test(path) && method === 'GET') return 'licenses.keys'
-  if (/^\/admin\/licenses\/[0-9a-f-]{36}\/(revoke|suspend|activate|renew)$/.test(path) && method === 'POST') return 'licenses.status'
+  if (/^\/admin\/licenses\/[0-9a-f-]{36}\/revoke$/.test(path) && method === 'POST') return 'licenses.revoke'
+  if (/^\/admin\/licenses\/[0-9a-f-]{36}\/(suspend|activate|renew)$/.test(path) && method === 'POST') return 'licenses.status'
   if (/^\/admin\/licenses\/[0-9a-f-]{36}\/ips$/.test(path) && ['POST', 'DELETE'].includes(method)) return 'licenses.ips'
   return path === '/admin/audit' && method === 'GET' ? 'audit.view' : null
 }
@@ -42,9 +47,18 @@ export async function rolePolicies(env) {
     ? (await env.COMMUNITY_DB.prepare('SELECT * FROM website_role_permissions').all()).results || [] : []
   return ROLES.map(role => {
     const saved = rows.find(row => row.role_id === role.id)
-    const permissions = role.id === 'owner' ? role.permissions : saved ? JSON.parse(saved.permissions) : role.permissions
+    const permissions = role.id === 'owner' ? [...role.permissions] : saved ? JSON.parse(saved.permissions) : [...role.permissions]
     if (!Array.isArray(permissions) || permissions.some(id => !permissionIds.has(id))) throw new Error('Invalid saved role permissions')
-    return { ...role, permissions: role.rank < 2 ? permissions.filter(id => MEMBER_PERMISSIONS.includes(id)) : [...permissions], revision: saved?.revision || 0 }
+    if (saved && !saved.policy_version) {
+      if (['support_team', 'developer', 'studio_lead'].includes(role.id)) {
+        if (permissions.includes('customers.view') && !permissions.includes('customers.hold')) permissions.push('customers.hold')
+        if (permissions.includes('tickets.reply') && !permissions.includes('tickets.escalate')) permissions.push('tickets.escalate')
+      }
+      if (['developer', 'studio_lead'].includes(role.id) && permissions.includes('licenses.status') && !permissions.includes('licenses.revoke')) permissions.push('licenses.revoke')
+    }
+    return { ...role, permissions: role.rank < 2 ? permissions.filter(id => MEMBER_PERMISSIONS.includes(id))
+      : permissions.filter(id => roleAllows(role, id)), allowedPermissions: PERMISSIONS.map(p => p.id).filter(id =>
+        role.rank < 2 ? MEMBER_PERMISSIONS.includes(id) : roleAllows(role, id)), revision: saved?.revision || 0 }
   })
 }
 
@@ -84,6 +98,17 @@ export async function getStaffMembers(env) {
     return policies.find(item => item.id === role)?.permissions.includes('tickets.view')
   }).map(id => ({ id, name: members.find(row => row.discord_id === id)?.display_name ||
     (id === OWNER_DISCORD_ID ? 'Studio owner' : id === LEAD_DISCORD_ID ? 'Studio lead' : 'Studio staff') }))
+}
+
+export async function higherStaffRecipients(env, access) {
+  const members = (await env.COMMUNITY_DB.prepare('SELECT discord_id, role_id FROM website_members').all()).results || []
+  const ids = [...new Set([OWNER_DISCORD_ID, LEAD_DISCORD_ID,
+    ...(env.ADMIN_DISCORD_IDS || '').split(',').map(id => id.trim()).filter(id => /^\d{5,22}$/.test(id)), ...members.map(row => row.discord_id)])]
+  return ids.filter(id => {
+    const role = roleById(memberRole(id, members.find(row => row.discord_id === id)?.role_id, env))
+    if (!role) throw new Error('Invalid saved member role')
+    return role.rank > access.rank
+  })
 }
 
 export const DEFAULT_SITE_SETTINGS = {
@@ -183,11 +208,12 @@ export async function websiteAdminApi(request, env, path, user, access, respond,
     if (role.rank < 2 && permissions.some(id => !MEMBER_PERMISSIONS.includes(id))) {
       return send({ error: 'Guest and Client roles can only receive member-feature permissions, never staff tools or private guides.' }, 403)
     }
+    if (permissions.some(id => !roleAllows(role, id))) return send({ error: 'This role cannot receive those permissions.' }, 403)
     if (access.role !== 'owner' && permissions.some(id => !allows(id))) return send({ error: 'You cannot delegate permissions you do not have.' }, 403)
     statements = [
-      db.prepare(`INSERT INTO website_role_permissions(role_id, permissions, revision)
-        SELECT ?, ?, 1 WHERE ? = 0 OR EXISTS (SELECT 1 FROM website_role_permissions WHERE role_id = ? AND revision = ?)
-        ON CONFLICT(role_id) DO UPDATE SET permissions=excluded.permissions, revision=website_role_permissions.revision+1
+      db.prepare(`INSERT INTO website_role_permissions(role_id, permissions, revision, policy_version)
+        SELECT ?, ?, 1, 1 WHERE ? = 0 OR EXISTS (SELECT 1 FROM website_role_permissions WHERE role_id = ? AND revision = ?)
+        ON CONFLICT(role_id) DO UPDATE SET permissions=excluded.permissions, revision=website_role_permissions.revision+1, policy_version=1
         WHERE website_role_permissions.revision = ?`).bind(role.id, JSON.stringify(permissions), body.revision, role.id, body.revision, body.revision),
       auditStatement(db, user, access, 'role.permissions_changed', role.id, { permissions }),
     ]

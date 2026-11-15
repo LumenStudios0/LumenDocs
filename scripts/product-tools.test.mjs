@@ -278,7 +278,7 @@ test('member profiles are public automatically with owner-only edits, safe field
   assert.equal(outage.profile.bio, body.bio)
 })
 
-test('badge selection unlocks lower tiers and staff ranks, filters downgrades immediately and gives Owner all eight cosmetic badges', async t => {
+test('badge selection unlocks lower tiers and staff ranks and filters downgrades immediately', async t => {
   const { call, sqlite, customer, owner, env } = await fixture(t)
   const originalFetch = globalThis.fetch
   t.after(() => { globalThis.fetch = originalFetch })
@@ -330,10 +330,13 @@ test('badge selection unlocks lower tiers and staff ranks, filters downgrades im
   count = 0
   sqlite.prepare("INSERT INTO website_members(discord_id,role_id) VALUES (?,'support_team')").run(customer)
   const staff = (await (await call('/studio/profiles/me', 'GET', undefined, customer)).json()).profile
-  assert.deepEqual(staff.availableBadges.map(b => b.id), ['staff'])
+  assert.deepEqual(staff.availableBadges.map(b => b.id), ['jr_staff', 'staff'])
+  sqlite.prepare("UPDATE website_members SET role_id='sr_support' WHERE discord_id=?").run(customer)
+  const senior = (await (await call('/studio/profiles/me', 'GET', undefined, customer)).json()).profile
+  assert.deepEqual(senior.availableBadges.map(b => b.id), ['jr_staff', 'staff', 'sr_staff'])
   sqlite.prepare("UPDATE website_members SET role_id='developer' WHERE discord_id=?").run(customer)
   const developer = (await (await call('/studio/profiles/me', 'GET', undefined, customer)).json()).profile
-  assert.deepEqual(developer.availableBadges.map(b => b.id), ['staff', 'developer'])
+  assert.deepEqual(developer.availableBadges.map(b => b.id), ['jr_staff', 'staff', 'sr_staff', 'developer'])
   assert.equal((await call('/studio/profiles/me', 'PUT', { ...body, revision: 1, badgeIds: ['staff', 'developer'] }, customer)).status, 200)
   sqlite.prepare("UPDATE website_members SET role_id='client' WHERE discord_id=?").run(customer)
   publicProfile = (await (await call('/studio/profiles/' + customer, 'GET', undefined, '')).json()).profile
@@ -342,13 +345,13 @@ test('badge selection unlocks lower tiers and staff ranks, filters downgrades im
   assert.equal((await call('/studio/profiles/me', 'PUT', { ...body, revision: 2, badgeIds: ['developer'] }, customer)).status, 403)
   sqlite.prepare("UPDATE website_members SET role_id='studio_lead' WHERE discord_id=?").run(customer)
   const lead = (await (await call('/studio/profiles/me', 'GET', undefined, customer)).json()).profile
-  assert.deepEqual(lead.availableBadges.map(b => b.id), ['staff', 'developer', 'studio_lead'])
+  assert.deepEqual(lead.availableBadges.map(b => b.id), ['jr_staff', 'staff', 'sr_staff', 'developer', 'studio_lead'])
   const ownerProfile = (await (await call('/studio/profiles/me', 'GET', undefined, owner)).json()).profile
   const all = ownerProfile.availableBadges.map(b => b.id)
-  assert.equal(all.length, 8)
+  assert.equal(all.length, 10)
   assert.equal(ownerProfile.tier, null)
   assert.equal((await call('/studio/profiles/me', 'PUT', { ...body, badgeIds: all }, owner)).status, 200)
-  assert.equal((await messageProfiles(env.COMMUNITY_DB, [owner], env)).get(owner).badges.length, 8)
+  assert.equal((await messageProfiles(env.COMMUNITY_DB, [owner], env)).get(owner).badges.length, 10)
   assert.equal((await call('/studio/profiles/me', 'PUT', { ...body, revision: 1, badgeIds: [] }, owner)).status, 200)
   assert.deepEqual((await messageProfiles(env.COMMUNITY_DB, [owner], env)).get(owner).badges, [])
 })

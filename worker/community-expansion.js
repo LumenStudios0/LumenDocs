@@ -108,7 +108,9 @@ export async function expansionRoute(request, env, suffix, user, access, deps, h
         escalation_target_id = ?, updated_at = ?,
         assignee_id = CASE WHEN ? IS NULL THEN assignee_id ELSE ? END,
         assignee_name = CASE WHEN ? IS NULL THEN assignee_name ELSE ? END WHERE id = ?`)
-        .bind(body.reason.trim(), user.id, now, target, now, target, target, target,
+        .bind(body.reason.trim(), user.id, now, target, now,
+          hasPermission(access, 'tickets.manage') ? target : null, target,
+          hasPermission(access, 'tickets.manage') ? target : null,
           target === user.id ? user.globalName || user.username : targetMember?.name ?? null, match[1])]
       if (target !== null) {
         statements.push(db.prepare(`INSERT INTO community_notifications (id,recipient_id,title,body,kind,audience,link,created_at)

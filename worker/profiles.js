@@ -6,10 +6,12 @@ import { backgrounds, frames, decorations, achievements } from '../shared/profil
 const ids = /^\d{5,22}$/
 const tierNames = { spark: 'Spark', radiance: 'Radiance', nova: 'Nova', elite: 'Lumen Elite' }
 const staffBadges = [
-  { id: 'staff', name: 'Staff', rank: 2 },
-  { id: 'developer', name: 'Developer', rank: 3 },
-  { id: 'studio_lead', name: 'Studio Lead', rank: 4 },
-  { id: 'owner', name: 'Owner', rank: 5 },
+  { id: 'jr_staff', name: 'Jr Staff', rank: 2 },
+  { id: 'staff', name: 'Staff', rank: 3 },
+  { id: 'sr_staff', name: 'Sr Staff', rank: 4 },
+  { id: 'developer', name: 'Developer', rank: 5 },
+  { id: 'studio_lead', name: 'Studio Lead', rank: 6 },
+  { id: 'owner', name: 'Owner', rank: 7 },
 ]
 const profileSelect = `SELECT p.*, m.role_id,
   EXISTS(SELECT 1 FROM community_threads t WHERE t.author_id=p.user_id AND t.hidden=0) AS has_thread,
@@ -210,7 +212,7 @@ export async function handleProfiles(request, env, origin, path, deps) {
         if (!body || Object.entries(fields).some(([key, max]) => typeof body[key] !== 'string' || body[key].trim().length > max || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(body[key])) ||
             !body.displayName.trim() || !/^#[0-9a-fA-F]{6}$/.test(body.accent || '') || !/^#[0-9a-fA-F]{6}$/.test(body.banner || '') ||
             !link(body.website) || !link(body.showcase) || body.public !== true || !Number.isInteger(body.revision) || body.revision < 0 ||
-            body.badgeIds !== undefined && (!Array.isArray(body.badgeIds) || body.badgeIds.length > 13 ||
+            body.badgeIds !== undefined && (!Array.isArray(body.badgeIds) || body.badgeIds.length > 15 ||
               body.badgeIds.some(id => typeof id !== 'string') || new Set(body.badgeIds).size !== body.badgeIds.length) ||
             body.servers !== undefined && !validServers(body.servers) ||
             body.bannerImage !== undefined && !validBanner(body.bannerImage) ||

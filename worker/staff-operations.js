@@ -54,15 +54,15 @@ function memberRoleSql(env, id) {
       CASE WHEN ${id}='1012053634911064114' THEN 'studio_lead' ${bootstrap} ELSE 'guest' END) END`
 }
 
-const roleRankSql = role => `CASE ${role} WHEN 'owner' THEN 5 WHEN 'studio_lead' THEN 4
-  WHEN 'developer' THEN 3 WHEN 'support_team' THEN 2 WHEN 'client' THEN 1 ELSE 0 END`
+const roleRankSql = role => `CASE ${role} WHEN 'owner' THEN 7 WHEN 'studio_lead' THEN 6
+  WHEN 'developer' THEN 5 WHEN 'sr_support' THEN 4 WHEN 'support_team' THEN 3 WHEN 'jr_support' THEN 2 WHEN 'client' THEN 1 ELSE 0 END`
 
 // Correlated SQL keeps lease eligibility and reply insertion in the same transaction.
 export function staffEditorEligibilitySql(env, alias = 'e') {
   const role = memberRoleSql(env, `${alias}.member_id`)
   return `EXISTS (SELECT 1 FROM (SELECT ${role} AS role_id) eligible
     LEFT JOIN website_role_permissions policy ON policy.role_id=eligible.role_id
-    WHERE eligible.role_id IN ('support_team','developer','studio_lead','owner')
+    WHERE eligible.role_id IN ('jr_support','support_team','sr_support','developer','studio_lead','owner')
     AND (eligible.role_id='owner' OR policy.role_id IS NULL OR (
       EXISTS (SELECT 1 FROM json_each(policy.permissions) WHERE value='tickets.view')
       AND EXISTS (SELECT 1 FROM json_each(policy.permissions) WHERE value='tickets.reply'))))`

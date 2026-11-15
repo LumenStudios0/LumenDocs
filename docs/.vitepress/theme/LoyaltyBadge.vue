@@ -41,11 +41,25 @@ defineProps<{ tier: { id: string; name: string }; compact?: boolean }>()
         <path class="elite-crystal" d="M16 14L20 20L16 25L12 20Z" />
         <path class="elite-sparks" d="M3 4V8M1 6H5M28 4V8M26 6H30" />
       </g>
+      <g v-else-if="tier.id === 'jr_staff'">
+        <path class="badge-facet" d="M16 4L25 8V16Q24 23 16 28Q8 23 7 16V8Z" />
+        <path class="badge-ink" d="M16 4L25 8V16Q24 23 16 28Q8 23 7 16V8Z" />
+        <path class="junior-sprout" d="M16 23V13M16 18Q10 18 10 12Q15 12 16 16M16 15Q17 10 22 10Q22 15 16 17" />
+        <path class="spark-flicker" d="M3 8V12M1 10H5M27 21V25M25 23H29" />
+      </g>
       <g v-else-if="tier.id === 'staff'">
+        <path class="staff-beacon" d="M3 16H1M31 16H29M7 5L5 3M25 5L27 3M7 27L5 29M25 27L27 29" />
         <path class="badge-facet" d="M16 3L27 7V16Q26 25 16 29Q6 25 5 16V7Z" />
         <path class="badge-ink staff-shield" d="M16 3L27 7V16Q26 25 16 29Q6 25 5 16V7Z" />
         <path class="staff-check" d="M10 16L14 20L22 11" />
         <path class="staff-scan" d="M8 9H24" />
+      </g>
+      <g v-else-if="tier.id === 'sr_staff'">
+        <circle class="senior-orbit" cx="16" cy="16" r="13" />
+        <path class="badge-facet" d="M16 3L26 8V16Q25 24 16 29Q7 24 6 16V8Z" />
+        <path class="badge-ink" d="M16 3L26 8V16Q25 24 16 29Q7 24 6 16V8Z" />
+        <path class="senior-star" d="M16 8L18 13L23 15L18 17L16 23L14 17L9 15L14 13Z" />
+        <path class="staff-scan" d="M9 10H23" />
       </g>
       <g v-else-if="tier.id === 'developer'">
         <path class="badge-facet" d="M16 2L29 9V23L16 30L3 23V9Z" />
@@ -117,6 +131,8 @@ defineProps<{ tier: { id: string; name: string }; compact?: boolean }>()
 .loyalty-badge[data-tier=nova] { --badge-color: #9bdfff; --badge-secondary: #ca9dff; --badge-bg: #202b49; border-radius: 13px 5px; }
 .loyalty-badge[data-tier=elite] { --badge-color: #ffe1a0; --badge-secondary: #f5a3f5; --badge-bg: #3a2444; border-radius: 6px; }
 .loyalty-badge[data-tier=staff] { --badge-color: #8ff3dc; --badge-secondary: #82caff; --badge-bg: #193b3d; border-radius: 11px 5px; }
+.loyalty-badge[data-tier=jr_staff] { --badge-color: #b6edb4; --badge-secondary: #d3b9ff; --badge-bg: #263b38; border-radius: 12px 6px; }
+.loyalty-badge[data-tier=sr_staff] { --badge-color: #f3c1ff; --badge-secondary: #ffd88c; --badge-bg: #422649; border-radius: 6px 12px; }
 .loyalty-badge[data-tier=developer] { --badge-color: #b2ff97; --badge-secondary: #83d9ff; --badge-bg: #1d332d; border-radius: 4px; background: repeating-linear-gradient(0deg, #a3ffc507 0 1px, transparent 1px 5px), linear-gradient(120deg, var(--badge-bg), #161522); }
 .loyalty-badge[data-tier=studio_lead] { --badge-color: #ffbd9b; --badge-secondary: #ff84b9; --badge-bg: #402537; border-radius: 5px 13px; }
 .loyalty-badge[data-tier=owner] { --badge-color: #e7b8ff; --badge-secondary: #ffe6a3; --badge-bg: #422452; border-radius: 12px 4px; }
@@ -144,6 +160,10 @@ defineProps<{ tier: { id: string; name: string }; compact?: boolean }>()
 .staff-shield { animation-duration: 7s; }
 .staff-check { stroke-dasharray: 20; animation: badge-check-draw 5s ease-in-out infinite; }
 .staff-scan { stroke: var(--badge-secondary); animation: badge-shield-scan 5s ease-in-out infinite; }
+.staff-beacon { stroke: var(--badge-secondary); transform-origin: 16px 16px; animation: badge-beacon 4s ease-in-out infinite; }
+.junior-sprout { stroke: var(--badge-secondary); transform-origin: 16px 23px; animation: badge-sprout 4s ease-in-out infinite; }
+.senior-orbit { stroke: var(--badge-secondary); stroke-dasharray: 9 4 2 4; animation: badge-nova-orbit 6s linear infinite; }
+.senior-star { fill: var(--badge-secondary); stroke: none; transform-origin: 16px 16px; animation: badge-senior-star 4s ease-in-out infinite; }
 .developer-frame { stroke: var(--badge-secondary); stroke-dasharray: 5 9; animation: badge-nova-orbit 7s linear infinite; }
 .developer-code { animation-duration: 4s; }
 .developer-signal { stroke: var(--badge-secondary); stroke-dasharray: 2 4; animation: badge-nova-orbit 2s linear infinite; }
@@ -171,6 +191,9 @@ defineProps<{ tier: { id: string; name: string }; compact?: boolean }>()
 @keyframes badge-check-draw { 0%, 100% { stroke-dashoffset: 0; } 30% { stroke-dashoffset: 20; } 65% { stroke-dashoffset: 0; } }
 @keyframes badge-shield-scan { 0%, 100% { transform: translateY(0); opacity: .2; } 50% { transform: translateY(12px); opacity: .8; } }
 @keyframes badge-compass-steer { 0%, 100% { transform: rotate(-25deg); } 40% { transform: rotate(60deg); } 70% { transform: rotate(15deg); } }
+@keyframes badge-sprout { 0%, 100% { transform: rotate(-5deg); } 50% { transform: rotate(6deg); } }
+@keyframes badge-beacon { 0%, 100% { transform: scale(.8); opacity: .25; } 50% { transform: scale(1); opacity: 1; } }
+@keyframes badge-senior-star { 0%, 100% { transform: scale(.8) rotate(-8deg); opacity: .6; } 50% { transform: scale(1.05) rotate(8deg); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
   .loyalty-badge *, .loyalty-badge *::before, .loyalty-badge *::after { animation: none; }
   .badge-sheen { display: none; }

@@ -29,7 +29,7 @@ async function tokenFor(id, name) {
 
 function createD1() {
   const sqlite = new DatabaseSync(':memory:')
-  const migrations = Promise.all(['0001_community.sql', '0002_ticket_routing.sql', '0003_community_forum.sql', '0004_website_access.sql', '0005_member_registration.sql', '0006_community_expansion.sql', '0007_product_tools.sql', '0010_trial_duration.sql', '0011_staff_docs_permissions.sql', '0012_staff_operations.sql', '0013_staff_license_keys.sql', '0014_loyalty_subclients.sql', '0015_member_profiles.sql', '0016_public_member_profiles.sql', '0017_profile_badges.sql', '0018_profile_customization.sql'].map(
+  const migrations = Promise.all(['0001_community.sql', '0002_ticket_routing.sql', '0003_community_forum.sql', '0004_website_access.sql', '0005_member_registration.sql', '0006_community_expansion.sql', '0007_product_tools.sql', '0010_trial_duration.sql', '0011_staff_docs_permissions.sql', '0012_staff_operations.sql', '0013_staff_license_keys.sql', '0014_loyalty_subclients.sql', '0015_member_profiles.sql', '0016_public_member_profiles.sql', '0017_profile_badges.sql', '0018_profile_customization.sql', '0019_support_roles.sql'].map(
     name => readFile(new URL(`../worker/migrations/community/${name}`, import.meta.url), 'utf8'),
   ))
   const database = {
@@ -115,6 +115,137 @@ async function accessFixture(t) {
   return { db, config, owner, api, assign }
 }
 
+test('support hierarchy enforces safety caps even on legacy saved policies', async t => {
+  const { db, api, assign } = await accessFixture(t)
+  const junior = '222222222222222221', support = '222222222222222222', senior = '222222222222222223'
+  for (const [id, role] of [[junior, 'jr_support'], [support, 'support_team'], [senior, 'sr_support']]) {
+    assert.equal((await assign(id, role)).status, 200)
+  }
+  db.sqlite.prepare("INSERT INTO website_role_permissions(role_id,permissions) VALUES ('support_team',?)")
+    .run(JSON.stringify(['dashboard.view', 'customers.view', 'customers.hold', 'licenses.keys', 'licenses.grant', 'licenses.status', 'roles.assign']))
+  const juniorToken = await tokenFor(junior, 'Junior')
+  const supportToken = await tokenFor(support, 'Support')
+  const seniorToken = await tokenFor(senior, 'Senior')
+  const license = '12345678-1234-1234-1234-123456789012'
+  assert.equal((await api(`/admin/licenses/${license}/key`, 'GET', undefined, juniorToken)).status, 403)
+  assert.equal((await api('/admin/licenses', 'POST', { customerDiscordId: customerId }, supportToken)).status, 403)
+  assert.equal((await api(`/admin/licenses/${license}/revoke`, 'POST', {}, supportToken)).status, 403)
+  assert.equal((await api(`/admin/users/${customerId}/ban`, 'POST', {}, supportToken)).status, 403)
+  assert.equal((await api('/admin/website/members', 'GET', undefined, supportToken)).status, 403)
+  assert.equal((await api(`/admin/licenses/${license}/suspend`, 'POST', {}, seniorToken)).status, 403)
+  assert.equal((await api('/admin/website/members', 'GET', undefined, seniorToken)).status, 403)
+  assert.equal((await api('/admin/website/roles/support_team', 'PUT', {
+    permissions: ['licenses.grant'], revision: 1,
+  })).status, 403)
+})
+
+test('support migration preserves members and constrains existing policies', async t => {
+  const sqlite = new DatabaseSync(':memory:')
+  t.after(() => sqlite.close())
+  for (const name of ['0004_website_access.sql', '0005_member_registration.sql']) {
+    sqlite.exec(await readFile(new URL(`../worker/migrations/community/${name}`, import.meta.url), 'utf8'))
+  }
+  sqlite.prepare("INSERT INTO website_members(discord_id,username,role_id,revision,registered_at) VALUES (?,?,?,3,?)")
+    .run('222222222222222222', 'Support', 'support_team', '2025-01-01')
+  sqlite.prepare('INSERT INTO website_role_permissions(role_id,permissions,revision) VALUES (?,?,7)')
+    .run('support_team', JSON.stringify(['dashboard.view', 'customers.view', 'licenses.keys', 'licenses.grant', 'tickets.reply']))
+  sqlite.prepare('INSERT INTO website_role_permissions(role_id,permissions,revision) VALUES (?,?,2)')
+    .run('developer', JSON.stringify(['dashboard.view', 'licenses.status']))
+  sqlite.exec(await readFile(new URL('../worker/migrations/community/0019_support_roles.sql', import.meta.url), 'utf8'))
+  assert.deepEqual({ ...sqlite.prepare('SELECT username,role_id,revision,registered_at FROM website_members').get() },
+    { username: 'Support', role_id: 'support_team', revision: 3, registered_at: '2025-01-01' })
+  const supportPolicy = JSON.parse(sqlite.prepare("SELECT permissions FROM website_role_permissions WHERE role_id='support_team'").get().permissions)
+  assert.ok(!supportPolicy.includes('customers.hold') && !supportPolicy.includes('tickets.escalate'))
+  assert.ok(!JSON.parse(sqlite.prepare("SELECT permissions FROM website_role_permissions WHERE role_id='developer'").get().permissions).includes('licenses.revoke'))
+  sqlite.prepare("INSERT INTO website_members(discord_id,role_id) VALUES ('333333333333333333','jr_support'),('444444444444444444','sr_support')").run()
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM website_members').get().n, 3)
+})
+
+test('legacy split permissions are applied until the policy is explicitly edited', async t => {
+  const { db, api, assign } = await accessFixture(t)
+  const id = '222222222222222222'
+  await assign(id, 'support_team')
+  const support = await tokenFor(id, 'Support')
+  db.sqlite.prepare("INSERT INTO website_role_permissions(role_id,permissions) VALUES ('support_team',?)")
+    .run(JSON.stringify(['dashboard.view', 'customers.view', 'tickets.reply', 'licenses.grant']))
+  let permissions = (await (await api('/auth/me', 'GET', undefined, support)).json()).user.permissions
+  assert.ok(permissions.includes('customers.hold') && permissions.includes('tickets.escalate'))
+  assert.ok(!permissions.includes('licenses.grant'))
+  assert.equal((await api('/admin/website/roles/support_team', 'PUT', {
+    permissions: ['dashboard.view', 'customers.view', 'tickets.reply'], revision: 1,
+  })).status, 200)
+  permissions = (await (await api('/auth/me', 'GET', undefined, support)).json()).user.permissions
+  assert.ok(!permissions.includes('customers.hold') && !permissions.includes('tickets.escalate'))
+  assert.equal(db.sqlite.prepare("SELECT policy_version FROM website_role_permissions WHERE role_id='support_team'").get().policy_version, 1)
+})
+
+test('senior support can grant and revoke with key-free audit records', async t => {
+  const { db, api, assign } = await accessFixture(t)
+  const id = '222222222222222223'
+  await assign(id, 'sr_support')
+  const senior = await tokenFor(id, 'Senior')
+  const license = '12345678-1234-1234-1234-123456789012'
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  globalThis.fetch = async () => Response.json({ licenseKey: 'secret-key-never-audited' })
+  assert.equal((await api('/admin/licenses', 'POST', { customerDiscordId: customerId }, senior)).status, 200)
+  assert.equal((await api(`/admin/licenses/${license}/revoke`, 'POST', {}, senior)).status, 200)
+  const audit = db.sqlite.prepare("SELECT actor_role,action,target,details FROM website_access_audit WHERE action LIKE 'license.%' ORDER BY action").all()
+  assert.deepEqual(audit.map(row => row.action), ['license.grant_succeeded', 'license.revoke_succeeded'])
+  assert.ok(audit.every(row => row.actor_role === 'sr_support'))
+  assert.doesNotMatch(JSON.stringify(audit), /secret-key-never-audited/)
+})
+
+test('junior support can escalate a ticket without assigning it', async t => {
+  const { api, assign } = await accessFixture(t)
+  const juniorId = '222222222222222221', seniorId = '222222222222222223'
+  await assign(juniorId, 'jr_support')
+  await assign(seniorId, 'sr_support')
+  const junior = await tokenFor(juniorId, 'Junior')
+  const customer = await tokenFor(customerId, 'Customer')
+  const ticket = (await (await api('/community/tickets', 'POST', { type: 'support', title: 'Help needed', body: 'Please help with my plugin.' }, customer)).json()).ticket
+  const response = await api(`/community/staff/tickets/${ticket.id}/escalation`, 'PUT', { reason: 'Needs senior review', targetId: seniorId }, junior)
+  assert.equal(response.status, 200)
+  const updated = (await response.json()).ticket
+  assert.equal(updated.escalation.targetId, seniorId)
+  assert.equal(updated.assignedTo, null)
+  assert.equal((await api(`/community/staff/tickets/${ticket.id}`, 'PUT', { status: 'closed' }, junior)).status, 403)
+})
+
+test('holds notify only higher-ranked staff and report failed alert writes without repeating the hold', async t => {
+  const { db, api, assign } = await accessFixture(t)
+  const support = '222222222222222222', senior = '222222222222222223', junior = '222222222222222221'
+  for (const [id, role] of [[support, 'support_team'], [senior, 'sr_support'], [junior, 'jr_support']]) {
+    assert.equal((await assign(id, role)).status, 200)
+  }
+  const supportToken = await tokenFor(support, 'Support')
+  const seniorToken = await tokenFor(senior, 'Senior')
+  const juniorToken = await tokenFor(junior, 'Junior')
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  let calls = 0
+  globalThis.fetch = async () => { calls++; return Response.json({ onHold: true }) }
+  assert.equal((await api(`/admin/users/${customerId}/hold`, 'POST', {}, juniorToken)).status, 403)
+  assert.equal((await api(`/admin/users/${customerId}/hold`, 'POST', {}, supportToken)).status, 200)
+  assert.equal(calls, 1)
+  const alerts = db.sqlite.prepare("SELECT recipient_id FROM community_notifications WHERE kind='hold_alert'").all().map(row => row.recipient_id)
+  assert.ok(alerts.includes(senior))
+  assert.ok(alerts.includes(staffId))
+  assert.ok(!alerts.includes(support) && !alerts.includes(junior))
+  assert.equal((await (await api('/community/notifications', 'GET', undefined, seniorToken)).json()).items[0].kind, 'hold_alert')
+  assert.equal((await (await api('/community/notifications', 'GET', undefined, juniorToken)).json()).total, 0)
+  assert.equal((await (await api('/community/staff/notifications')).json()).total, 0)
+  globalThis.fetch = async () => { calls++; return Response.json({ error: 'Rejected' }, { status: 400 }) }
+  assert.equal((await api(`/admin/users/${customerId}/hold`, 'POST', {}, supportToken)).status, 400)
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM community_notifications WHERE kind='hold_alert'").get().n, alerts.length)
+  globalThis.fetch = async () => { calls++; return Response.json({ onHold: true }) }
+  db.failBatchAt = 0
+  const response = await api(`/admin/users/${customerId}/hold`, 'POST', {}, supportToken)
+  assert.equal(response.status, 200)
+  assert.match((await response.json()).notificationWarning, /do not repeat/i)
+  assert.equal(calls, 3)
+})
+
 test('staff license grants notify only the recipient even when ticket alerts are disabled', async t => {
   const { db, owner, api } = await accessFixture(t)
   const customer = await tokenFor(customerId, 'Customer')
@@ -193,7 +324,7 @@ test('editing license expiration forwards only valid dates and requires license 
   const id = '555555555555555555'
   const support = await tokenFor(id, 'Support')
   await api('/auth/me', 'GET', undefined, support)
-  assert.equal((await assign(id, 'support_team')).status, 200)
+  assert.equal((await assign(id, 'developer')).status, 200)
   const originalFetch = globalThis.fetch
   t.after(() => { globalThis.fetch = originalFetch })
   const calls = []
@@ -930,14 +1061,14 @@ test('preset roles enforce strict assignment hierarchy, protected owner and curr
     assert.equal((await assign(ids[index], role)).status, 200)
   }
   const access = await (await api('/admin/website/access')).json()
-  assert.deepEqual(access.roles.map(role => role.id), ['guest', 'client', 'support_team', 'developer', 'studio_lead', 'owner'])
+  assert.deepEqual(access.roles.map(role => role.id), ['guest', 'client', 'jr_support', 'support_team', 'sr_support', 'developer', 'studio_lead', 'owner'])
   const target = '223456789012345690'
-  assert.equal((await assign(target, 'client', tokens[0])).status, 200)
+  assert.equal((await assign(target, 'client', tokens[0])).status, 403)
   for (const role of ['support_team', 'developer', 'studio_lead', 'owner']) assert.equal((await assign(target, role, tokens[0])).status, 403)
   assert.equal((await assign(ids[0], 'client', tokens[0])).status, 403)
   assert.equal((await assign(ids[3], 'client', tokens[0])).status, 403)
   assert.equal((await assign(ids[1], 'guest', tokens[0])).status, 403)
-  assert.equal((await assign(target, 'support_team', tokens[1])).status, 200)
+  assert.equal((await assign(target, 'support_team', tokens[1])).status, 403)
   assert.equal((await assign(target, 'studio_lead', tokens[1])).status, 403)
   assert.equal((await assign(target, 'developer', tokens[2])).status, 200)
   assert.equal((await assign(target, 'owner', tokens[2])).status, 403)
@@ -946,7 +1077,7 @@ test('preset roles enforce strict assignment hierarchy, protected owner and curr
   assert.equal((await assign(target, 'made-up-role')).status, 400)
   const sameToken = await (await api('/auth/me', 'GET', undefined, tokens[0])).json()
   assert.equal(sameToken.user.role, 'support_team')
-  assert.equal(sameToken.user.permissions.includes('licenses.grant'), true)
+  assert.equal(sameToken.user.permissions.includes('licenses.grant'), false)
   const guest = await tokenFor('223456789012345699', 'Guest')
   assert.equal((await api('/admin/website/members', 'GET', undefined, guest)).status, 403)
   assert.equal((await api('/auth/me', 'GET', undefined, guest)).status, 200)
@@ -959,11 +1090,11 @@ test('staff knowledge migration preserves saved policies and enables only the in
   t.after(() => db.close())
   db.exec(await readFile(new URL('../worker/migrations/community/0004_website_access.sql', import.meta.url), 'utf8'))
   const insert = db.prepare('INSERT INTO website_role_permissions (role_id, permissions, revision) VALUES (?, ?, ?)')
-  for (const role of ROLES.filter(role => role.id !== 'owner')) {
+  for (const role of ROLES.filter(role => !['owner', 'jr_support', 'sr_support'].includes(role.id))) {
     insert.run(role.id, JSON.stringify(role.rank >= 2 ? ['tickets.view'] : []), 4)
   }
   db.exec(await readFile(new URL('../worker/migrations/community/0011_staff_docs_permissions.sql', import.meta.url), 'utf8'))
-  for (const role of ROLES.filter(role => role.id !== 'owner')) {
+  for (const role of ROLES.filter(role => !['owner', 'jr_support', 'sr_support'].includes(role.id))) {
     const saved = db.prepare('SELECT permissions, revision FROM website_role_permissions WHERE role_id = ?').get(role.id)
     assert.equal(saved.revision, 5)
     assert.deepEqual(JSON.parse(saved.permissions), [
@@ -1037,7 +1168,7 @@ test('guest and client permission toggles enforce new requests without removing 
   }
 })
 
-test('support grants and IP controls honor saved permissions immediately without exposing destructive registry operations', async t => {
+test('support cannot grant licenses or change IPs and saved permissions are enforced', async t => {
   const { api, assign } = await accessFixture(t)
   const id = '323456789012345680'
   const support = await tokenFor(id, 'Support')
@@ -1051,8 +1182,8 @@ test('support grants and IP controls honor saved permissions immediately without
     ['/admin/licenses', 'POST', { productId: 'shards', customerDiscordId: customerId }],
     [`/admin/licenses/${licenseId}/ips`, 'POST', { ipAddress: '203.0.113.8' }],
     [`/admin/licenses/${licenseId}/ips?ipAddress=203.0.113.8`, 'DELETE'],
-  ]) assert.equal((await api(path, method, body, support)).status, 200)
-  assert.equal(forwarded[0].options.headers['X-Admin-Actor'], `${id}:support_team`)
+  ]) assert.equal((await api(path, method, body, support)).status, 403)
+  assert.equal(forwarded.length, 0)
   assert.equal((await api('/admin/plugins/plugin', 'DELETE', undefined, support)).status, 403)
   assert.equal((await api('/admin/products/product/plugins/plugin', 'DELETE', undefined, support)).status, 403)
   const preset = ROLES.find(role => role.id === 'support_team')
@@ -1071,7 +1202,7 @@ test('support grants and IP controls honor saved permissions immediately without
   const forum = await (await api('/community/forum', 'GET', undefined, support)).json()
   assert.equal(forum.viewer.staff, false)
   assert.equal((await api('/admin/website/roles/support_team', 'PUT', {
-    permissions: ['forum.moderate', 'forum.announce'], revision: 1,
+    permissions: ['forum.moderate'], revision: 1,
   })).status, 200)
   const withoutDashboard = await (await api('/community/forum', 'GET', undefined, support)).json()
   assert.equal(withoutDashboard.viewer.staff, false)
@@ -1087,12 +1218,13 @@ test('permission editing cannot escalate privileges and stale or failed writes d
   const developer = await tokenFor(id, 'Developer')
   await assign(id, 'developer')
   const developerPermissions = [...ROLES.find(role => role.id === 'developer').permissions, 'settings.view', 'settings.roles']
-  assert.equal((await api('/admin/website/roles/developer', 'PUT', { permissions: developerPermissions, revision: 0 })).status, 200)
+  assert.equal((await api('/admin/website/roles/developer', 'PUT', { permissions: developerPermissions, revision: 0 })).status, 403)
   for (const role of ['developer', 'studio_lead', 'owner']) assert.equal((await api(`/admin/website/roles/${role}`, 'PUT', { permissions: [], revision: 0 }, developer)).status, 403)
   assert.equal((await api('/admin/website/roles/support_team', 'PUT', { permissions: ['plugins.delete'], revision: 0 }, developer)).status, 403)
   assert.equal((await api('/admin/website/roles/support_team', 'PUT', { permissions: ['invented.permission'], revision: 0 })).status, 400)
   const permissions = ['dashboard.view', 'customers.view']
-  assert.equal((await api('/admin/website/roles/support_team', 'PUT', { permissions, revision: 0 }, developer)).status, 200)
+  assert.equal((await api('/admin/website/roles/support_team', 'PUT', { permissions, revision: 0 }, developer)).status, 403)
+  assert.equal((await api('/admin/website/roles/support_team', 'PUT', { permissions, revision: 0 })).status, 200)
   const auditCount = db.sqlite.prepare('SELECT COUNT(*) AS n FROM website_access_audit').get().n
   assert.equal((await api('/admin/website/roles/support_team', 'PUT', { permissions: [], revision: 0 })).status, 409)
   db.failBatchAt = 1
@@ -1683,9 +1815,9 @@ test('staff with license-grant permission can list and approve trials without ti
   const grantId = '123456789012345679'
   const grantStaff = await tokenFor(grantId, 'License staff')
   const customer = await tokenFor(customerId, 'Customer')
-  await assign(grantId, 'support_team')
+  await assign(grantId, 'sr_support')
   db.sqlite.prepare('INSERT INTO website_role_permissions (role_id,permissions) VALUES (?,?)')
-    .run('support_team', JSON.stringify(['dashboard.view', 'licenses.grant']))
+    .run('sr_support', JSON.stringify(['dashboard.view', 'licenses.grant']))
   const originalFetch = globalThis.fetch
   t.after(() => { globalThis.fetch = originalFetch })
   globalThis.fetch = async input => {

@@ -41,7 +41,7 @@ export async function staffAssistant(request, env, origin, deps) {
   if (!user) return send({ error: 'Sign in with your staff Discord account.' }, 401)
   if (!env.COMMUNITY_DB) return send({ error: 'Staff assistant cannot verify access without the staff database.' }, 503)
   const access = await resolveAccess(user.id, env)
-  if (access.rank < 2 || !hasPermission(access, 'staff.docs')) return send({ error: 'Staff assistant requires Support team rank or higher and staff.docs permission.' }, 403)
+  if (access.rank < 2 || !hasPermission(access, 'staff.docs')) return send({ error: 'Staff assistant requires Jr Support rank or higher and staff.docs permission.' }, 403)
   if (!env.ADMIN_READ_LIMITER) return send({ error: 'Staff assistant request limiting is unavailable.' }, 503)
   if (!(await env.ADMIN_READ_LIMITER.limit({ key: `staff-assistant:${user.id}` })).success) return send({ error: 'Please wait before asking another staff question.' }, 429)
   const raw = await request.text()

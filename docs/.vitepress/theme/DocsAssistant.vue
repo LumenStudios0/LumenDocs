@@ -115,7 +115,7 @@ const musicAnimationsEnabled = ref(true)
 const activeMusicTrack = ref('')
 const selectedMusicTrack = ref('')
 const discordUser = ref<DiscordUser | null>(null)
-const staffAssistantMode = computed(() => ['support_team', 'developer', 'studio_lead', 'owner'].includes(discordUser.value?.role || ''))
+const staffAssistantMode = computed(() => ['jr_support', 'support_team', 'sr_support', 'developer', 'studio_lead', 'owner'].includes(discordUser.value?.role || ''))
 let assistantGeneration = 0
 let assistantController: AbortController | null = null
 let identityRequest = 0
@@ -2069,7 +2069,7 @@ onUnmounted(() => {
             <a href="/account/profile" role="menuitem" @click="accountMenuOpen = false">My profile</a>
             <a href="/account/tickets" role="menuitem" @click="accountMenuOpen = false">Support tickets</a>
             <a v-if="discordUser.permissions?.includes('dashboard.view')" href="/admin/" role="menuitem" @click="accountMenuOpen = false">Staff Dashboard</a>
-            <a v-if="['support_team', 'developer', 'studio_lead', 'owner'].includes(discordUser.role || '') && discordUser.permissions?.includes('staff.docs')" href="/staff/" role="menuitem" @click="accountMenuOpen = false">Staff mode</a>
+            <a v-if="['jr_support', 'support_team', 'sr_support', 'developer', 'studio_lead', 'owner'].includes(discordUser.role || '') && discordUser.permissions?.includes('staff.docs')" href="/staff/" role="menuitem" @click="accountMenuOpen = false">Staff mode</a>
             <button type="button" role="menuitem" @click="signOutDiscord">Sign out</button>
           </nav>
           </div>

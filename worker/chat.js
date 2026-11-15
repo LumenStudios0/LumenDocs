@@ -1,5 +1,5 @@
 import { handleCommunity, runCommunityChecks } from './community.js'
-import { adminPermission, getAdminRole, getStaffMembers, hasPermission, rememberMember, resolveAccess, websiteAdminApi } from './access-control.js'
+import { adminPermission, getAdminRole, getStaffMembers, hasPermission, higherStaffRecipients, rememberMember, resolveAccess, websiteAdminApi } from './access-control.js'
 import { claimDiscordPurchases, submitBuiltByBitClaim } from './builtbybit.js'
 import { handleProductTools } from './product-tools.js'
 import { staffAssistant } from './staff-assistant.js'
@@ -899,6 +899,8 @@ async function adminApi(request, env, origin, path) {
   const options = { method: request.method, headers, signal: AbortSignal.timeout(10000) }
   let registryPatch
   let licenseGrant
+  const holdCustomer = path.match(/^\/admin\/users\/(\d{5,22})\/hold$/)?.[1]
+  const revokeLicense = path.match(/^\/admin\/licenses\/([0-9a-f-]{36})\/revoke$/)?.[1]
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     const body = await request.text()
     if (body.length > 8000) return respond({ error: 'Request is too large' }, 413, origin)
@@ -943,6 +945,17 @@ async function adminApi(request, env, origin, path) {
   }
 
   try {
+    let holdRecipients
+    if (holdCustomer) {
+      if (!env.COMMUNITY_DB) return respond({ error: 'Hold alerts are unavailable; the account was not placed on hold.' }, 503, origin)
+      try {
+        await env.COMMUNITY_DB.prepare('SELECT id FROM community_notifications LIMIT 1').first()
+        holdRecipients = await higherStaffRecipients(env, access)
+      } catch (error) {
+        console.error('Hold alert storage is unavailable:', error)
+        return respond({ error: 'Hold alerts are unavailable; the account was not placed on hold.' }, 503, origin)
+      }
+    }
     if (licenseGrant) {
       try {
         await env.COMMUNITY_DB.prepare('SELECT id FROM community_notifications LIMIT 1').first()
@@ -951,16 +964,63 @@ async function adminApi(request, env, origin, path) {
         return respond({ error: 'Notifications are unavailable; the license was not granted.' }, 503, origin)
       }
     }
+    let licenseAuditId
+    const licenseAction = licenseGrant ? 'license.grant' : revokeLicense ? 'license.revoke' : null
+    if (licenseAction) {
+      if (!env.COMMUNITY_DB) return respond({ error: 'License audit storage is unavailable; the change was not sent.' }, 503, origin)
+      try {
+        licenseAuditId = crypto.randomUUID()
+        await env.COMMUNITY_DB.prepare(
+          `INSERT INTO website_access_audit(id, actor_id, actor_role, action, target, details, created_at)
+           VALUES (?, ?, ?, ?, ?, '{}', ?)`,
+        ).bind(licenseAuditId, user.id, access.role, `${licenseAction}_requested`,
+          licenseGrant?.customerId || revokeLicense, new Date().toISOString()).run()
+      } catch (error) {
+        console.error('License audit storage is unavailable:', error)
+        return respond({ error: 'License audit storage is unavailable; the change was not sent.' }, 503, origin)
+      }
+    }
     const upstream = await fetch(upstreamUrl, options)
+    let auditWarning
+    if (licenseAuditId) {
+      try {
+        await env.COMMUNITY_DB.prepare('UPDATE website_access_audit SET action = ?, details = ? WHERE id = ?')
+          .bind(`${licenseAction}_${upstream.ok ? 'succeeded' : 'rejected'}`, JSON.stringify({ status: upstream.status }), licenseAuditId).run()
+      } catch (error) {
+        console.error('License action outcome could not be saved to the audit:', error)
+        auditWarning = 'The license action was sent, but its audit outcome could not be saved. Check the license before retrying.'
+      }
+    }
+    let holdWarning
+    if (upstream.ok && holdCustomer && holdRecipients.length) {
+      try {
+        const now = new Date().toISOString()
+        await env.COMMUNITY_DB.batch(holdRecipients.map(id => env.COMMUNITY_DB.prepare(
+          `INSERT INTO community_notifications (id, recipient_id, title, body, kind, audience, link, created_at)
+           VALUES (?, ?, 'Account placed on hold', ?, 'hold_alert', 'user', ?, ?)`,
+        ).bind(crypto.randomUUID(), id, `Staff member ${user.id} placed account ${holdCustomer} on hold.`, '/admin/', now)))
+      } catch (error) {
+        console.error('Account held, but higher-staff alerts could not be saved:', error)
+        holdWarning = 'Account placed on hold, but staff alerts could not be saved. Tell higher-ranking staff directly; do not repeat the hold.'
+      }
+    }
     const responseBody = await upstream.text()
     if (responseBody.length > 50000) {
-      return respond({ error: 'The licensing service returned an oversized response' }, 502, origin)
+      return respond({ error: holdCustomer && upstream.ok
+        ? `The hold was placed, but the response was too large. Do not repeat it. ${holdWarning || ''}`
+        : (licenseGrant || revokeLicense) && upstream.ok
+          ? 'The license action succeeded, but the response was too large. Check the account and do not repeat it.'
+        : 'The licensing service returned an oversized response' }, 502, origin)
     }
     let payload
     try {
       payload = JSON.parse(responseBody)
     } catch {
-      return respond({ error: 'The licensing service returned an invalid response' }, 502, origin)
+      return respond({ error: holdCustomer && upstream.ok
+        ? `The hold was placed, but the response was invalid. Do not repeat it. ${holdWarning || ''}`
+        : (licenseGrant || revokeLicense) && upstream.ok
+          ? 'The license action succeeded, but the response was invalid. Check the account and do not repeat it.'
+        : 'The licensing service returned an invalid response' }, 502, origin)
     }
     if (registryPatch?.name && path.startsWith('/admin/plugins/') && upstream.status === 422) {
       return respond({ error: 'This licensing API does not support plugin name editing yet. Run the plugin-editing VPS updater from worker/README.md, rebuild api and bot, then retry.' }, 422, origin)
@@ -968,6 +1028,7 @@ async function adminApi(request, env, origin, path) {
     if (upstream.ok && registryPatch?.name && payload?.name !== registryPatch.name) {
       return respond({ error: 'The licensing API did not apply the new name. Refresh the registry and update the VPS API before retrying.' }, 502, origin)
     }
+    if (holdWarning) return respond({ ...payload, notificationWarning: holdWarning }, upstream.status, origin)
     if (upstream.ok && licenseGrant) {
       let activityWarning
       try {
@@ -991,15 +1052,20 @@ async function adminApi(request, env, origin, path) {
         console.error('License granted, but notification could not be saved:', error)
         return respond({ ...payload, notificationWarning: [
           'License granted, but the notification could not be saved. Tell the customer directly; do not grant it again.',
-          activityWarning,
+          activityWarning, auditWarning,
         ].filter(Boolean).join(' ') }, upstream.status, origin)
       }
-      if (activityWarning) return respond({ ...payload, notificationWarning: activityWarning }, upstream.status, origin)
+      if (activityWarning || auditWarning) return respond({ ...payload, notificationWarning: [activityWarning, auditWarning].filter(Boolean).join(' ') }, upstream.status, origin)
     }
+    if (auditWarning) return respond({ ...payload, notificationWarning: auditWarning }, upstream.status, origin)
     return respond(payload, upstream.status, origin)
   } catch (error) {
     console.error('Admin licensing service request failed:', error)
-    return respond({ error: 'The licensing service is temporarily unavailable' }, 503, origin)
+    return respond({ error: holdCustomer
+      ? 'The hold may have been placed, but confirmation failed. Check the account and alert higher-ranking staff before retrying.'
+      : licenseGrant || revokeLicense
+        ? 'The license action may have succeeded, but confirmation failed. Check the account before retrying.'
+        : 'The licensing service is temporarily unavailable' }, 503, origin)
   }
 }
 

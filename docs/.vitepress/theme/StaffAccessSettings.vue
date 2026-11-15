@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { MEMBER_PERMISSIONS, ROLES } from '../../../shared/permissions.mjs'
+import { ROLES } from '../../../shared/permissions.mjs'
 import { useSiteDialog } from './site-dialog'
 const { confirm: confirmSiteAction } = useSiteDialog()
 
 interface Access { role: string; rank: number; permissions: string[] }
-interface Role { id: string; name: string; rank: number; permissions: string[]; revision: number }
+interface Role { id: string; name: string; rank: number; permissions: string[]; allowedPermissions: string[]; revision: number }
 interface Member { discordId: string; username: string; displayName: string; role: string; rank: number; revision: number; protected: boolean; registeredAt: string | null; lastSeenAt: string | null }
 interface SiteSettings { supportOpen: boolean; supportClosedMessage: string; forumOpen: boolean; forumClosedMessage: string }
 interface Audit { id: string; actor_id: string; actor_role: string; action: string; target: string; details: Record<string, unknown>; created_at: string }
@@ -43,7 +43,7 @@ const assignableRoles = computed(() => roles.value.filter(role => actor.value?.r
   role.rank < (actor.value?.rank ?? -1) && role.permissions.every(permission => can(permission))))
 const editableRole = computed(() => selectedRole.value && selectedRole.value.id !== 'owner' && can('settings.roles') &&
   (actor.value?.role === 'owner' || selectedRole.value.rank < (actor.value?.rank ?? -1)))
-const visiblePermissions = computed(() => permissions.value.filter(item => (selectedRole.value?.rank ?? 0) >= 2 || MEMBER_PERMISSIONS.includes(item.id)))
+const visiblePermissions = computed(() => permissions.value.filter(item => selectedRole.value?.allowedPermissions.includes(item.id)))
 const groups = computed(() => [...new Set(visiblePermissions.value.map(item => item.group))])
 const busy = computed(() => loading.value || saving.value)
 const messageOf = (value: unknown) => value instanceof Error ? value.message : 'Website request failed.'

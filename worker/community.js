@@ -379,7 +379,7 @@ async function notifications(request, env, url, user, deps, staff) {
       ? `product_id IN (${productSlots})`
       : 'product_id IS NOT NULL'
     where = `WHERE
-      (audience = 'user' AND recipient_id = ? AND (kind IN ('license','issue','escalation') OR ? = 1)) OR
+      (audience = 'user' AND recipient_id = ? AND (kind IN ('license','issue','escalation','hold_alert') OR ? = 1)) OR
       (audience = 'all' AND ((kind = 'update' AND ? = 1) OR (kind = 'announcement' AND ? = 1)) AND
         ${allProductFilter}) OR
       (audience = 'product' AND ((kind = 'update' AND ? = 1) OR (kind = 'announcement' AND ? = 1)) AND
@@ -392,7 +392,7 @@ async function notifications(request, env, url, user, deps, staff) {
       +prefs.updates, +prefs.announcements, ...productParams,
       +isStaff,
     ]
-  }
+  } else where = "WHERE kind != 'hold_alert'"
   const result = await paginate(
     env.COMMUNITY_DB,
     `SELECT COUNT(*) AS total FROM community_notifications ${where}`,
@@ -1015,6 +1015,7 @@ export async function handleCommunity(request, env, origin, path, deps) {
   if (staffPath) {
     const permission = suffix === '/staff/members' || suffix === '/staff/tickets' && request.method === 'GET' ? 'tickets.view'
       : /^\/staff\/tickets\/[^/]+\/alert$/.test(suffix) ? 'tickets.alerts'
+        : /^\/staff\/tickets\/[0-9a-f-]{36}\/escalation$/i.test(suffix) ? 'tickets.escalate'
         : suffix.startsWith('/staff/tickets/') ? 'tickets.manage'
           : suffix.startsWith('/staff/issues') ? 'issues.manage'
             : suffix.startsWith('/staff/forum/') ? 'forum.moderate'
