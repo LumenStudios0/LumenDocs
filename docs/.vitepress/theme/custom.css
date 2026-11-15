@@ -4415,3 +4415,119 @@ html.lumen-music-animations-off .lumen-track-visuals * {
     transition: none;
   }
 }
+
+html.lumen-staff-mode {
+  --vp-c-brand-1: #ff6969;
+  --vp-c-brand-2: #f04d55;
+  --vp-c-brand-3: #d63642;
+  --vp-c-brand-soft: #ed3f4926;
+  --vp-button-brand-bg: #b52c39;
+  --vp-button-brand-hover-bg: #982331;
+  --vp-button-brand-active-bg: #7d1c29;
+  --vp-c-bg: #09090c;
+  --vp-c-bg-soft: #131318;
+  --vp-c-bg-alt: #0d0d12;
+  --vp-c-bg-elv: #181217;
+  --vp-c-gutter: #09090c;
+  --vp-nav-bg-color: #0d0d12;
+  --vp-local-search-bg: #131318;
+  --vp-c-text-1: #f4edf0;
+  --vp-c-text-2: #bfb3ba;
+  --vp-c-text-3: #a6939c;
+  --vp-c-divider: #59303b;
+  --lumen-card-bg: linear-gradient(145deg, #181217, #100d11);
+  --lumen-card-border: #59303b;
+  --lumen-card-hover: #bd4b5b;
+  --lumen-card-muted: #bfb3ba;
+  --lumen-card-kicker: #ff7a82;
+  --lumen-card-link: #ff8896;
+  --lumen-nav-title: #f4edf0;
+  --lumen-feature-bg: #131318;
+  color-scheme: dark;
+  accent-color: #f04d55;
+}
+
+html.lumen-staff-mode body,
+html.lumen-staff-mode .VPContent {
+  background: #09090c;
+  color: var(--vp-c-text-1);
+}
+
+html.lumen-staff-mode body::before {
+  background: radial-gradient(ellipse at 90% 10%, #b01d3b18, transparent 55%);
+}
+
+html.lumen-staff-mode .VPNavBar {
+  background: #0d0d12;
+  border-bottom-color: var(--lumen-card-border);
+}
+
+html.lumen-staff-mode .VPNavBarTitle img.logo {
+  filter: hue-rotate(100deg);
+}
+
+html.lumen-staff-mode .studio-workspace-logo {
+  background: linear-gradient(135deg, #ff9097, #b52c39);
+}
+
+html.lumen-staff-mode .assistant-launcher,
+html.lumen-staff-mode .assistant-form button,
+html.lumen-staff-mode .assistant-bug-submit,
+html.lumen-staff-mode .VPButton.brand {
+  background: var(--vp-button-brand-bg);
+  box-shadow: 0 4px 18px #b52c3933;
+  color: #fff;
+}
+
+html.lumen-staff-mode .assistant-launcher:hover,
+html.lumen-staff-mode .assistant-form button:hover:not(:disabled),
+html.lumen-staff-mode .assistant-bug-submit:hover:not(:disabled),
+html.lumen-staff-mode .VPButton.brand:hover {
+  background: var(--vp-button-brand-hover-bg);
+}
+
+html.lumen-staff-mode :is(.assistant-panel, .assistant-header, .assistant-brand-mark, .assistant-track-picker, .assistant-form),
+html.lumen-staff-mode .studio-shell .VPSidebarItem.level-1.is-active > .item {
+  border-color: var(--lumen-card-border);
+}
+
+html.lumen-staff-mode .assistant-panel {
+  background: var(--vp-c-bg);
+  box-shadow: 0 16px 48px #0009, 0 0 28px #b52c391f;
+}
+
+html.lumen-staff-mode .assistant-brand-mark {
+  background: linear-gradient(145deg, #ff696930, #b52c3914);
+  box-shadow: inset 0 1px #ffffff14, 0 0 18px #b52c3929;
+}
+
+html.lumen-staff-mode .assistant-brand-mark svg {
+  fill: var(--vp-c-brand-1);
+  filter: drop-shadow(0 0 5px #f04d5540);
+}
+
+html.lumen-staff-mode .assistant-suggestions button:hover {
+  border-color: var(--vp-c-brand-1);
+}
+
+html.lumen-staff-mode,
+html.lumen-staff-mode * {
+  scrollbar-color: #b52c39 #1e1118;
+}
+
+html.lumen-staff-mode ::-webkit-scrollbar-track {
+  background: #1e1118;
+}
+
+html.lumen-staff-mode ::-webkit-scrollbar-thumb {
+  background: #b52c39;
+}
+
+html.lumen-staff-mode ::-webkit-scrollbar-thumb:hover {
+  background: #f04d55;
+}
+
+html.lumen-staff-mode ::selection {
+  background: #b52c3966;
+  color: #fff;
+}

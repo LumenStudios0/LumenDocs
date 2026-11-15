@@ -93,10 +93,6 @@ onUnmounted(() => {
   </main>
 </template>
 
-<style>
-html.lumen-staff-mode { --vp-c-brand-1:#ff6969; --vp-c-brand-2:#f04d55; --vp-c-brand-3:#d63642; --vp-c-brand-soft:#ed3f4926; --vp-c-bg:#09090c; --vp-c-bg-soft:#131318; --vp-c-bg-alt:#0d0d12; --vp-c-text-1:#f4edf0; --vp-c-text-2:#bfb3ba; --vp-c-divider:#59303b; color-scheme:dark; }
-html.lumen-staff-mode body, html.lumen-staff-mode .VPContent { background:#09090c; color:#f4edf0; }
-</style>
 <style scoped>
 .staff-knowledge{max-width:1300px;margin:auto;padding:32px clamp(16px,4vw,48px) 80px;min-height:80vh;color:#f4edf0}
 .knowledge-hero{position:relative;overflow:hidden;display:flex;justify-content:space-between;gap:20px;padding:clamp(24px,5vw,56px);border:1px solid #b6394959;border-radius:24px;background:radial-gradient(ellipse at 90% 0,#b01d3b38,transparent 65%),#101015;animation:knowledge-enter .55s ease both}
