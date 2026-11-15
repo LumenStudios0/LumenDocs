@@ -235,7 +235,7 @@ test('loyalty counts distinct active registry entitlements and fails closed on i
   assert.equal((await call('/studio/loyalty', 'GET', undefined, '')).status, 401)
 })
 
-test('member profiles enforce ownership, opt-in publication, safe fields, revisions and verified message badges', async t => {
+test('member profiles are public automatically with owner-only edits, safe fields, revisions and verified message badges', async t => {
   const { call, env, customer, owner, sqlite } = await fixture(t)
   const originalFetch = globalThis.fetch
   t.after(() => { globalThis.fetch = originalFetch })
@@ -245,10 +245,10 @@ test('member profiles enforce ownership, opt-in publication, safe fields, revisi
       products: [{ productId: 'p1', productActive: true, status: 'active', expiresAt: null }] })
   assert.equal((await call('/studio/profiles/me', 'GET', undefined, '')).status, 401)
   const initial = await (await call('/studio/profiles/me', 'GET', undefined, customer)).json()
-  assert.equal(initial.profile.public, false)
+  assert.equal(initial.profile.public, true)
   assert.equal(initial.profile.tier.id, 'elite')
-  assert.equal((await call('/studio/profiles/' + customer, 'GET', undefined, owner)).status, 404)
-  assert.equal((await (await call('/studio/profiles', 'GET', undefined, '')).json()).total, 0)
+  assert.equal((await call('/studio/profiles/' + customer, 'GET', undefined, '')).status, 200)
+  assert.equal((await (await call('/studio/profiles', 'GET', undefined, '')).json()).total, 1)
   const body = { displayName: 'Alex', bio: '<script>alert(1)</script>', pronouns: 'they/them', status: 'Building a server',
     accent: '#123456', banner: '#654321', website: 'https://example.com', showcase: '', favoritePlugin: 'Shards', public: true, revision: 0 }
   for (const change of [{ accent: 'red;url(x)' }, { website: 'javascript:alert(1)' }, { userId: owner }, { tier: 'elite' }]) {
@@ -267,14 +267,28 @@ test('member profiles enforce ownership, opt-in publication, safe fields, revisi
   assert.equal(identities.get(customer).bio, undefined)
   sqlite.prepare('UPDATE member_profiles SET tier_checked_at=? WHERE user_id=?').run('2000-01-01', customer)
   assert.equal((await messageProfiles(env.COMMUNITY_DB, [customer])).get(customer).tier, null)
-  assert.equal((await call('/studio/profiles/me', 'PUT', { ...body, public: false, revision: 1 }, customer)).status, 200)
-  assert.equal((await messageProfiles(env.COMMUNITY_DB, [customer])).size, 0)
-  assert.equal((await call('/studio/profiles/' + customer, 'GET', undefined, '')).status, 404)
+  assert.equal((await call('/studio/profiles/me', 'PUT', { ...body, public: false, revision: 1 }, customer)).status, 400)
+  assert.equal((await messageProfiles(env.COMMUNITY_DB, [customer])).size, 1)
+  assert.equal((await call('/studio/profiles/' + customer, 'GET', undefined, '')).status, 200)
   globalThis.fetch = async () => Response.json({ error: 'Unavailable' }, { status: 503 })
   const outage = await (await call('/studio/profiles/me', 'GET', undefined, customer)).json()
   assert.match(outage.warning, /could not be refreshed/)
   assert.equal(outage.profile.tier, null)
   assert.equal(outage.profile.bio, body.bio)
+})
+
+test('public-profile migration publishes existing profiles without losing owner edits and rejects stale drafts', async t => {
+  const { call, sqlite, customer } = await fixture(t)
+  sqlite.prepare(`INSERT INTO member_profiles(user_id,username,display_name,bio,public,revision,created_at,updated_at)
+    VALUES (?,?,?,'Existing biography',0,4,'2026-01-01','2026-01-01')`).run(customer, 'Customer', 'Original name')
+  sqlite.exec(await readFile(new URL('../worker/migrations/community/0016_public_member_profiles.sql', import.meta.url), 'utf8'))
+  const published = await (await call('/studio/profiles/' + customer, 'GET', undefined, '')).json()
+  assert.equal(published.profile.bio, 'Existing biography')
+  assert.equal(published.profile.displayName, 'Original name')
+  const body = { displayName: 'Changed', bio: '', pronouns: '', status: '', accent: '#123456', banner: '#654321',
+    website: '', showcase: '', favoritePlugin: '', public: true, revision: 4 }
+  assert.equal((await call('/studio/profiles/me', 'PUT', body, customer)).status, 409)
+  assert.equal((await call('/studio/profiles/me', 'PUT', { ...body, revision: 5 }, customer)).status, 200)
 })
 
 test('sub-clients receive only explicitly shared downloads while owner eligibility and tier limits remain valid', async t => {

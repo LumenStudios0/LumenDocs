@@ -2066,6 +2066,7 @@ onUnmounted(() => {
           >
             <p v-if="discordAuthNotice" class="lumen-account-notice" role="status">{{ discordAuthNotice }}</p>
             <a href="/account/" role="menuitem" @click="accountMenuOpen = false">My account</a>
+            <a href="/account/profile" role="menuitem" @click="accountMenuOpen = false">My profile</a>
             <a href="/account/tickets" role="menuitem" @click="accountMenuOpen = false">Support tickets</a>
             <a v-if="discordUser.permissions?.includes('dashboard.view')" href="/admin/" role="menuitem" @click="accountMenuOpen = false">Staff Dashboard</a>
             <a v-if="['support_team', 'developer', 'studio_lead', 'owner'].includes(discordUser.role || '') && discordUser.permissions?.includes('staff.docs')" href="/staff/" role="menuitem" @click="accountMenuOpen = false">Staff mode</a>

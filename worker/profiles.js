@@ -60,8 +60,8 @@ export async function handleProfiles(request, env, origin, path, deps) {
     if (mine) {
       const now = new Date().toISOString()
       const avatar = typeof user.avatarUrl === 'string' && /^https:\/\/cdn\.discordapp\.com\/(?:avatars|embed\/avatars)\//.test(user.avatarUrl) ? user.avatarUrl : ''
-      await db.prepare(`INSERT INTO member_profiles(user_id,username,display_name,avatar_url,created_at,updated_at)
-        VALUES (?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET username=excluded.username,avatar_url=excluded.avatar_url`)
+      await db.prepare(`INSERT INTO member_profiles(user_id,username,display_name,avatar_url,created_at,updated_at,public)
+        VALUES (?,?,?,?,?,?,1) ON CONFLICT(user_id) DO UPDATE SET username=excluded.username,avatar_url=excluded.avatar_url`)
         .bind(user.id, user.username || user.id, user.globalName || user.username || user.id, avatar, now, now).run()
       if (request.method === 'PUT') {
         const raw = await request.text()
@@ -70,9 +70,9 @@ export async function handleProfiles(request, env, origin, path, deps) {
         try { body = JSON.parse(raw) } catch { return send({ error: 'Expected JSON.' }, 400) }
         if (!body || Object.entries(fields).some(([key, max]) => typeof body[key] !== 'string' || body[key].trim().length > max || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(body[key])) ||
             !body.displayName.trim() || !/^#[0-9a-fA-F]{6}$/.test(body.accent || '') || !/^#[0-9a-fA-F]{6}$/.test(body.banner || '') ||
-            !link(body.website) || !link(body.showcase) || typeof body.public !== 'boolean' || !Number.isInteger(body.revision) || body.revision < 0 ||
+            !link(body.website) || !link(body.showcase) || body.public !== true || !Number.isInteger(body.revision) || body.revision < 0 ||
             Object.keys(body).some(key => ![...Object.keys(fields), 'accent', 'banner', 'website', 'showcase', 'public', 'revision'].includes(key))) {
-          return send({ error: 'Use a display name, supported text lengths, hex colors, HTTPS links and the current revision.' }, 400)
+          return send({ error: 'Profiles are public. Use a display name, supported text lengths, hex colors, HTTPS links and the current revision.' }, 400)
         }
         const result = await db.prepare(`UPDATE member_profiles SET display_name=?,bio=?,pronouns=?,status=?,accent=?,banner=?,
           website=?,showcase=?,favorite_plugin=?,public=?,updated_at=?,revision=revision+1 WHERE user_id=? AND revision=?`)
@@ -92,7 +92,7 @@ export async function handleProfiles(request, env, origin, path, deps) {
       return send({ profile: view(await db.prepare('SELECT * FROM member_profiles WHERE user_id=?').bind(user.id).first(), true), warning })
     }
     const row = await db.prepare('SELECT * FROM member_profiles WHERE user_id=? AND public=1').bind(match[1]).first()
-    return row ? send({ profile: view(row) }) : send({ error: 'This profile is private or not yet created.' }, 404)
+    return row ? send({ profile: view(row) }) : send({ error: 'This profile has not been created yet.' }, 404)
   } catch (error) {
     console.error('Profile request failed:', error instanceof Error ? error.name : 'Unknown error')
     return send({ error: 'Profiles are temporarily unavailable. Refresh before retrying a save.' }, 503)

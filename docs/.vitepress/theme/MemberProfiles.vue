@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { studioRequest } from './studio-api'
 import { getDiscordSession } from './discord-session'
+const props = defineProps<{ editOwn?: boolean }>()
 interface Profile {
   id: string; username: string; displayName: string; avatarUrl: string; bio: string; pronouns: string; status: string;
   accent: string; banner: string; website: string; showcase: string; favoritePlugin: string;
@@ -18,14 +19,14 @@ const error = ref('')
 const notice = ref('')
 const page = ref(1)
 const total = ref(0)
-const draft = reactive({ displayName: '', bio: '', pronouns: '', status: '', accent: '#9f72ff', banner: '#38205c', website: '', showcase: '', favoritePlugin: '', public: false, revision: 0 })
+const draft = reactive({ displayName: '', bio: '', pronouns: '', status: '', accent: '#9f72ff', banner: '#38205c', website: '', showcase: '', favoritePlugin: '', public: true, revision: 0 })
 const preview = computed(() => editing.value && own.value ? { ...own.value, ...draft } : selected.value)
 let generation = 0
 let initialization = 0
 let token = ''
 function fill(profile: Profile) {
   for (const key of ['displayName', 'bio', 'pronouns', 'status', 'accent', 'banner', 'website', 'showcase', 'favoritePlugin'] as const) draft[key] = profile[key]
-  draft.public = profile.public === true
+  draft.public = true
   draft.revision = profile.revision ?? 0
 }
 function edit() { if (!own.value) return; fill(own.value); selected.value = own.value; editing.value = true; error.value = ''; notice.value = '' }
@@ -86,11 +87,12 @@ function resetAppearance() { draft.accent = '#9f72ff'; draft.banner = '#38205c' 
 async function init() {
   const request = ++initialization
   generation++; selected.value = null; own.value = null; editing.value = false; notice.value = ''; error.value = ''
-  Object.assign(draft, { displayName: '', bio: '', pronouns: '', status: '', accent: '#9f72ff', banner: '#38205c', website: '', showcase: '', favoritePlugin: '', public: false, revision: 0 })
+  Object.assign(draft, { displayName: '', bio: '', pronouns: '', status: '', accent: '#9f72ff', banner: '#38205c', website: '', showcase: '', favoritePlugin: '', public: true, revision: 0 })
   await directory()
   if (request !== initialization) return
   await mine()
   if (request !== initialization) return
+  if (props.editOwn) { edit(); return }
   const id = new URL(location.href).searchParams.get('id')
   if (id && /^\d{5,22}$/.test(id)) await open(id)
 }
@@ -100,7 +102,7 @@ onUnmounted(() => { generation++; initialization++; window.removeEventListener('
 </script>
 <template>
   <main class="members">
-    <header class="members-heading"><div><p>LUMEN / COMMUNITY MEMBERS</p><h1>Meet the people behind the servers.</h1><span>Personalize your corner of Lumen. Profiles are private until you publish them.</span></div><button v-if="own" :disabled="saving" @click="edit">Edit my profile</button></header>
+    <header class="members-heading"><div><p>LUMEN / COMMUNITY MEMBERS</p><h1>{{ props.editOwn ? 'My profile' : 'Meet the people behind the servers.' }}</h1><span>Profiles are visible to everyone. Only you can edit yours.</span></div><button v-if="own" :disabled="saving" @click="edit">Edit my profile</button></header>
     <form class="member-search" @submit.prevent="directory(1)"><label for="member-search">Search names or Discord user IDs</label><div><input id="member-search" v-model="search" maxlength="60" placeholder="Find a member…"><button :disabled="loading || saving">Search</button></div></form>
     <p v-if="error" class="members-error" role="alert">{{ error }}</p><p v-if="notice" role="status">{{ notice }}</p><p v-if="loading" role="status">Loading members…</p>
     <div class="members-layout">
@@ -124,7 +126,7 @@ onUnmounted(() => { generation++; initialization++; window.removeEventListener('
           <label>About me <small>{{ draft.bio.length }} / 600</small><textarea v-model="draft.bio" maxlength="600" rows="5" placeholder="Tell the community about yourself. No private information or credentials." /></label>
           <div class="member-colors"><label>Accent color<input v-model="draft.accent" type="color"></label><label>Banner color<input v-model="draft.banner" type="color"></label><button type="button" @click="resetAppearance">Reset colors</button></div>
           <label>Website<input v-model="draft.website" type="url" maxlength="500" placeholder="https://…"></label><label>Server showcase link<input v-model="draft.showcase" type="url" maxlength="500" placeholder="https://…"></label><label>Favorite plugin<input v-model="draft.favoritePlugin" maxlength="80"></label>
-          <label class="member-visibility"><input v-model="draft.public" type="checkbox"> Publish my profile in search and show my profile identity and badge on community messages</label><p>Public profiles are visible to everyone. Ticket content, licenses, purchases and last-online activity are never included.</p>
+          <p>Your profile and badge are public. Only you can edit this information. Ticket content, licenses, purchases and last-online activity are never included.</p>
           <button type="submit">{{ saving ? 'Saving…' : 'Save profile' }}</button><button type="button" @click="editing=false">Cancel</button>
         </fieldset></form>
       </div>

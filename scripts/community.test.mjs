@@ -29,7 +29,7 @@ async function tokenFor(id, name) {
 
 function createD1() {
   const sqlite = new DatabaseSync(':memory:')
-  const migrations = Promise.all(['0001_community.sql', '0002_ticket_routing.sql', '0003_community_forum.sql', '0004_website_access.sql', '0005_member_registration.sql', '0006_community_expansion.sql', '0007_product_tools.sql', '0010_trial_duration.sql', '0011_staff_docs_permissions.sql', '0012_staff_operations.sql', '0013_staff_license_keys.sql', '0014_loyalty_subclients.sql', '0015_member_profiles.sql'].map(
+  const migrations = Promise.all(['0001_community.sql', '0002_ticket_routing.sql', '0003_community_forum.sql', '0004_website_access.sql', '0005_member_registration.sql', '0006_community_expansion.sql', '0007_product_tools.sql', '0010_trial_duration.sql', '0011_staff_docs_permissions.sql', '0012_staff_operations.sql', '0013_staff_license_keys.sql', '0014_loyalty_subclients.sql', '0015_member_profiles.sql', '0016_public_member_profiles.sql'].map(
     name => readFile(new URL(`../worker/migrations/community/${name}`, import.meta.url), 'utf8'),
   ))
   const database = {
@@ -839,7 +839,7 @@ test('website status accepts large HTML pages but rejects empty or invalid respo
   }
 })
 
-test('community messages show only published profile identities and never expose private bios or ticket content', async t => {
+test('community messages show public profile identities without embedding biographies or private account details', async t => {
   const { api, db } = await accessFixture(t)
   const customer = await tokenFor(customerId, 'Customer')
   const otherId = '123456789012345679'
@@ -855,11 +855,8 @@ test('community messages show only published profile identities and never expose
   assert.equal(detail.posts[0].profile.bio, undefined)
   const list = await (await api('/community/forum', 'GET', undefined, other)).json()
   assert.equal(list.items[0].profile.id, customerId)
-  db.sqlite.prepare('UPDATE member_profiles SET public=0 WHERE user_id=?').run(customerId)
-  const hidden = await (await api(`/community/forum/${thread.id}`, 'GET', undefined, other)).json()
-  assert.equal(hidden.posts[0].profile, null)
-  assert.equal(hidden.thread.profile, null)
-  assert.ok(!JSON.stringify(hidden).includes('Private biography'))
+  assert.equal(detail.posts[0].author_id, undefined)
+  assert.ok(!JSON.stringify(detail).includes('Private biography'))
 })
 
 test('community support forum is public to read, Discord-only to post, and staff-moderated', async () => {
