@@ -188,6 +188,30 @@ test('license activity uses the verified customer name and never records failed 
   assert.equal(calls, 3)
 })
 
+test('editing license expiration forwards only valid dates and requires license status permission', async t => {
+  const { api, assign } = await accessFixture(t)
+  const id = '555555555555555555'
+  const support = await tokenFor(id, 'Support')
+  await api('/auth/me', 'GET', undefined, support)
+  assert.equal((await assign(id, 'support_team')).status, 200)
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  const calls = []
+  globalThis.fetch = async (url, options) => { calls.push({ url: String(url), body: JSON.parse(options.body) }); return Response.json({ expiresAt: JSON.parse(options.body).expiresAt }) }
+  const path = '/admin/licenses/12345678-1234-1234-1234-123456789012/renew'
+  for (const body of [{ expiresAt: 'invalid' }, { expiresAt: '2000-01-01' }, { expiresAt: null }, { expiresAt: new Date(Date.now() + 86400000).toISOString(), status: 'active' }]) {
+    assert.equal((await api(path, 'POST', body, support)).status, 400)
+  }
+  assert.equal(calls.length, 0)
+  const expiresAt = new Date(Date.now() + 86400000).toISOString()
+  assert.equal((await api(path, 'POST', { expiresAt }, support)).status, 200)
+  assert.ok(calls[0].url.endsWith(path.replace('/admin/', '/v1/admin/')))
+  assert.deepEqual(calls[0].body, { expiresAt })
+  assert.equal((await assign(id, 'client')).status, 200)
+  assert.equal((await api(path, 'POST', { expiresAt }, support)).status, 403)
+  assert.equal(calls.length, 1)
+})
+
 test('community routes require configured persistent storage and valid sign-in', async () => {
   await database.ready
   const customer = await tokenFor(customerId, 'Customer')

@@ -902,6 +902,13 @@ async function adminApi(request, env, origin, path) {
     if (body) {
       try {
         const parsed = JSON.parse(body)
+        if (/^\/admin\/licenses\/[0-9a-f-]{36}\/renew$/.test(path)) {
+          if (!parsed || typeof parsed.expiresAt !== 'string' ||
+              !Number.isFinite(Date.parse(parsed.expiresAt)) || Date.parse(parsed.expiresAt) <= Date.now() ||
+              Object.keys(parsed).some(key => key !== 'expiresAt')) {
+            return respond({ error: 'Choose a future expiration date.' }, 400, origin)
+          }
+        }
         if (path === '/admin/licenses' && request.method === 'POST') {
           if (!env.COMMUNITY_DB) return respond({ error: 'Notifications are unavailable; the license was not granted.' }, 503, origin)
           if (typeof parsed?.customerDiscordId !== 'string' || !/^[1-9]\d{0,31}$/.test(parsed.customerDiscordId) ||
@@ -925,6 +932,8 @@ async function adminApi(request, env, origin, path) {
       }
       headers['Content-Type'] = 'application/json'
       options.body = registryPatch ? JSON.stringify(registryPatch) : body
+    } else if (/^\/admin\/licenses\/[0-9a-f-]{36}\/renew$/.test(path)) {
+      return respond({ error: 'Choose a future expiration date.' }, 400, origin)
     } else if (request.method === 'PATCH') {
       return respond({ error: 'Supply registry changes as JSON.' }, 400, origin)
     }

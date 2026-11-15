@@ -10,6 +10,7 @@ import StaffPluginRegistry from './StaffPluginRegistry.vue'
 import StaffAccessSettings from './StaffAccessSettings.vue'
 import ProductReleaseManager from './ProductReleaseManager.vue'
 import { useSiteDialog } from './site-dialog'
+import { runLicenseBatch } from './license-batch.mjs'
 const { confirm: confirmSiteAction } = useSiteDialog()
 
 interface AdminLicense {
@@ -53,7 +54,8 @@ interface Page<T> { items: T[]; total: number; page: number; pageSize: number }
 type View = 'customers' | 'licenses' | 'audit' | 'products'
 const views: { id: View; label: string; number: string }[] = [
   { id: 'customers', label: 'Customers', number: '01' },
-  { id: 'audit', label: 'Audit trail', number: '02' }, { id: 'products', label: 'Plugins & products', number: '03' },
+  { id: 'licenses', label: 'Licenses & plugins', number: '02' },
+  { id: 'audit', label: 'Audit trail', number: '03' }, { id: 'products', label: 'Plugins & products', number: '04' },
 ]
 const pageSize = 50
 const view = ref<View>('customers')
@@ -76,6 +78,11 @@ const products = ref<AdminProduct[]>([])
 const auditEntries = ref<AuditEntry[]>([])
 const user = ref<AdminUser | null>(null)
 const selectedLicenseId = ref('')
+const profileArea = ref<'licenses' | 'account'>('licenses')
+const selectedLicenseIds = ref<string[]>([])
+const selectedGrantProducts = ref<string[]>([])
+const batchResults = ref<{ id: string; state: string; message: string }[]>([])
+const editExpiresAt = ref('')
 const selectedLicense = computed(() => user.value?.licenses.find(license => license.licenseId === selectedLicenseId.value) ?? null)
 const profileAuditPage = ref(1)
 const profileAuditTotal = ref(0)
@@ -117,7 +124,7 @@ let presenceController: AbortController | null = null
 const presenceError = ref('')
 const busy = computed(() => loading.value || submitting.value || verifyingOwner.value)
 const maxPage = computed(() => Math.max(1, Math.ceil(totals[view.value] / pageSize)))
-const sourceLicenses = computed(() => user.value?.licenses ?? [])
+const sourceLicenses = computed(() => user.value?.licenses ?? (view.value === 'licenses' ? inventory.value : []))
 const grantOptions = computed(() => testMode.value
   ? products.value.filter(product => product.active).map(product => ({ id: product.productId, name: product.name, productId: product.productId, reason: '' }))
   : documentedGrantOptions(pluginData.plugins, products.value))
@@ -151,9 +158,14 @@ const auditMaxPage = computed(() => Math.max(1, Math.ceil((user.value ? profileA
 
 function expiryTime(license: AdminLicense) { return license.expiresAt ? Date.parse(license.expiresAt) || Infinity : Infinity }
 function productName(id: string) { return products.value.find(product => product.productId === id)?.name || id }
+function batchItemName(id: string) {
+  const license = sourceLicenses.value.find(item => item.licenseId === id)
+  return license ? `${productName(license.productId)} / ${id}` : productName(id)
+}
 function messageOf(value: unknown) { return value instanceof Error ? value.message : 'The admin request could not be completed.' }
 function clearMessages() { error.value = ''; notice.value = '' }
 function clearKey() { licenseKey.value = ''; licenseKeyOwner.value = ''; keyVisible.value = false }
+function clearLicenseSelection() { selectedLicenseIds.value = []; selectedGrantProducts.value = []; batchResults.value = []; editExpiresAt.value = '' }
 function resetLicenseFilters() { licenseSearch.value = ''; licenseFilter.value = 'all'; productFilter.value = '' }
 function formatDate(value: string | null, empty = 'Never') {
   if (!value) return empty
@@ -221,12 +233,12 @@ function selectLinkedArea(resetDefault = false) {
   } else if (area === 'tickets' && communityAccess.value) { websiteOperations.value = true; settingsArea.value = ''; clearKey() }
   else if ((area === 'roles' || area === 'settings') && can(area === 'roles' ? 'roles.assign' : 'settings.view')) {
     settingsArea.value = area; websiteOperations.value = false; clearKey()
-  } else if ((area === 'products' || area === 'audit') && availableViews.value.some(tab => tab.id === area)) {
+  } else if ((area === 'products' || area === 'audit' || area === 'licenses') && availableViews.value.some(tab => tab.id === area)) {
     websiteOperations.value = false; settingsArea.value = ''; user.value = null; selectedLicenseId.value = ''; view.value = area; clearKey()
   }
 }
 function linkedAreaChanged() {
-  if (submitting.value || !['', 'tickets', 'roles', 'settings', 'products', 'audit'].includes(window.location.hash.slice(1))) return
+  if (submitting.value || !['', 'tickets', 'roles', 'settings', 'products', 'audit', 'licenses'].includes(window.location.hash.slice(1))) return
   selectLinkedArea(true)
   if (!websiteOperations.value && !settingsArea.value && can('dashboard.view') && availableViews.value.length) void loadView()
 }
@@ -239,6 +251,7 @@ function clearWorkspace() {
   products.value = []
   auditEntries.value = []
   selectedLicenseId.value = ''
+  clearLicenseSelection()
   clearKey()
   loaded.value = false
   loading.value = false
@@ -335,7 +348,9 @@ async function loadView(page = pages[view.value]) {
     const result = validatePage(await adminRequest<Page<Customer | AdminLicense | AuditEntry | AdminProduct>>(
       `/${target === 'customers' ? 'users' : target}?${params}`,
     ))
+    const registry = target === 'licenses' && can('plugins.view') ? await fetchRegistryItems<AdminProduct>(adminRequest, '/products') : null
     if (requestId !== generation) return
+    if (registry) products.value = registry
     // Each tab maps to one fixed, server-authorized list endpoint.
     if (target === 'customers') customers.value = result.items as Customer[]
     if (target === 'licenses') inventory.value = result.items as AdminLicense[]
@@ -358,8 +373,10 @@ function switchView(target: View) {
   settingsArea.value = ''
   user.value = null
   selectedLicenseId.value = ''
+  clearLicenseSelection()
   clearKey()
   view.value = target
+  resetLicenseFilters()
   void loadView()
 }
 function searchCustomers() {
@@ -375,6 +392,8 @@ async function fetchProfile(discordId: string) {
   const requestId = ++generation
   const sameCustomer = user.value?.discordId === discordId
   if (!sameCustomer) {
+    clearLicenseSelection()
+    profileArea.value = 'licenses'
     clearKey()
     selectedLicenseId.value = ''
     reason.value = ''
@@ -399,6 +418,7 @@ async function fetchProfile(discordId: string) {
     if (requestId !== generation) return
     validatePage(history)
     user.value = profile
+    selectedLicenseIds.value = selectedLicenseIds.value.filter(id => profile.licenses.some(license => license.licenseId === id && license.status !== 'revoked'))
     products.value = registry
     if (!grantOptions.value.some(option => option.productId && option.productId === grantProductId.value)) grantProductId.value = ''
     auditEntries.value = history.items
@@ -422,6 +442,11 @@ async function inspectLicense(license: AdminLicense) {
   if (!user.value || user.value.discordId !== license.customerDiscordId) await lookupUser(license.customerDiscordId)
   if (!user.value || user.value.discordId !== license.customerDiscordId) return
   selectedLicenseId.value = license.licenseId
+  editExpiresAt.value = ''
+  if (license.expiresAt && Number.isFinite(Date.parse(license.expiresAt))) {
+    const date = new Date(license.expiresAt)
+    editExpiresAt.value = new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+  }
   ipAddress.value = ''
   await nextTick()
   document.getElementById('license-inspector')?.focus()
@@ -480,6 +505,71 @@ async function grantLicense() {
     keyVisible.value = false
     grantExpiresAt.value = ''
   })
+}
+async function saveExpiration() {
+  if (!selectedLicense.value || !can('licenses.status') || busy.value) return
+  const licenseId = selectedLicense.value.licenseId, session = getDiscordSession(), operationId = generation
+  const expiry = new Date(editExpiresAt.value)
+  if (!editExpiresAt.value || !Number.isFinite(expiry.getTime()) || expiry.getTime() <= Date.now()) {
+    error.value = 'Choose a future expiration date.'
+    return
+  }
+  if (!await confirmSiteAction(`Set ${productName(selectedLicense.value.productId)} to expire on ${expiry.toLocaleString()}?${selectedLicense.value.status === 'suspended' ? ' The licensing service will also reactivate this suspended license.' : ''}`, { title: 'Change license expiration', confirmText: 'Save expiration' })) return
+  if (session !== getDiscordSession() || operationId !== generation || selectedLicense.value?.licenseId !== licenseId || busy.value) return
+  await perform(`/licenses/${licenseId}/renew`, { expiresAt: expiry.toISOString() }, 'License expiration updated.')
+}
+async function customerLicenseBatch(action: 'grant' | 'revoke') {
+  if (!user.value || busy.value || !can(action === 'grant' ? 'licenses.grant' : 'licenses.status')) return
+  const customerId = user.value.discordId
+  const session = getDiscordSession(), operationId = generation
+  const ids = [...(action === 'grant' ? selectedGrantProducts.value : selectedLicenseIds.value)]
+  if (!ids.length || ids.length > 10 || new Set(ids).size !== ids.length) { error.value = 'Select between 1 and 10 items.'; return }
+  if (action === 'grant' && ids.some(id => !grantOptions.value.some(option => option.productId === id && !option.reason))) {
+    error.value = 'Only available registered plugins can be granted.'; return
+  }
+  if (action === 'revoke' && ids.some(id => !user.value?.licenses.some(license => license.licenseId === id && license.status !== 'revoked'))) {
+    error.value = 'Select current, non-revoked licenses from this customer.'; return
+  }
+  const expiry = grantExpiresAt.value ? new Date(grantExpiresAt.value) : null
+  if (action === 'grant' && expiry && (!Number.isFinite(expiry.getTime()) || expiry.getTime() <= Date.now())) {
+    error.value = 'Choose a future expiration date, or leave it blank for lifetime access.'; return
+  }
+  if (!await confirmSiteAction(`${action === 'grant' ? 'Grant' : 'Permanently revoke'} ${ids.length} selected ${action === 'grant' ? 'plugins' : 'licenses'} for ${user.value.globalName || user.value.username || customerId}?${action === 'grant' ? expiry ? ` Expires ${expiry.toLocaleString()}.` : ' Lifetime access.' : ' This cannot be undone. Other licenses and the account will remain.'}`, { title: action === 'grant' ? 'Bulk grant licenses' : 'Take selected licenses', confirmText: action === 'grant' ? 'Grant selected' : 'Revoke selected', danger: action === 'revoke' })) return
+  const isCurrent = () => session === getDiscordSession() && operationId === generation && user.value?.discordId === customerId
+  if (!isCurrent() || busy.value) return
+  clearMessages(); batchResults.value = []; submitting.value = true
+  const revokeReason = reason.value.trim()
+  try {
+    const results = await runLicenseBatch(ids, async (id: string) => {
+      if (action === 'revoke') {
+        await adminRequest(`/licenses/${id}/revoke`, { method: 'POST', body: JSON.stringify({ reason: revokeReason || undefined }) })
+        return { state: 'revoked', message: 'License permanently revoked.' }
+      }
+      if (testMode.value) {
+        if (user.value?.licenses.some(license => license.productId === id && effectiveLicenseStatus(license, Date.now()) === 'active')) {
+          return { state: 'skipped', message: 'Existing active access preserved.' }
+        }
+        await adminRequest('/licenses', { method: 'POST', body: JSON.stringify({ customerDiscordId: customerId, productId: id, expiresAt: expiry?.toISOString() ?? null }) })
+        return { state: 'granted', message: 'Local test license granted; key is test-only.' }
+      }
+      const response = await studioRequest<{ results: { customerId: string; state: string; message: string }[] }>('/bulk-grants', {
+        method: 'POST', body: JSON.stringify({ requestId: crypto.randomUUID(), customerIds: [customerId], productId: id, expiresAt: expiry?.toISOString() ?? null }),
+      })
+      const result = response.results?.find(item => item.customerId === customerId)
+      if (!result) throw new Error('Missing grant result. Check customer access before retrying.')
+      return { state: result.state, message: result.message }
+    }, isCurrent)
+    if (!isCurrent()) return
+    batchResults.value = results
+    selectedLicenseIds.value = []; selectedGrantProducts.value = []
+    await fetchProfile(customerId)
+    if (session !== getDiscordSession()) return
+    notice.value = results.some(result => ['failed', 'uncertain', 'processing'].includes(result.state))
+      ? 'Batch stopped. Review each result and refreshed access before retrying; later items were not attempted.'
+      : 'Batch complete. Review the results below.'
+  } catch (requestError) {
+    if (session === getDiscordSession()) error.value = `Batch actions may have been saved. Do not repeat until you refresh and review the customer. ${messageOf(requestError)}`
+  } finally { submitting.value = false }
 }
 function addIp() {
   if (!selectedLicense.value) return
@@ -705,8 +795,12 @@ onUnmounted(() => {
         <div><p class="staff-eyebrow">CUSTOMER PROFILE</p><h2>{{ user.globalName || user.username || 'Discord customer' }}</h2><p>{{ user.username ? `@${user.username} / ` : '' }}{{ user.discordId }}</p><button type="button" :disabled="busy" @click="copyText(user.discordId, 'Discord ID')">Copy Discord ID</button></div>
         <div class="staff-profile-state"><span class="staff-badge">{{ user.deleted ? 'Deleted account' : user.banned ? 'Banned' : user.onHold ? 'On hold' : 'No account restriction' }}</span><span class="staff-badge">{{ user.verificationStatus.replaceAll('_', ' ') }}</span></div>
       </section>
+      <nav class="staff-navigation" aria-label="Customer profile areas">
+        <button type="button" :aria-pressed="profileArea === 'licenses'" :disabled="busy" @click="profileArea = 'licenses'">Licenses &amp; plugins</button>
+        <button type="button" :aria-pressed="profileArea === 'account'" :disabled="busy" @click="profileArea = 'account'; selectedLicenseId = ''">Account &amp; verification</button>
+      </nav>
       <div class="staff-columns">
-        <section class="staff-panel">
+        <section v-if="profileArea === 'account'" class="staff-panel">
           <p class="staff-eyebrow">ACCOUNT CONTROLS</p><h2>Access &amp; verification</h2>
           <dl class="staff-facts"><div><dt>Ban reason</dt><dd>{{ user.banReason || 'None recorded' }}</dd></div><div><dt>Hold reason</dt><dd>{{ user.holdReason || 'None recorded' }}</dd></div><div><dt>Verification</dt><dd>{{ user.verificationReason || 'No reason recorded' }}<small>{{ formatDate(user.verificationRequestedAt, 'No request recorded') }}</small></dd></div></dl>
           <label class="staff-field">Reason for next action<input v-model="reason" maxlength="500" placeholder="Reason recorded in audit history" :disabled="busy"></label>
@@ -719,9 +813,9 @@ onUnmounted(() => {
           <p class="staff-note">Bans and holds block future validation, not existing sessions. Verification requests are recorded only; contact the customer separately.</p>
           <details v-if="can('customers.delete')" class="staff-danger-zone"><summary>Danger zone</summary><p>Deletion revokes active licenses, clears IP/server bindings, and erases profile details. Minimal audit history is retained.</p><button class="staff-danger" type="button" :disabled="busy || user.deleted" @click="deleteCustomer">Permanently delete customer</button></details>
         </section>
-        <section v-if="can('licenses.grant') && can('plugins.view')" class="staff-panel">
+        <section v-if="profileArea === 'licenses' && can('licenses.grant') && can('plugins.view')" class="staff-panel">
           <p class="staff-eyebrow">ISSUE AN ENTITLEMENT</p><h2>Grant a license</h2>
-          <p class="staff-note">Creates a license in the same service used by the Discord bot and returns a one-time key. This does not notify the customer, refresh BuiltByBit purchases, or rotate their shared key.</p>
+          <p class="staff-note">Creates a license in the same service used by the Discord bot, returns a one-time key, and notifies the customer on the website. It does not refresh BuiltByBit purchases or rotate their shared key.</p>
           <form @submit.prevent="grantLicense">
             <label class="staff-field">Plugin<select v-model="grantProductId" :disabled="busy || user.deleted"><option disabled value="">Select a plugin</option><option v-for="option in grantOptions" :key="option.id" :value="option.productId" :disabled="!!option.reason">{{ option.name }}{{ option.reason ? ` — ${option.reason}` : '' }}</option></select></label>
             <label class="staff-field">Expires at · local time<input v-model="grantExpiresAt" type="datetime-local" :disabled="busy || user.deleted"><small>Leave blank for a lifetime license. Expiry must be in the future.</small></label>
@@ -729,12 +823,28 @@ onUnmounted(() => {
           </form>
           <p class="staff-note">Only documented plugins matched to an active licensing product with a linked plugin can be selected. Unavailable entries need setup in the licensing service; coming-soon plugins cannot be granted.</p>
         </section>
+        <section v-if="profileArea === 'licenses' && can('licenses.grant') && can('plugins.view')" class="staff-panel">
+          <p class="staff-eyebrow">BULK GIVE / THIS CUSTOMER</p><h2>Grant multiple plugins</h2>
+          <p class="staff-note">Choose up to 10 plugins. Existing active access is skipped, not shortened. Grants use the expiration above, or lifetime access if blank. Each grant sends a website notification; keys are not displayed in bulk results.</p>
+          <fieldset :disabled="busy || user.deleted"><legend>Plugins to grant</legend>
+            <label v-for="option in grantOptions.filter(item => !item.reason)" :key="option.id" class="staff-field"><span><input v-model="selectedGrantProducts" type="checkbox" :value="option.productId" :disabled="!selectedGrantProducts.includes(option.productId) && selectedGrantProducts.length >= 10"> {{ option.name }}</span></label>
+          </fieldset>
+          <button type="button" class="staff-primary" :disabled="busy || user.deleted || !selectedGrantProducts.length" @click="customerLicenseBatch('grant')">Review &amp; bulk give · {{ selectedGrantProducts.length }}</button>
+        </section>
       </div>
     </template>
 
-    <section v-if="loaded && user" class="staff-panel">
-      <header><div><p class="staff-eyebrow">CUSTOMER ENTITLEMENTS</p><h2>Licenses &amp; server access</h2></div><button type="button" :disabled="busy || !filteredLicenses.length" @click="exportLicenses">Export displayed CSV</button></header>
-      <p class="staff-note">Metrics cover the licenses returned on this customer profile. Expiring means active and due within 30 days.</p>
+    <section v-if="batchResults.length && profileArea === 'licenses'" class="staff-panel" aria-label="Bulk license results">
+      <h2>Batch results</h2><div v-for="result in batchResults" :key="result.id"><strong>{{ batchItemName(result.id) }} · {{ result.state.replaceAll('_', ' ') }}</strong><p>{{ result.message }}</p></div>
+    </section>
+    <section v-if="loaded && (user ? profileArea === 'licenses' : view === 'licenses')" class="staff-panel">
+      <header><div><p class="staff-eyebrow">{{ user ? 'CUSTOMER ENTITLEMENTS' : 'LICENSE INVENTORY' }}</p><h2>Licenses &amp; plugins</h2></div><button type="button" :disabled="busy || !filteredLicenses.length" @click="exportLicenses">Export displayed CSV</button></header>
+      <p class="staff-note">{{ user ? 'Metrics cover this customer profile.' : 'Metrics, filters, and sorting cover the loaded inventory page. Open a customer to grant or take their licenses.' }} Expiring means active and due within 30 days.</p>
+      <div v-if="user && can('licenses.status')" class="staff-toolbar">
+        <label>Reason for taking licenses<input v-model="reason" maxlength="500" :disabled="busy" placeholder="Optional reason saved in licensing audit"></label>
+        <button type="button" class="staff-danger" :disabled="busy || user.deleted || !selectedLicenseIds.length" @click="customerLicenseBatch('revoke')">Take selected licenses · {{ selectedLicenseIds.length }}</button>
+        <button type="button" :disabled="busy || !selectedLicenseIds.length" @click="selectedLicenseIds = []">Clear selection</button>
+      </div>
       <div class="staff-metrics">
         <button type="button" :disabled="busy" @click="licenseFilter = 'active'"><small>ACTIVE</small><strong>{{ licenseStats.active }}</strong></button>
         <button type="button" :disabled="busy" @click="licenseFilter = 'expiring'"><small>EXPIRING / 30D</small><strong>{{ licenseStats.expiring }}</strong></button>
@@ -749,14 +859,14 @@ onUnmounted(() => {
       </div>
       <div class="staff-results"><span>{{ filteredLicenses.length }} / {{ sourceLicenses.length }} licenses shown</span><button type="button" @click="resetLicenseFilters">Clear filters</button></div>
       <div v-if="filteredLicenses.length" class="staff-table-scroll" tabindex="0" aria-label="License inventory table">
-        <table class="staff-table"><thead><tr><th>Product / license</th><th>Customer</th><th>Status</th><th>Expiry</th><th>IPs</th><th>Last validation</th><th><span class="staff-sr-only">Actions</span></th></tr></thead><tbody>
-          <tr v-for="license in filteredLicenses" :key="license.licenseId" :class="{ 'staff-selected': selectedLicenseId === license.licenseId }"><td><strong>{{ productName(license.productId) }}</strong><small>{{ license.licenseId }}</small></td><td><strong>{{ user.globalName || user.username }}</strong><small>@{{ user.username }}</small></td><td><span class="staff-badge" :data-status="effectiveLicenseStatus(license, clock)">{{ effectiveLicenseStatus(license, clock) }}</span></td><td>{{ formatDate(license.expiresAt, 'Lifetime') }}</td><td>{{ license.allowedIps.length }} / 3</td><td>{{ formatDate(license.lastValidatedAt) }}</td><td><button type="button" :disabled="busy" @click="inspectLicense(license)">Inspect →</button></td></tr>
+        <table class="staff-table"><thead><tr><th v-if="user && can('licenses.status')">Select</th><th>Product / license</th><th>Customer</th><th>Status</th><th>Expiry</th><th>IPs</th><th>Last validation</th><th><span class="staff-sr-only">Actions</span></th></tr></thead><tbody>
+          <tr v-for="license in filteredLicenses" :key="license.licenseId" :class="{ 'staff-selected': selectedLicenseId === license.licenseId }"><td v-if="user && can('licenses.status')"><input v-model="selectedLicenseIds" type="checkbox" :value="license.licenseId" :aria-label="`Select ${productName(license.productId)} license ${license.licenseId}`" :disabled="busy || user.deleted || license.status === 'revoked' || (!selectedLicenseIds.includes(license.licenseId) && selectedLicenseIds.length >= 10)"></td><td><strong>{{ productName(license.productId) }}</strong><small>{{ license.licenseId }}</small></td><td><strong>{{ user?.globalName || user?.username || license.customerDiscordId }}</strong><small v-if="user?.username">@{{ user.username }}</small></td><td><span class="staff-badge" :data-status="effectiveLicenseStatus(license, clock)">{{ effectiveLicenseStatus(license, clock) }}</span></td><td>{{ formatDate(license.expiresAt, 'Lifetime') }}</td><td>{{ license.allowedIps.length }} / 3</td><td>{{ formatDate(license.lastValidatedAt) }}</td><td><button type="button" :disabled="busy" @click="inspectLicense(license)">{{ user ? 'Manage →' : 'Open customer →' }}</button></td></tr>
         </tbody></table>
       </div>
       <p v-else class="staff-empty">No licenses match these filters.</p>
     </section>
 
-    <section v-if="loaded && selectedLicense" id="license-inspector" class="staff-panel staff-inspector" tabindex="-1">
+    <section v-if="loaded && profileArea === 'licenses' && selectedLicense" id="license-inspector" class="staff-panel staff-inspector" tabindex="-1">
       <header><div><p class="staff-eyebrow">LICENSE INSPECTOR / {{ productName(selectedLicense.productId) }}</p><h2>Network &amp; validation</h2></div><button type="button" :disabled="busy" @click="selectedLicenseId = ''">Close inspector</button></header>
       <p class="staff-license-id">{{ selectedLicense.licenseId }} <button type="button" @click="copyText(selectedLicense.licenseId, 'License ID')">Copy ID</button></p>
       <dl class="staff-facts staff-network-facts"><div><dt>API status</dt><dd>{{ selectedLicense.status }}</dd></div><div><dt>Expires</dt><dd>{{ formatDate(selectedLicense.expiresAt, 'Lifetime') }}</dd></div><div><dt>Bound server</dt><dd>{{ selectedLicense.serverId || 'Not bound' }}</dd></div><div><dt>Last validated server</dt><dd>{{ selectedLicense.lastValidatedServerId || 'Not reported' }}</dd></div><div><dt>Last validated</dt><dd>{{ formatDate(selectedLicense.lastValidatedAt) }}</dd></div></dl>
@@ -766,6 +876,10 @@ onUnmounted(() => {
         <button v-if="selectedLicense.status !== 'revoked'" class="staff-danger" type="button" :disabled="busy || user?.deleted" @click="confirmAction('Permanently revoke this license? This cannot be undone.', `/licenses/${selectedLicense.licenseId}/revoke`, 'License revoked.')">Revoke permanently</button>
       </div>
       <p class="staff-note">The account reason field above is recorded for suspension/revocation. Reactivation does not change expiry or override an account ban/hold.</p>
+      <form v-if="can('licenses.status') && selectedLicense.status !== 'revoked'" class="staff-inline-form" @submit.prevent="saveExpiration">
+        <label class="staff-grow">Set expiration · local time<input v-model="editExpiresAt" type="datetime-local" required :disabled="busy || user?.deleted"><small>Choose a future date. This does not issue a new key. Updating a suspended license also reactivates it.</small></label>
+        <button class="staff-primary" type="submit" :disabled="busy || user?.deleted || !editExpiresAt">Review &amp; save expiration</button>
+      </form>
       <h3>Allowed IPs <span class="staff-badge">{{ selectedLicense.allowedIps.length }} / 3</span></h3>
       <div class="staff-ip-list"><div v-for="address in selectedLicense.allowedIps" :key="address"><code>{{ address }}</code><button v-if="can('licenses.ips')" type="button" :disabled="busy || user?.deleted || selectedLicense.status === 'revoked'" @click="removeIp(address)">Remove</button></div></div>
       <p v-if="!selectedLicense.allowedIps.length" class="staff-note">No allowed IPs. This license cannot validate.</p>

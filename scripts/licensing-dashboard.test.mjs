@@ -5,6 +5,7 @@ import {
   parseIpAllowlist, redactAuditDetails, toSafeCsv,
 } from '../docs/.vitepress/theme/licensing-utils.mjs'
 import { createAdminTestStore, clearAdminTestData, TEST_OWNER_ID } from '../docs/.vitepress/theme/admin-test-store.mjs'
+import { runLicenseBatch } from '../docs/.vitepress/theme/license-batch.mjs'
 
 const now = Date.parse('2026-01-01T00:00:00Z')
 const license = { status: 'active', expiresAt: null, allowedIps: [], lastValidatedAt: null }
@@ -195,4 +196,48 @@ test('failed local persistence reports an error and rolls back edits instead of 
   assert.equal(store.request('/audit').total, 0)
   const brokenStorage = { ...storage, getItem: () => '{bad-json' }
   assert.throws(() => createAdminTestStore(brokenStorage, testOwner), /Reset test data/)
+})
+
+test('customer license batches bound selections and stop after uncertainty without replaying writes', async () => {
+  let calls = []
+  const apply = async id => { calls.push(id); if (id === 'second') throw new Error('Connection lost'); return { state: 'revoked', message: 'Removed' } }
+  for (const ids of [[], ['first', 'first'], Array.from({ length: 11 }, (_, i) => String(i))]) {
+    await assert.rejects(runLicenseBatch(ids, apply, () => true), /1 and 10/)
+  }
+  assert.deepEqual(calls, [])
+  const results = await runLicenseBatch(['first', 'second', 'third'], apply, () => true)
+  assert.deepEqual(calls, ['first', 'second'])
+  assert.deepEqual(results.map(result => result.state), ['revoked', 'uncertain', 'not_attempted'])
+  assert.match(results[1].message, /may have been saved/)
+  calls = []
+  let current = true
+  const switched = await runLicenseBatch(['first', 'second'], async id => {
+    calls.push(id); current = false; return { state: 'granted', message: 'Saved' }
+  }, () => current)
+  assert.deepEqual(calls, ['first'])
+  assert.equal(switched[1].state, 'not_attempted')
+})
+
+test('customer license bulk grants preserve skips and expose declined operations', async () => {
+  const states = { existing: 'skipped', new: 'granted', declined: 'failed' }
+  const calls = []
+  const results = await runLicenseBatch(['existing', 'new', 'declined', 'later'], async id => {
+    calls.push(id); return { state: states[id], message: id }
+  }, () => true)
+  assert.deepEqual(calls, ['existing', 'new', 'declined'])
+  assert.deepEqual(results.map(result => result.state), ['skipped', 'granted', 'failed', 'not_attempted'])
+})
+
+test('editing test expiration matches renewal semantics without issuing another key', () => {
+  const store = createAdminTestStore(testStorage(), testOwner)
+  const id = store.request('/licenses').items[0].licenseId
+  const expiresAt = new Date(Date.now() + 86400000).toISOString()
+  mutateTest(store, `/licenses/${id}/suspend`)
+  mutateTest(store, `/licenses/${id}/renew`, { expiresAt })
+  assert.equal(store.request('/licenses').items.length, 1)
+  assert.equal(store.request('/licenses').items[0].expiresAt, expiresAt)
+  assert.equal(store.request('/licenses').items[0].status, 'active')
+  assert.throws(() => mutateTest(store, `/licenses/${id}/renew`, { expiresAt: 'invalid' }), /future/)
+  mutateTest(store, `/licenses/${id}/revoke`)
+  assert.throws(() => mutateTest(store, `/licenses/${id}/renew`, { expiresAt }), /revoked/)
 })

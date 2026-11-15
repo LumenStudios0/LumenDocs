@@ -97,7 +97,7 @@ export function createAdminTestStore(storage, identity) {
         } else {
           if (state.user.deleted) throw new Error('This test account is deleted. Reset test data to restore it.')
           const action = route.match(new RegExp(`^/users/${TEST_OWNER_ID}/(ban|unban|hold|release|verification-request|verify)$`))?.[1]
-          const licenseRoute = route.match(/^\/licenses\/([0-9a-f-]{36})\/(suspend|activate|revoke|ips)$/)
+          const licenseRoute = route.match(/^\/licenses\/([0-9a-f-]{36})\/(suspend|activate|revoke|renew|ips)$/)
           if (action && method === 'POST') {
             if (action === 'ban' || action === 'unban') {
               state.user.banned = action === 'ban'
@@ -143,6 +143,12 @@ export function createAdminTestStore(storage, identity) {
                 if (!license.allowedIps.includes(ip)) throw new Error('Test IP address not found.')
                 license.allowedIps = license.allowedIps.filter(address => address !== ip)
               }
+            } else if (operation === 'renew' && method === 'POST') {
+              if (typeof body.expiresAt !== 'string' || !Number.isFinite(Date.parse(body.expiresAt)) || Date.parse(body.expiresAt) <= Date.now()) {
+                throw new Error('Choose a future test license expiration date.')
+              }
+              license.expiresAt = new Date(body.expiresAt).toISOString()
+              if (license.status === 'suspended') license.status = 'active'
             } else if (method === 'POST' && ['suspend', 'activate', 'revoke'].includes(operation)) {
               if ((operation === 'suspend' && license.status !== 'active') || (operation === 'activate' && license.status !== 'suspended')) {
                 throw new Error('That test license status change is not available.')
