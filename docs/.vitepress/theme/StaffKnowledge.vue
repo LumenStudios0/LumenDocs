@@ -2,12 +2,24 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { studioRequest } from './studio-api'
 import { getDiscordSession } from './discord-session'
-import { clearStaffPreferences, readStaffPreferences, toggleStaffPreference } from './staff-preferences.mjs'
+import { clearStaffPreferences, readStaffPreferences, toggleStaffPreference, readStaffWidgets, setStaffWidget, clearStaffWidgets } from './staff-preferences.mjs'
 import RichContent from './RichContent.vue'
+import StaffOperations from './StaffOperations.vue'
 
 interface Guide { id: string; category: string; title: string; summary: string; body: string }
-interface Actor { id: string; roleName: string; permissions: string[] }
+interface Actor { id: string; role?: string; rank?: number; roleName: string; permissions: string[] }
+interface Path { id: string; title: string; description: string; guideIds: string[] }
+interface Scenario { id: string; title: string; category: string; prompt: string; choices: { id: string; label: string }[]; answerId: string; explanation: string }
 const guides = ref<Guide[]>([])
+const paths = ref<Path[]>([])
+const scenarios = ref<Scenario[]>([])
+const view = ref('')
+const widgets = ref<string[]>([])
+const widgetError = ref('')
+const feedback = ref('')
+const feedbackStatus = ref('')
+const feedbackBusy = ref(false)
+const heartbeatError = ref('')
 const actor = ref<Actor | null>(null)
 const query = ref('')
 const category = ref('All guides')
@@ -66,32 +78,43 @@ const actions = computed(() => [
 let generation = 0
 let session = ''
 let timer: ReturnType<typeof setInterval> | undefined
+let presenceTimer: ReturnType<typeof setInterval> | undefined
 let controller: AbortController | null = null
+let presenceController: AbortController | null = null
 function readLocation() {
   const params = new URLSearchParams(window.location.search)
+  const requestedView = params.get('view') || ''
+  view.value = ['availability', 'tasks', 'warnings', 'commissions', 'onboarding', 'practice', 'feedback'].includes(requestedView) ? requestedView : ''
   const requestedCategory = params.get('category')
   category.value = requestedCategory && categories.includes(requestedCategory) ? requestedCategory : 'All guides'
-  selected.value = params.get('guide') || 'start-here'
+  const nextGuide = params.get('guide') || 'start-here'
+  if (selected.value !== nextGuide) { feedback.value = ''; feedbackStatus.value = '' }
+  selected.value = nextGuide
   query.value = ''; shelf.value = 'All'
 }
 function resetPrivateState() {
-  actor.value = null; guides.value = []; preferences.value = { saved: [], read: [] }
+  presenceController?.abort(); presenceController = null; heartbeatError.value = ''
+  actor.value = null; guides.value = []; paths.value = []; scenarios.value = []; widgets.value = []; widgetError.value = ''; feedback.value = ''; feedbackStatus.value = ''; preferences.value = { saved: [], read: [] }
   completedSteps.value = []; notice.value = ''; preferenceError.value = ''
 }
-async function load() {
+async function load(quiet = false) {
   const id = ++generation
   const token = getDiscordSession()
+  const hadActor = !!actor.value && session === token
   if (session !== token) resetPrivateState()
   session = token
   controller?.abort()
   controller = new AbortController()
-  actor.value = null; guides.value = []; error.value = ''; loading.value = true
+  if (!quiet) { actor.value = null; guides.value = []; error.value = ''; loading.value = true }
   try {
-    const result = await studioRequest<{ actor: Actor; guides: Guide[] }>('/staff/docs', { signal: controller.signal })
+    const result = await studioRequest<{ actor: Actor; guides: Guide[]; onboardingPaths?: Path[]; scenarios?: Scenario[] }>('/staff/docs', { signal: controller.signal })
     if (id !== generation || token !== getDiscordSession()) return
-    actor.value = result.actor; guides.value = result.guides
+    actor.value = result.actor; guides.value = result.guides; paths.value = result.onboardingPaths || []; scenarios.value = result.scenarios || []; error.value = ''
     try { preferences.value = readStaffPreferences(localStorage, result.actor.id); preferenceError.value = '' }
     catch (value) { preferences.value = { saved: [], read: [] }; preferenceError.value = messageOf(value) }
+    try { widgets.value = readStaffWidgets(localStorage, result.actor.id); widgetError.value = '' }
+    catch (value) { widgets.value = []; widgetError.value = messageOf(value) }
+    if (!hadActor) void heartbeat()
   } catch (value) {
     if (id === generation) { resetPrivateState(); error.value = messageOf(value) }
   } finally { if (id === generation) loading.value = false }
@@ -109,7 +132,34 @@ function resetPreferences() {
   try { clearStaffPreferences(localStorage, actor.value.id); preferences.value = { saved: [], read: [] }; preferenceError.value = '' }
   catch (value) { preferenceError.value = messageOf(value) }
 }
+function toggleWidget(name: string, enabled: boolean) {
+  if (!actor.value) return
+  try { widgets.value = setStaffWidget(localStorage, actor.value.id, name, enabled); widgetError.value = '' }
+  catch (value) { widgetError.value = messageOf(value) }
+}
+function resetWidgets() {
+  if (!actor.value) return
+  try { clearStaffWidgets(localStorage, actor.value.id); widgets.value = readStaffWidgets(localStorage, actor.value.id); widgetError.value = '' }
+  catch (value) { widgetError.value = messageOf(value) }
+}
+async function submitFeedback() {
+  if (!current.value || !actor.value || feedbackBusy.value) return
+  const token = getDiscordSession(), id = generation, guideId = current.value.id
+  feedbackBusy.value = true; feedbackStatus.value = ''
+  try {
+    await studioRequest('/staff/guide-feedback', { method: 'POST', body: JSON.stringify({ guideId, message: feedback.value }) })
+    if (id === generation && token === getDiscordSession() && current.value?.id === guideId) { feedback.value = ''; feedbackStatus.value = 'Feedback sent to the staff team.' }
+  } catch (value) { if (id === generation && token === getDiscordSession()) feedbackStatus.value = messageOf(value) }
+  finally { feedbackBusy.value = false }
+}
+function openPathGuide(id: string) {
+  const url = new URL(window.location.href)
+  url.searchParams.delete('view'); url.searchParams.delete('category'); url.searchParams.set('guide', id)
+  window.history.pushState(window.history.state, '', url.pathname + url.search + url.hash)
+  readLocation(); void chooseGuide(id)
+}
 async function chooseGuide(id: string) {
+  if (selected.value !== id) { feedback.value = ''; feedbackStatus.value = '' }
   selected.value = id
   await nextTick()
   reader.value?.focus({ preventScroll: true })
@@ -132,7 +182,19 @@ function toggleStep(index: number) {
   completedSteps.value = completedSteps.value.includes(index) ? completedSteps.value.filter(step => step !== index) : [...completedSteps.value, index]
 }
 function changed() { if (session !== getDiscordSession()) void load() }
-function recheck() { if (!document.hidden && !loading.value) void load() }
+function recheck() { if (!document.hidden && !loading.value && !feedbackBusy.value) void load(true) }
+async function heartbeat() {
+  if (document.hidden || !actor.value || !can('staff.presence') || presenceController) return
+  const token = getDiscordSession(), actorId = actor.value.id
+  const active = new AbortController(); presenceController = active
+  try {
+    await studioRequest('/staff/presence', { method: 'POST', signal: active.signal, body: '{}' })
+    if (token === getDiscordSession() && actor.value?.id === actorId) heartbeatError.value = ''
+  } catch (value) {
+    if (!active.signal.aborted && token === getDiscordSession() && actor.value?.id === actorId) heartbeatError.value = `Presence update failed: ${messageOf(value)}`
+  } finally { if (presenceController === active) presenceController = null }
+}
+function visibilityChanged() { if (document.hidden) { presenceController?.abort(); presenceController = null } else void heartbeat() }
 onMounted(() => {
   readLocation()
   void load()
@@ -140,7 +202,9 @@ onMounted(() => {
   window.addEventListener('lumen-discord-user', changed)
   window.addEventListener('storage', changed)
   window.addEventListener('focus', recheck)
+  document.addEventListener('visibilitychange', visibilityChanged)
   timer = setInterval(recheck, 60000)
+  presenceTimer = setInterval(() => { void heartbeat() }, 30000)
 })
 onUnmounted(() => {
   generation++; controller?.abort(); resetPrivateState()
@@ -148,7 +212,9 @@ onUnmounted(() => {
   window.removeEventListener('lumen-discord-user', changed)
   window.removeEventListener('storage', changed)
   window.removeEventListener('focus', recheck)
+  document.removeEventListener('visibilitychange', visibilityChanged)
   clearInterval(timer)
+  clearInterval(presenceTimer)
 })
 </script>
 
@@ -162,23 +228,26 @@ onUnmounted(() => {
       <a href="/">Exit staff mode</a>
       <a v-if="can('dashboard.view')" href="/admin/">Staff Dashboard</a>
       <a v-if="can('tickets.view') && can('dashboard.view')" href="/admin/">Ticket queue</a>
-      <button type="button" :disabled="loading" @click="load">Recheck access</button>
+      <button type="button" :disabled="loading" @click="load()">Recheck access</button>
     </nav>
     <p v-if="loading" role="status" class="knowledge-message">Verifying staff access and loading private guides...</p>
     <p v-if="error" role="alert" class="knowledge-message">{{ error }} No private guides are shown without verified access.</p>
-    <template v-if="actor">
+    <p v-if="heartbeatError" role="alert" class="knowledge-message">{{ heartbeatError }} <button type="button" @click="heartbeat">Retry presence</button></p>
+    <StaffOperations v-if="actor && view" :view="view" :actor="actor" :guides="guides" :paths="paths" :scenarios="scenarios" @guide="openPathGuide" @access-changed="load(true)" />
+    <template v-if="actor && !view">
       <section class="knowledge-overview" aria-label="Staff command center">
-        <div class="knowledge-metrics"><span><strong>{{ guides.length }}</strong>private guides</span><span><strong>{{ readCount }}</strong>marked read</span><span><strong>{{ completedSteps.length }}/{{ checklist.length }}</strong>shift checks</span></div>
-        <div v-if="actions.length" class="knowledge-launchpad">
+        <details class="knowledge-tool-card"><summary>Customize dashboard widgets</summary><label v-for="name in ['launchpad', 'checklist', 'handover', 'progress']" :key="name"><input type="checkbox" :checked="widgets.includes(name)" @change="toggleWidget(name, ($event.target as HTMLInputElement).checked)"> {{ name }}</label><p>Only widget choices are saved for your verified account.</p><p v-if="widgetError" role="alert">{{ widgetError }} <button type="button" @click="resetWidgets">Reset widgets</button></p></details>
+        <div v-if="widgets.includes('progress')" class="knowledge-metrics"><span><strong>{{ guides.length }}</strong>private guides</span><span><strong>{{ readCount }}</strong>marked read</span><span><strong>{{ completedSteps.length }}/{{ checklist.length }}</strong>shift checks</span></div>
+        <div v-if="widgets.includes('launchpad') && actions.length" class="knowledge-launchpad">
           <a v-for="action in actions" :key="action.title" :href="action.href"><strong>{{ action.title }} <span aria-hidden="true">↗</span></strong><span>{{ action.detail }}</span></a>
         </div>
         <div class="knowledge-shift-tools">
-          <section class="knowledge-tool-card">
+          <section v-if="widgets.includes('checklist')" class="knowledge-tool-card">
             <p class="knowledge-kicker">SHIFT CHECKLIST</p><h2>Start prepared.</h2>
             <label v-for="(step, index) in checklist" :key="step"><input type="checkbox" :checked="completedSteps.includes(index)" @change="toggleStep(index)">{{ step }}</label>
             <p>Personal checklist for this visit, not an audit record.</p><button type="button" @click="completedSteps = []">Reset checklist</button>
           </section>
-          <section class="knowledge-tool-card">
+          <section v-if="widgets.includes('handover')" class="knowledge-tool-card">
             <p class="knowledge-kicker">ESCALATION &amp; HANDOVER</p><h2>Make the next step clear.</h2><p>Copy a blank structured template. Complete it in a private ticket, never with credentials.</p>
             <button type="button" @click="copyHandover">Copy handover template</button>
             <details><summary>Preview template</summary><pre>{{ handoverTemplate }}</pre></details>
@@ -206,6 +275,7 @@ onUnmounted(() => {
           </header>
           <nav class="knowledge-contents" aria-label="In this guide"><strong>IN THIS GUIDE</strong><button v-for="section in sections" :key="section.id" type="button" @click="jumpToSection(section.id)">{{ section.title }}</button></nav>
           <section v-for="(section, index) in sections" :id="section.id" :key="section.id" class="knowledge-section" tabindex="-1"><span class="knowledge-section-number">{{ String(index + 1).padStart(2, '0') }}</span><div><h3>{{ section.title }}</h3><RichContent :text="section.body" /></div></section>
+          <form v-if="can('staff.feedback')" class="knowledge-tool-card" @submit.prevent="submitFeedback"><h3>Improve this guide</h3><label>Feedback<textarea v-model="feedback" required minlength="3" maxlength="2000" rows="3" /></label><p>Do not include credentials or customer personal data.</p><button type="submit" :disabled="feedbackBusy">Send guide feedback</button><p v-if="feedbackStatus" role="status">{{ feedbackStatus }}</p></form>
           <footer class="knowledge-reader-actions"><button type="button" :disabled="currentIndex <= 0" @click="moveGuide(-1)">Previous guide</button><span>{{ currentIndex + 1 }} / {{ filtered.length }}</span><button type="button" :disabled="currentIndex >= filtered.length - 1" @click="moveGuide(1)">Next guide</button></footer>
         </article>
       </div>
@@ -242,6 +312,7 @@ onUnmounted(() => {
 .knowledge-tool-card h2,.knowledge-library-heading h2{font-size:1.5rem;margin:10px 0 18px;line-height:1.3}
 .knowledge-tool-card p:not(.knowledge-kicker){font-size:.8rem;line-height:1.7;color:#bfb3ba}
 .knowledge-tool-card label{display:flex;align-items:flex-start;gap:10px;margin:13px 0;line-height:1.6;font-size:.85rem}
+.knowledge-tool-card textarea{display:block;width:100%;min-height:90px;padding:10px;color:#fff;background:#0e0d11;border:1px solid #69414b;border-radius:8px}.knowledge-tool-card form label,form.knowledge-tool-card label{display:block}
 .knowledge-tool-card input{flex-shrink:0;width:16px;height:16px;margin-top:4px}
 .knowledge-tool-card button,.knowledge-library-heading button,.knowledge-reader-actions button,.knowledge-tools>p button{padding:9px 13px;border:1px solid #59303b;border-radius:9px;background:#28151f;color:#f2dbe2;font-size:.8rem}
 .knowledge-tool-card details{margin-top:20px}.knowledge-tool-card summary{cursor:pointer;color:#ff8896;font-size:.8rem}.knowledge-tool-card pre{white-space:pre-wrap;overflow-wrap:anywhere;margin-top:12px;font-size:.75rem;color:#bfb3ba}

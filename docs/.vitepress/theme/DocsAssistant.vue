@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { withBase } from 'vitepress'
 import { clearDiscordSession, getDiscordSession, storeDiscordSession } from './discord-session'
 import { communityRequest } from './community-api'
 import { useCommunityService } from './use-community-service'
 import { CommunityUnavailableError } from './community-errors.mjs'
 import NotificationBell from './NotificationBell.vue'
+import RichContent from './RichContent.vue'
 
 declare global {
   interface Window {
@@ -26,10 +27,15 @@ interface Answer {
   results: DocSection[]
   reply: string
   tracklist?: boolean
+  staff?: boolean
+  links?: { title: string; href: string }[]
 }
 
 interface AssistantApiResponse {
   answer?: unknown
+  mode?: string
+  sources?: { title: string; category: string; href: string }[]
+  links?: { title: string; href: string }[]
 }
 
 interface DiscordUser {
@@ -109,6 +115,19 @@ const musicAnimationsEnabled = ref(true)
 const activeMusicTrack = ref('')
 const selectedMusicTrack = ref('')
 const discordUser = ref<DiscordUser | null>(null)
+const staffAssistantMode = computed(() => ['support_team', 'developer', 'studio_lead', 'owner'].includes(discordUser.value?.role || ''))
+let assistantGeneration = 0
+let assistantController: AbortController | null = null
+let identityRequest = 0
+let lastIdentityToken = ''
+let staffIdentityTimer: ReturnType<typeof setInterval> | undefined
+watch(() => `${discordUser.value?.id || ''}:${discordUser.value?.role || ''}:${discordUser.value?.permissions?.join(',') || ''}`, () => {
+  assistantGeneration++
+  assistantController?.abort()
+  answers.value = []
+  query.value = ''
+  searching.value = false
+})
 const discordAuthNotice = ref('')
 const accountMenuOpen = ref(false)
 const notificationMenuOpen = ref(false)
@@ -985,6 +1004,39 @@ async function askQuestion() {
   if (!question || searching.value) return
 
   searching.value = true
+  const generation = ++assistantGeneration
+  const token = getDiscordSession()
+  const staff = staffAssistantMode.value
+  assistantController?.abort()
+  assistantController = new AbortController()
+  if (staff) {
+    try {
+      const response = await fetch(getWorkerEndpoint('/studio/staff/assistant'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ question }),
+        signal: assistantController.signal,
+      })
+      const payload = await response.json() as AssistantApiResponse & { error?: string }
+      if (generation !== assistantGeneration || token !== getDiscordSession() || !staffAssistantMode.value) return
+      if (!response.ok) throw new Error(payload.error || `Staff assistant request failed (${response.status}).`)
+      if (payload.mode !== 'staff' || typeof payload.answer !== 'string' || !payload.answer.trim()) throw new Error('Staff assistant returned an invalid response.')
+      answers.value.push({
+        question, reply: payload.answer, staff: true, links: payload.links || [],
+        results: (payload.sources || []).map(source => ({ title: source.title, text: source.category, href: source.href, route: '/staff/', searchableText: '' })),
+      })
+      query.value = ''
+    } catch (value) {
+      if (generation === assistantGeneration && token === getDiscordSession()) {
+        answers.value.push({ question, results: [], reply: `Staff assistant could not complete this request: ${value instanceof Error ? value.message : 'Unknown error'}. No private content was sent to the public AI provider.`, staff: true })
+      }
+    } finally {
+      if (generation === assistantGeneration) searching.value = false
+    }
+    await nextTick()
+    conversation.value?.scrollTo({ top: conversation.value.scrollHeight, behavior: 'smooth' })
+    return
+  }
   if (question.toLowerCase() === '#1 tracklist') {
     answers.value.push({
       question,
@@ -1036,6 +1088,7 @@ async function askQuestion() {
           question,
           context: context.slice(0, 4),
         }),
+        signal: assistantController.signal,
       })
       if (!response.ok) throw new Error(`Assistant request failed with status ${response.status}`)
 
@@ -1050,6 +1103,8 @@ async function askQuestion() {
     }
   }
 
+  if (generation !== assistantGeneration) return
+  if (token !== getDiscordSession() || staffAssistantMode.value) { searching.value = false; return }
   answers.value.push({ question, results, reply })
   query.value = ''
   searching.value = false
@@ -1176,6 +1231,7 @@ async function syncLicenseAccount(token: string, user: DiscordUser) {
 }
 
 async function initializeDiscordLogin() {
+  const requestId = ++identityRequest
   const hash = new URLSearchParams(window.location.hash.slice(1))
   const callbackToken = hash.get('discord_token')
   const callbackStatus = hash.get('discord_login')
@@ -1206,13 +1262,14 @@ async function initializeDiscordLogin() {
       console.error('Unable to read the temporary Discord sign-in session:', error)
     }
   }
-  if (!token || !assistantEndpoint) return
+  if (!token || !assistantEndpoint) { discordUser.value = null; lastIdentityToken = ''; return }
 
   try {
     const response = await fetch(getWorkerEndpoint('/auth/me'), {
       headers: { Authorization: `Bearer ${token}` },
     })
     const result = await response.json() as { user?: DiscordUser; sessionToken?: string; error?: string }
+    if (requestId !== identityRequest || token !== getDiscordSession()) return
     if (!response.ok || !result.user) {
       if (response.status === 401) {
         try {
@@ -1228,6 +1285,7 @@ async function initializeDiscordLogin() {
     }
 
     if (result.sessionToken) storeDiscordSession(result.sessionToken)
+    lastIdentityToken = result.sessionToken || token
     discordAuthNotice.value = ''
     discordUser.value = result.user
     publishDiscordUser(result.user)
@@ -1238,7 +1296,9 @@ async function initializeDiscordLogin() {
       discordAuthNotice.value = 'Discord is connected, but the license account could not be synced. Try Account settings later.'
     }
   } catch (error) {
+    if (requestId !== identityRequest) return
     console.error('Unable to verify Discord sign-in:', error)
+    discordUser.value = null
     if (callbackToken) discordAuthNotice.value = 'Could not verify Discord sign-in. Please try again.'
   }
 }
@@ -1299,6 +1359,10 @@ function confirmDiscordLogin() {
 }
 
 function signOutDiscord() {
+  identityRequest++
+  assistantGeneration++
+  assistantController?.abort()
+  answers.value = []; query.value = ''; searching.value = false
   accountMenuOpen.value = false
   notificationMenuOpen.value = false
   discordUser.value = null
@@ -1309,6 +1373,21 @@ function signOutDiscord() {
     console.error('Unable to clear the Discord sign-in session:', error)
   }
   publishDiscordUser(null)
+}
+
+function assistantSessionChanged() {
+  try {
+    const token = getDiscordSession()
+    if (token === lastIdentityToken) return
+    lastIdentityToken = token
+    identityRequest++; assistantGeneration++; assistantController?.abort()
+    answers.value = []; query.value = ''; searching.value = false; discordUser.value = null
+    if (token) void initializeDiscordLogin()
+  } catch (value) {
+    identityRequest++; assistantGeneration++; assistantController?.abort()
+    answers.value = []; discordUser.value = null; searching.value = false
+    discordAuthNotice.value = `Account storage could not be read: ${value instanceof Error ? value.message : 'Unknown error'}.`
+  }
 }
 
 function handleAccountMenuPointerDown(event: PointerEvent) {
@@ -1912,16 +1991,25 @@ onMounted(() => {
   window.addEventListener('keydown', onKeydown)
   document.addEventListener('pointerdown', handleAccountMenuPointerDown)
   window.addEventListener('keydown', handleAccountMenuKeydown)
+  window.addEventListener('storage', assistantSessionChanged)
+  window.addEventListener('lumen-discord-user', assistantSessionChanged)
   void initializeDiscordLogin()
+  staffIdentityTimer = setInterval(() => {
+    if (!document.hidden && discordUser.value) void initializeDiscordLogin()
+  }, 60000)
 })
 
 onUnmounted(() => {
+  identityRequest++; assistantGeneration++; assistantController?.abort(); answers.value = []
+  clearInterval(staffIdentityTimer)
   document.removeEventListener('click', playClickSound, true)
   document.removeEventListener('pointerdown', resumeAmbientMusic, true)
   window.removeEventListener('lumen-theme-mode-change', handleThemeModeChange)
   window.removeEventListener('keydown', onKeydown)
   document.removeEventListener('pointerdown', handleAccountMenuPointerDown)
   window.removeEventListener('keydown', handleAccountMenuKeydown)
+  window.removeEventListener('storage', assistantSessionChanged)
+  window.removeEventListener('lumen-discord-user', assistantSessionChanged)
   window.clearInterval(musicTimer)
   window.clearInterval(noteTimer)
   window.clearInterval(progressTimer)
@@ -1936,7 +2024,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="lumen-assistant">
+  <div class="lumen-assistant" :class="{ 'assistant-staff-mode': staffAssistantMode }">
     <ClientOnly>
       <Teleport to="#lumen-nav-auth">
         <button
@@ -2039,11 +2127,11 @@ onUnmounted(() => {
       v-if="!open"
       class="assistant-launcher"
       type="button"
-      aria-label="Ask the Lumen Docs Assistant"
+      :aria-label="staffAssistantMode ? 'Ask the Lumen Staff Assistant' : 'Ask the Lumen Docs Assistant'"
       @click="focusInput"
     >
       <span class="assistant-spark" aria-hidden="true">✦</span>
-      <span>Ask the docs</span>
+      <span>{{ staffAssistantMode ? 'Ask staff assistant' : 'Ask the docs' }}</span>
     </button>
     <Transition name="assistant-popover">
       <section v-if="open" class="assistant-panel" aria-label="Lumen Docs Assistant">
@@ -2055,8 +2143,8 @@ onUnmounted(() => {
             <span class="assistant-banana-mark">🍌</span>
           </span>
           <div class="assistant-title">
-            <strong>Lumen Assistant</strong>
-            <span>Plugin guide answers</span>
+            <strong>{{ staffAssistantMode ? 'Lumen Staff Assistant' : 'Lumen Assistant' }}</strong>
+            <span>{{ staffAssistantMode ? 'STAFF MODE / private knowledge' : 'Plugin guide answers' }}</span>
           </div>
           <div class="assistant-header-actions">
             <button
@@ -2139,17 +2227,26 @@ onUnmounted(() => {
           <template v-if="assistantView === 'chat'">
             <div v-if="!hasQuestion" class="assistant-welcome">
               <span class="assistant-eyebrow">LUMEN STUDIOS</span>
-              <h2>How can I help?</h2>
-              <p>Get quick answers from our plugin guides.</p>
+              <h2>{{ staffAssistantMode ? 'Let’s work the problem.' : 'How can I help?' }}</h2>
+              <p>{{ staffAssistantMode ? 'Get detailed private playbooks, integration code, and permission-aware staff shortcuts. Read-only help; live changes stay in their approved tools.' : 'Get quick answers from our plugin guides.' }}</p>
               <div class="assistant-suggestions" aria-label="Suggested questions">
-                <button type="button" @click="useSuggestedQuestion('How do I install a plugin?')">Install a plugin</button>
-                <button type="button" @click="useSuggestedQuestion('How do I configure a plugin?')">Configuration help</button>
+                <template v-if="staffAssistantMode">
+                  <button type="button" @click="useSuggestedQuestion('Show exact Java licensing integration code')">Developer code</button>
+                  <button type="button" @click="useSuggestedQuestion('Help triage a LumenShards license failure')">License triage</button>
+                  <button type="button" @click="useSuggestedQuestion('How should we scope a commission request?')">Commission workflow</button>
+                  <button type="button" @click="useSuggestedQuestion('Show team availability and tasks')">Team operations</button>
+                </template>
+                <template v-else>
+                  <button type="button" @click="useSuggestedQuestion('How do I install a plugin?')">Install a plugin</button>
+                  <button type="button" @click="useSuggestedQuestion('How do I configure a plugin?')">Configuration help</button>
+                </template>
               </div>
               <button class="assistant-report-link" type="button" @click="showBugReport">Report a plugin issue</button>
             </div>
             <article v-for="(answer, index) in answers" :key="`${index}-${answer.question}`" class="assistant-answer">
               <p class="assistant-question">{{ answer.question }}</p>
-              <p class="assistant-response">{{ answer.reply }}</p>
+              <div v-if="answer.staff" class="assistant-response assistant-staff-response"><RichContent :text="answer.reply" /><nav v-if="answer.links?.length" class="assistant-staff-links" aria-label="Authorized staff tools"><a v-for="link in answer.links" :key="link.href" :href="link.href">{{ link.title }} ↗</a></nav></div>
+              <p v-else class="assistant-response">{{ answer.reply }}</p>
               <div v-if="answer.tracklist" class="assistant-tracklist" aria-label="Available soundtracks">
                 <article v-for="track in tracklistTracks" :key="track.name" class="assistant-tracklist-item">
                   <div>
@@ -2239,14 +2336,15 @@ onUnmounted(() => {
             ref="input"
             v-model="query"
             type="text"
-            placeholder="Ask about a plugin..."
+            :placeholder="staffAssistantMode ? 'Ask a staff or developer question...' : 'Ask about a plugin...'"
+            :maxlength="staffAssistantMode ? 4000 : 500"
             aria-label="Ask a question about Lumen plugins"
             autocomplete="off"
           >
           <button type="submit" :disabled="!query.trim() || searching">{{ searching ? 'Thinking…' : 'Ask' }}</button>
         </form>
         <div v-if="assistantView === 'chat'" class="assistant-note">
-          <span>{{ assistantEndpoint ? 'Questions and selected guide excerpts are sent to DeepSeek. Full plugin source code and ZIP archives are not sent.' : 'Local guide search is active. AI replies need a secure backend.' }}</span>
+          <span>{{ staffAssistantMode ? 'Staff mode: server-local private knowledge retrieval, not the public AI model. No staff questions or guides are forwarded to DeepSeek. Never paste credentials.' : assistantEndpoint ? 'Questions and selected guide excerpts are sent to DeepSeek. Full plugin source code and ZIP archives are not sent.' : 'Local guide search is active. AI replies need a secure backend.' }}</span>
           <button type="button" @click="openBugReport">Report a bug</button>
         </div>
       </section>

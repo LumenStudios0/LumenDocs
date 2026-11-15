@@ -3,6 +3,13 @@ import { defineConfig } from 'vitepress'
 const staffSidebar = [
   { text: 'Staff operations', items: [
     { text: 'Command center', link: '/staff/' },
+    { text: 'Live team availability', link: '/staff/?view=availability' },
+    { text: 'Task board', link: '/staff/?view=tasks' },
+    { text: 'Warnings', link: '/staff/?view=warnings' },
+    { text: 'Commissions', link: '/staff/?view=commissions' },
+    { text: 'Onboarding', link: '/staff/?view=onboarding' },
+    { text: 'Practice', link: '/staff/?view=practice' },
+    { text: 'Guide feedback', link: '/staff/?view=feedback' },
     { text: 'Staff Dashboard', link: '/admin/' },
     { text: 'Ticket queue & updates', link: '/admin/#tickets' },
     { text: 'Plugins & products', link: '/admin/#products' },

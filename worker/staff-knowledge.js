@@ -1,7 +1,24 @@
 import { hasPermission, resolveAccess } from './access-control.js'
+import { licenseClientExample, licensingConfigExample, licensingLifecycleExample, licensingMavenExample } from './licensing-example.js'
 
 // Served only after authorization; never imported into the Pages application.
-const guides = [
+export const staffGuides = [
+  {
+    id: 'staff-operations', category: 'Staff handbook', title: 'Availability, tasks, and team workflows', summary: 'Coordinate shifts, avoid duplicate replies, and track work without making delivery promises.',
+    body: `### Availability and automatic activity
+Open Team availability and choose Available, Busy, Away, or Off shift. Availability is self-reported, not a promise of immediate help. Visible staff pages send heartbeats; staff stop appearing online after 90 seconds without one. Last online records the last heartbeat, and Last did records successful supported staff actions using safe generic labels, not customer details.
+### Tasks and commission pipeline
+Use the task board for a short title, priority, assignee, and optional due date. Move work through To do, In progress, and Done. Commission requests have a separate pipeline: enquiry, scoping, quoted, development, review, delivered, or cancelled. Record scope, acceptance criteria, and milestones before making commitments. The pipeline does not charge customers or execute payments.
+If another staff member changes a task or commission, your stale save is rejected. Your draft is retained: refresh, compare the current record, and deliberately reconcile it rather than blindly overwriting someone else's changes.
+### Ticket collisions and estimated waits
+Opening a reply editor claims a temporary editor lease, renewed while the editor is active. If another authorized editor holds a lease, coordinate ownership before replying. The server rejects conflicting sends; drafts remain available. Leases expire after two minutes without renewal.
+Every ticket type has its own estimated initial staff-response wait. Estimates use the recent 30-day mean and need at least three actual first staff replies for that type. Not enough recent data means no reliable estimate; do not invent one. Closed means the request is closed. Estimates are not delivery deadlines or guarantees.
+### Warnings, feedback, and training
+Only authorized higher-ranked staff may issue a warning to a strictly lower-ranked staff member. Staff can read and acknowledge their own warnings; authorized leadership sees only permitted lower-ranked records. Keep reasons factual and private.
+Submit guide feedback from the guide reader; authorized staff review it in Guide feedback. Onboarding paths and practice scenarios never mutate tickets, licenses, or staff records. Practice progress is visit-only. Dashboard widget choices are stored per verified actor in this browser; they are not shared team state.
+### Private staff assistant
+Staff accounts automatically use the private staff assistant. Ask for detailed playbooks, exact licensing code, or permission-aware operational counts. Retrieval runs on the studio Worker; private questions and records are not forwarded to the public AI provider. The assistant is read-only and never claims to grant licenses, issue warnings, change tasks, or make customer commitments.`,
+  },
   {
     id: 'start-here', category: 'Staff handbook', title: 'Start your shift', summary: 'A practical checklist for every support team member.',
     body: `### Start with the right account
@@ -121,7 +138,40 @@ Send Content-Type: application/json and the plugin token as X-Plugin-Token.
 Read the JSON response: only valid: true authorizes licensed features. HTTP 200 alone is not authorization. Treat timeouts, malformed responses, and service failures explicitly; do not silently grant access. Keep HTTP work off the Minecraft main thread and use timeouts. Apply Bukkit/Paper lifecycle changes on the appropriate server thread.
 
 ### Secret boundaries
-The customer enters their key in the plugin-specific config. Do not hard-code it or log it. A token bundled in a JAR can be extracted; it must not authorize privileged admin operations. Never ship the licensing administrator token, source-read credentials, or BuiltByBit credentials.`,
+The customer enters their key in the plugin-specific config. Do not hard-code it or log it. A token bundled in a JAR can be extracted; it must not authorize privileged admin operations. Never ship the licensing administrator token, source-read credentials, or BuiltByBit credentials.
+
+### Copy-ready configuration
+Add this section to your plugin's default config.yml. Replace placeholder IDs with the actual active registry IDs; the customer enters their own key locally. A server ID is optional and must stay stable, not regenerate on every validation.
+
+\`\`\`yaml
+${licensingConfigExample}
+\`\`\`
+
+### Maven dependency and relocation
+This Java 21 example uses Gson for strict field-type checks. Add the dependency and merge the shade configuration into your existing pom.xml. Replace your.plugin with your own package prefix throughout; do not relocate Paper/Bukkit classes.
+
+\`\`\`xml
+${licensingMavenExample}
+\`\`\`
+
+### Exact Java validation helper
+Create src/main/java/your/plugin/licensing/LicenseClient.java with this content and replace its package with your own. It sends the backend's exact JSON aliases and scoped token header. It never logs a key/token or raw response.
+
+\`\`\`java
+${licenseClientExample}
+\`\`\`
+
+### Wire it into your JavaPlugin
+Copy the fields/methods into your existing main class, move imports to the top, call startLicenseChecks() after saveDefaultConfig() in onEnable(), and call stopLicenseChecks() from onDisable(). Move your existing licensed setup into startLicensedFeatures(); its contents depend on your actual plugin.
+
+\`\`\`java
+${licensingLifecycleExample}
+\`\`\`
+
+### Runtime policy and acceptance tests
+This example targets Bukkit/Paper's conventional scheduler, not Folia. It is intentionally fail-closed: transport errors or denied responses disable the plugin until restart, and valid sessions recheck every five minutes. If you implement reconnect UX, keep features gated while unverified and do not silently fail open.
+
+Before release, test valid: true, valid: false with HTTP 200, malformed JSON, valid as a string, unknown/inactive plugin, expired/revoked entitlement, wrong scoped token, empty IP allowlist, timeout, and shutdown during an in-flight check. The supplied backend makes Plugin ID required and Product ID optional; this helper intentionally supplies the linked Product ID to remove ambiguity. The backend permits an omitted token header, but this client always sends the configured scoped token. Do not remove backend permission checks or add an admin-token bypass.`,
   },
   {
     id: 'builds-downloads', category: 'Developer desk', title: 'Builds and private downloads', summary: 'Maven, trusted uploads, compatibility, and release checks.',
@@ -326,6 +376,40 @@ Explain what is published and what still needs confirmation. Never invent comman
   })),
 ]
 
+export const staffGuideIds = new Set(staffGuides.map(guide => guide.id))
+const onboardingPaths = [
+  { id: 'support', title: 'Support team onboarding', description: 'Learn safe intake, product triage, trials, and handovers before handling live requests.',
+    guideIds: ['start-here', 'staff-operations', 'ticket-playbook', 'license-support', 'trials-commissions', 'incidents', 'permissions', 'plugin-lumenshards', 'plugin-lumeneconomy'] },
+  { id: 'developer', title: 'Developer onboarding', description: 'Start with support fundamentals, then learn registration, licensing, builds, and product-specific reproduction.',
+    guideIds: ['start-here', 'staff-operations', 'ticket-playbook', 'registry', 'integration', 'builds-downloads', 'plugin-lumenduels', 'plugin-lumenorder', 'publishing'] },
+]
+const scenarios = [
+  { id: 'license-fail-open', title: 'HTTP 200, but validation is denied', category: 'Licensing',
+    prompt: 'A plugin receives HTTP 200 with valid: false. A customer asks you to enable it anyway. What is the correct next step?',
+    choices: [{ id: 'enable', label: 'Enable the plugin because HTTP 200 means the license is valid.' }, { id: 'diagnose', label: 'Keep licensed features disabled and diagnose the safe validation code, ownership, expiry, and allowed IP.' }, { id: 'key', label: 'Ask the customer to paste their complete license key into the ticket.' }],
+    answerId: 'diagnose', explanation: 'Only valid: true authorizes features. HTTP success is transport success, not licensing approval; never collect credentials in tickets.' },
+  { id: 'duplicate-grant', title: 'An uncertain license grant', category: 'Support',
+    prompt: 'A grant timed out after submission. You do not know whether it succeeded. What should you do?',
+    choices: [{ id: 'retry', label: 'Repeat the grant until the UI confirms it.' }, { id: 'check', label: 'Check the customer profile and audit outcome before considering another grant.' }, { id: 'delete', label: 'Delete the customer account to reset everything.' }],
+    answerId: 'check', explanation: 'An uncertain response does not prove a failed write. Preserve existing access and investigate before retrying.' },
+  { id: 'spawner-full', title: 'A spawner stopped producing', category: 'LumenSpawners',
+    prompt: 'A virtual spawner has full storage. The customer reports missing production. Which explanation fits the documented behavior?',
+    choices: [{ id: 'paused', label: 'Production pauses when the next cycle cannot fit; inspect capacity and stored output.' }, { id: 'lost', label: 'The plugin is deleting overflow drops.' }, { id: 'vanilla', label: 'Increase vanilla looting to guarantee production.' }],
+    answerId: 'paused', explanation: 'LumenSpawners preserves output by pausing at capacity. Configured drop rolls are separate from vanilla looting.' },
+  { id: 'commission-scope', title: 'A commission without clear acceptance criteria', category: 'Commissions',
+    prompt: 'A customer wants a custom plugin by tomorrow but has not confirmed platform, integrations, scope, or pricing.',
+    choices: [{ id: 'promise', label: 'Promise delivery now and ask developers later.' }, { id: 'scope', label: 'Clarify scope and acceptance criteria, then ask leadership/developers to approve feasibility and commitments.' }, { id: 'trial', label: 'Issue an unrelated product trial as the completed commission.' }],
+    answerId: 'scope', explanation: 'Scoping comes before commercial promises. The pipeline tracks work; it does not authorize pricing or payment.' },
+  { id: 'collision', title: 'Two staff members are drafting replies', category: 'Teamwork',
+    prompt: 'The ticket shows another active reply editor while you are composing your response.',
+    choices: [{ id: 'send', label: 'Send both responses immediately.' }, { id: 'coordinate', label: 'Coordinate ownership and wait for the other editor to finish or release the lease.' }, { id: 'overwrite', label: 'Overwrite their draft without checking.' }],
+    answerId: 'coordinate', explanation: 'Collision leases avoid contradictory replies; they are not permanent ownership. Coordinate rather than bypassing the conflict.' },
+  { id: 'gladiator-signal', title: 'A player was flagged once', category: 'Gladiator',
+    prompt: 'A single heuristic alert appears for a player. There is no confirmed reproduction or corroborating evidence.',
+    choices: [{ id: 'ban', label: 'Treat the flag as proof and permanently ban the player.' }, { id: 'review', label: 'Review context, thresholds, and safe reproduction before any enforcement decision.' }, { id: 'publish', label: 'Publish their personal details to ask other users.' }],
+    answerId: 'review', explanation: 'Detections are signals, not proof. Keep customer information private and test thresholds carefully.' },
+]
+
 export async function staffKnowledge(request, env, origin, deps) {
   const send = (payload, status = 200) => deps.respond(payload, status, origin)
   if (request.method !== 'GET') return send({ error: 'Staff guides are read-only.' }, 405)
@@ -337,5 +421,5 @@ export async function staffKnowledge(request, env, origin, deps) {
   if (access.rank < 2 || !hasPermission(access, 'staff.docs')) return send({ error: 'Staff mode requires Support team rank or higher and staff.docs permission.' }, 403)
   if (!env.ADMIN_READ_LIMITER) return send({ error: 'Staff request limiting is unavailable.' }, 503)
   if (!(await env.ADMIN_READ_LIMITER.limit({ key: `staff-guides:${user.id}` })).success) return send({ error: 'Too many staff guide requests. Please wait a minute.' }, 429)
-  return send({ actor: { id: user.id, roleName: access.roleName, permissions: access.permissions }, guides })
+  return send({ actor: { id: user.id, role: access.role, roleName: access.roleName, rank: access.rank, permissions: access.permissions }, guides: staffGuides, onboardingPaths, scenarios })
 }

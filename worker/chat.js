@@ -2,6 +2,7 @@ import { handleCommunity, runCommunityChecks } from './community.js'
 import { adminPermission, getAdminRole, getStaffMembers, hasPermission, rememberMember, resolveAccess, websiteAdminApi } from './access-control.js'
 import { claimDiscordPurchases, submitBuiltByBitClaim } from './builtbybit.js'
 import { handleProductTools } from './product-tools.js'
+import { staffAssistant } from './staff-assistant.js'
 
 const jsonHeaders = {
   'Content-Type': 'application/json; charset=utf-8',
@@ -1068,6 +1069,7 @@ export default {
 
     if (path.startsWith('/studio/')) {
       try {
+        if (path === '/studio/staff/assistant') return await staffAssistant(request, env, origin, { respond, verifyLoginToken })
         return await handleProductTools(request, env, origin, path, { respond, verifyLoginToken })
       } catch (error) {
         console.error('Product tools request failed:', error)
@@ -1135,6 +1137,14 @@ export default {
 
     if (request.method !== 'POST') {
       return respond({ error: 'Method not allowed' }, 405, origin)
+    }
+
+    const chatAuthorization = request.headers.get('Authorization') || ''
+    if (chatAuthorization.startsWith('Bearer ')) {
+      const staffUser = await verifyLoginToken(chatAuthorization.slice(7), env)
+      if (staffUser && (await resolveAccess(staffUser.id, env)).rank >= 2) {
+        return staffAssistant(request, env, origin, { respond, verifyLoginToken })
+      }
     }
 
     if (!env.DEEPSEEK_API_KEY) {

@@ -10,6 +10,7 @@ import RichContent from './RichContent.vue'
 import RichEditor from './RichEditor.vue'
 import TrialRequests from './TrialRequests.vue'
 import { safeUrl } from './rich-text.mjs'
+import { studioRequest } from './studio-api'
 const { confirm: confirmSiteAction } = useSiteDialog()
 
 type Tab = 'tickets' | 'issues' | 'notifications' | 'status' | 'trials'
@@ -62,6 +63,47 @@ const statusEdits = ref<Record<string, { status: string; message: string }>>({})
 let generation = 0
 let token = ''
 let deepLinkHandled = false
+const editors = ref<{ id: string; name: string; expiresAt: string }[]>([])
+const presenceError = ref('')
+const leaseReady = ref(false)
+let leaseTicket = ''
+let leaseGeneration = 0
+let leaseController: AbortController | null = null
+let leaseTimer: ReturnType<typeof setInterval> | undefined
+let pendingRelease: Promise<unknown> = Promise.resolve()
+function stopLease() {
+  const id = leaseTicket, oldToken = token
+  leaseTicket = ''; leaseGeneration++; leaseController?.abort(); leaseController = null
+  editors.value = []; leaseReady.value = false; presenceError.value = ''
+  if (id && oldToken && oldToken === getDiscordSession()) {
+    pendingRelease = studioRequest(`/staff/tickets/${encodeURIComponent(id)}/presence`, { method: 'POST', body: JSON.stringify({ editing: false }) }).catch(() => {})
+  }
+}
+async function updateLease() {
+  if (!leaseTicket || document.hidden) return
+  const id = leaseTicket, current = getDiscordSession(), generationAtStart = leaseGeneration
+  leaseController?.abort(); const controller = new AbortController(); leaseController = controller
+  try {
+    await pendingRelease
+    if (generationAtStart !== leaseGeneration || current !== getDiscordSession() || controller.signal.aborted) return
+    await studioRequest(`/staff/tickets/${encodeURIComponent(id)}/presence`, { method: 'POST', signal: controller.signal, body: JSON.stringify({ editing: true }) })
+    const result = await studioRequest<{ editors: { id: string; name: string; expiresAt: string }[]; currentStaffId: string }>(`/staff/tickets/${encodeURIComponent(id)}/presence`, { signal: controller.signal })
+    if (generationAtStart !== leaseGeneration || current !== getDiscordSession()) return
+    editors.value = result.editors.filter(editor => editor.id !== result.currentStaffId)
+    leaseReady.value = true; presenceError.value = ''
+  } catch (e) {
+    if (generationAtStart === leaseGeneration && current === getDiscordSession() && !controller.signal.aborted) {
+      leaseReady.value = false; presenceError.value = e instanceof Error ? e.message : 'Editor presence unavailable.'
+    }
+  }
+}
+function visibilityChanged() {
+  if (document.hidden) {
+    const id = leaseTicket
+    stopLease()
+    leaseTicket = id
+  } else if (leaseTicket) void updateLease()
+}
 const tabs: { id: Tab; name: string }[] = [
   { id: 'tickets', name: 'Website tickets' }, { id: 'issues', name: 'Known issues (#known-issues)' },
   { id: 'notifications', name: 'Publish notifications' }, { id: 'status', name: 'Service status' },
@@ -70,6 +112,7 @@ const tabs: { id: Tab; name: string }[] = [
 const allowedTabs = computed(() => tabs.filter(item => can(item.id === 'tickets' ? 'tickets.view' : item.id === 'issues' ? 'issues.manage' : item.id === 'notifications' ? 'notifications.manage' : item.id === 'trials' ? 'licenses.grant' : 'status.manage')))
 function textError(value: unknown) { return value instanceof Error ? value.message : 'Staff request failed.' }
 async function load(target = 1) {
+  stopLease()
   const requestId = ++generation
   const targetTab = tab.value
   loading.value = true; error.value = ''; notice.value = ''; selected.value = null
@@ -118,18 +161,31 @@ async function load(target = 1) {
     }
   } finally { if (requestId === generation) loading.value = false }
 }
-function changeTab(target: Tab) {
+async function changeTab(target: Tab) {
   if (saving.value) return
+  const captured = getDiscordSession()
+  if (selected.value && reply.value.trim() && !await confirmSiteAction('Leaving this ticket discards your reply draft. Continue?', { title: 'Leave ticket', confirmText: 'Discard draft' })) return
+  if (captured !== getDiscordSession()) return
   tab.value = target; title.value = ''; body.value = ''; productId.value = ''; issueId.value = ''
   void load()
 }
-function backToQueue() {
+async function backToQueue() {
+  const captured = getDiscordSession()
+  if (reply.value.trim() && !await confirmSiteAction('Returning to the queue discards your reply draft. Continue?', { title: 'Leave ticket', confirmText: 'Discard draft' })) return
+  if (captured !== getDiscordSession()) return
   const url = new URL(window.location.href)
   url.searchParams.delete('ticket')
   window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash)
   void load(page.value)
 }
+async function refreshSelected() {
+  if (!selected.value) { await load(page.value); return }
+  const captured = getDiscordSession()
+  if (reply.value.trim() && !await confirmSiteAction('Refreshing the conversation discards your reply draft. Continue?', { title: 'Refresh conversation', confirmText: 'Discard draft and refresh' })) return
+  if (captured === getDiscordSession() && selected.value) await open(selected.value.id)
+}
 async function open(id: string) {
+  stopLease()
   const requestId = ++generation
   loading.value = true; error.value = ''; selected.value = null
   try {
@@ -142,6 +198,7 @@ async function open(id: string) {
       labelsDraft.value = result.ticket.labels.join(', ')
       followUpHours.value = result.ticket.followUpHours ?? 24
       escalationReason.value = ''; escalationTarget.value = ''
+      if (can('tickets.reply') && result.ticket.status !== 'closed') { leaseTicket = id; void updateLease() }
     }
   } catch (requestError) {
     if (requestId === generation) {
@@ -166,14 +223,14 @@ async function write(path: string, method: string, payload: unknown, after: () =
       else notice.value = success
     }
   } catch (requestError) {
-    if (captured === getDiscordSession()) error.value = `${committed ? 'Change saved; refresh failed. Do not repeat the action. ' : ''}${textError(requestError)}`
+    if (captured === getDiscordSession()) error.value = `${committed ? 'Change saved; refresh failed. Do not repeat the action. ' : ''}${textError(requestError)}${path.endsWith('/replies') && !committed ? ' Your draft is preserved. Refresh editor presence and coordinate before retrying.' : ''}`
     if (captured === getDiscordSession() && requestError instanceof CommunityUnavailableError) {
       serviceReady.value = false; serviceUnavailable.value = true
     }
   } finally { saving.value = false }
 }
 function sendReply() {
-  if (!selected.value) return
+  if (!selected.value || !leaseReady.value) return
   const id = selected.value.id
   void write(`/tickets/${id}/replies`, 'POST', { body: reply.value }, () => open(id), 'Staff reply saved on the website.')
 }
@@ -243,6 +300,7 @@ function sessionChanged() {
   let current = ''
   try { current = getDiscordSession() } catch (sessionError) { console.error('Staff session unavailable:', sessionError) }
   if (current === token) return
+  stopLease()
   deepLinkHandled = false
   generation++; selected.value = null; replies.value = []; tickets.value = []; issues.value = []; announcements.value = []; services.value = []; scheduled.value = []
   title.value = ''; body.value = ''; reply.value = ''
@@ -252,15 +310,15 @@ function sessionChanged() {
 watch(allowedTabs, items => {
   if (!items.some(item => item.id === tab.value) && items.length) { tab.value = items[0].id; void load() }
 })
-onMounted(() => { if (!allowedTabs.value.some(item => item.id === tab.value) && allowedTabs.value.length) tab.value = allowedTabs.value[0].id; void load(); window.addEventListener('lumen-discord-user', sessionChanged); window.addEventListener('storage', sessionChanged) })
-onUnmounted(() => { generation++; window.removeEventListener('lumen-discord-user', sessionChanged); window.removeEventListener('storage', sessionChanged) })
+onMounted(() => { if (!allowedTabs.value.some(item => item.id === tab.value) && allowedTabs.value.length) tab.value = allowedTabs.value[0].id; void load(); window.addEventListener('lumen-discord-user', sessionChanged); window.addEventListener('storage', sessionChanged); document.addEventListener('visibilitychange', visibilityChanged); leaseTimer = setInterval(() => { if (!document.hidden) void updateLease() }, 30000) })
+onUnmounted(() => { generation++; stopLease(); clearInterval(leaseTimer); window.removeEventListener('lumen-discord-user', sessionChanged); window.removeEventListener('storage', sessionChanged); document.removeEventListener('visibilitychange', visibilityChanged) })
 </script>
 
 <template>
   <section class="website-workspace" aria-label="Staff website operations">
     <header><p class="website-kicker">STAFF DASHBOARD / WEBSITE OPERATIONS</p><h2>Support, updates, and service health.</h2><p class="website-note">These controls use the website database, independently of the licensing API. Every write requires a verified staff Discord session. Local license test mode does not apply here.</p></header>
     <nav class="website-tabs" aria-label="Staff website tools"><button v-for="item in allowedTabs" :key="item.id" type="button" :aria-pressed="tab === item.id" :disabled="saving" @click="changeTab(item.id)">{{ item.name }}</button></nav>
-    <button type="button" :disabled="loading || saving" @click="selected ? open(selected.id) : load(page)">Refresh staff data</button>
+    <button type="button" :disabled="loading || saving" @click="refreshSelected">Refresh staff data</button>
     <p v-if="error" class="website-message" :class="{ 'website-error': !serviceUnavailable }" :role="serviceUnavailable ? 'status' : 'alert'">{{ error }}</p>
     <p v-if="serviceUnavailable" class="website-note">Staff actions are disabled until the website service is connected. The Worker deployment must succeed with D1 access and both community migrations applied.</p><p v-if="notice" class="website-message" role="status">{{ notice }}</p><p v-if="loading" role="status" class="website-note">Loading authorized website data…</p>
 
@@ -271,6 +329,7 @@ onUnmounted(() => { generation++; window.removeEventListener('lumen-discord-user
       <section v-if="selected" class="website-panel ticket-conversation">
         <button type="button" :disabled="saving" @click="backToQueue">← Ticket queue</button><header class="ticket-heading"><p class="website-kicker">TICKET {{ selected.id.slice(0, 8) }}</p><h3>{{ selected.title }}</h3><p class="website-meta"><span class="website-badge" :data-status="selected.status">{{ selected.status }}</span>{{ selected.type }} · {{ selected.productId || 'General' }}</p><p class="website-note">Opened by {{ selected.customerName }} · Discord ID {{ selected.customerDiscordId }}<br>{{ communityDate(selected.createdAt) }}</p></header>
         <form v-if="can('tickets.manage')" class="ticket-routing" @submit.prevent="updateTicket"><h3>Ticket routing</h3><label>Title<input v-model="titleDraft" required minlength="3" maxlength="160"></label><div class="website-columns"><label>Status<select v-model="statusDraft"><option value="open">Open</option><option value="waiting">Waiting for customer</option><option value="closed">Closed</option></select></label><label>Assigned staff<select v-model="assigneeDraft"><option value="">Unassigned</option><option v-for="member in members" :key="member.id" :value="member.id">{{ member.name }} · {{ member.id }}</option></select></label></div><button type="button" :disabled="saving || !currentStaffId" @click="assigneeDraft = currentStaffId">Assign to me</button><label>Labels<input v-model="labelsDraft" maxlength="250" placeholder="bug, urgent, needs-logs"></label><p class="website-note">Comma-separated, up to eight labels. Labels are visible to the ticket owner.</p><button class="website-primary" type="submit" :disabled="saving">Save ticket changes</button></form>
+        <p class="website-note">Estimated wait time: {{ selected.estimatedWait?.label || 'Estimating…' }} <span v-if="selected.estimatedWait?.basis">· {{ selected.estimatedWait.basis }}</span> · Estimate, not a guarantee.</p>
         <p v-if="selected.rating" class="website-note">Customer rating: {{ selected.rating.score }}/5 <span v-if="selected.rating.comment">· {{ selected.rating.comment }}</span></p>
         <p v-if="selected.escalation" class="website-note">Escalated: {{ selected.escalation.reason }} · {{ selected.escalation.by }} · {{ communityDate(selected.escalation.createdAt) }}<span v-if="selected.escalation.targetId"> · Target {{ selected.escalation.targetId }}</span></p>
         <form v-if="can('tickets.manage')" class="website-panel" @submit.prevent="escalate"><h3>Escalate ticket</h3><label>Reason<textarea v-model="escalationReason" required maxlength="1000" rows="2" /></label><label>Target staff member<select v-model="escalationTarget"><option value="">No specific target</option><option v-for="member in members" :key="member.id" :value="member.id">{{ member.name }}</option></select></label><button type="submit" :disabled="saving">Escalate</button></form>
@@ -278,11 +337,11 @@ onUnmounted(() => { generation++; window.removeEventListener('lumen-discord-user
         <p class="website-note" role="status">Discord alert: {{ !selected.alertConfigured ? 'Webhook is not configured. Set DISCORD_BUG_REPORT_WEBHOOK on the Worker.' : selected.alert?.state || 'No alert recorded' }}<span v-if="selected.alert?.lastError"> · {{ selected.alert.lastError }}</span></p><button v-if="can('tickets.alerts') && selected.alertConfigured && selected.alert && ['pending', 'failed'].includes(selected.alert.state)" type="button" :disabled="saving" @click="retryAlert">Retry Discord alert</button>
         <article class="ticket-message"><p class="website-meta">{{ selected.customerName }} · Original request</p><RichContent :text="selected.body" /><p v-if="selected.serverSoftware" class="website-note">{{ selected.serverSoftware }} · Minecraft {{ selected.minecraftVersion }}</p></article>
         <div class="ticket-thread"><article v-for="item in replies" :key="item.id" class="ticket-message" :class="{ 'ticket-message-staff': item.staff }"><p class="website-meta"><span class="ticket-author"><strong>{{ item.authorName }}</strong><span v-if="item.staff" class="ticket-support-badge">Support</span><span v-else class="website-badge">Customer</span></span><time :datetime="item.createdAt">{{ communityDate(item.createdAt) }}</time></p><RichContent :text="item.body" /></article></div>
-        <form v-if="can('tickets.reply') && selected.status !== 'closed'" @submit.prevent="sendReply"><label>Preset reply template<select v-model="templateIndex"><option value="">Choose a reply template</option><option v-for="(preset, index) in staffReplyTemplates" :key="preset.title" :value="String(index)">{{ preset.title }}</option></select></label><button type="button" :disabled="saving || templateIndex === ''" @click="insertTemplate">Insert template into draft</button><label>Reply (review before sending)<RichEditor v-model="reply" required :rows="8" /></label><p class="website-note">Replace bracketed placeholders and verify advice for the customer's exact plugin/version. Templates are never sent automatically.</p><button class="website-primary" type="submit" :disabled="saving || !reply.trim()">Send staff reply</button></form>
+        <form v-if="can('tickets.reply') && selected.status !== 'closed'" @submit.prevent="sendReply"><p v-if="editors.length" class="website-message" role="alert">Also editing: {{ editors.map(editor => editor.name).join(', ') }}. Coordinate before replying; simultaneous replies may be blocked. Your draft will be preserved.</p><p v-if="presenceError" role="alert" class="website-message">Editor presence unavailable: {{ presenceError }}. Your draft is preserved.</p><p v-else-if="!leaseReady" role="status">Checking editor presence…</p><button type="button" @click="updateLease">Refresh editor presence</button><label>Preset reply template<select v-model="templateIndex"><option value="">Choose a reply template</option><option v-for="(preset, index) in staffReplyTemplates" :key="preset.title" :value="String(index)">{{ preset.title }}</option></select></label><button type="button" :disabled="saving || templateIndex === ''" @click="insertTemplate">Insert template into draft</button><label>Reply (review before sending)<RichEditor v-model="reply" required :rows="8" /></label><p class="website-note">Replace bracketed placeholders and verify advice for the customer's exact plugin/version. Templates are never sent automatically.</p><button class="website-primary" type="submit" :disabled="saving || !leaseReady || !reply.trim()">Send staff reply</button></form>
         <p v-else class="website-note">{{ selected.status === 'closed' ? 'Reopen this ticket before replying.' : 'Your role has read-only access to replies.' }}</p>
         <a href="/known-issues">Open Community Support (moderate threads there) →</a>
       </section>
-      <div v-else class="website-list ticket-cards"><article v-for="ticket in tickets" :key="ticket.id"><p class="website-meta"><span class="website-badge" :data-status="ticket.status">{{ ticket.status }}</span><span v-if="ticket.escalation" class="website-badge">Escalated</span>{{ ticket.type }} · #{{ ticket.id.slice(0, 8) }}</p><h3>{{ ticket.title }}</h3><p class="website-note">{{ ticket.customerName }} · {{ ticket.productId || 'General support' }}<br>{{ ticket.assignedTo?.name || 'Unassigned' }}</p><div class="ticket-labels"><span v-for="label in ticket.labels" :key="label" class="website-badge">{{ label }}</span></div><div class="ticket-toolbar"><span class="website-meta">{{ communityDate(ticket.updatedAt) }}</span><button type="button" :disabled="loading || saving" @click="open(ticket.id)">Open ticket →</button></div></article></div>
+      <div v-else class="website-list ticket-cards"><article v-for="ticket in tickets" :key="ticket.id"><p class="website-meta"><span class="website-badge" :data-status="ticket.status">{{ ticket.status }}</span><span v-if="ticket.escalation" class="website-badge">Escalated</span>{{ ticket.type }} · #{{ ticket.id.slice(0, 8) }}</p><h3>{{ ticket.title }}</h3><p class="website-note">{{ ticket.customerName }} · {{ ticket.productId || 'General support' }}<br>{{ ticket.assignedTo?.name || 'Unassigned' }}<br>Estimated wait time: {{ ticket.estimatedWait?.label || 'Estimating…' }} · Not a guarantee</p><div class="ticket-labels"><span v-for="label in ticket.labels" :key="label" class="website-badge">{{ label }}</span></div><div class="ticket-toolbar"><span class="website-meta">{{ communityDate(ticket.updatedAt) }}</span><button type="button" :disabled="loading || saving" @click="open(ticket.id)">Open ticket →</button></div></article></div>
     </template>
     <template v-if="tab === 'issues'">
       <form class="website-panel" @submit.prevent="saveIssue"><h3>{{ issueId ? 'Edit known issue' : 'Publish a known issue' }}</h3><p class="website-note">Review bug tickets, then publish a sanitized summary and verified workaround here. Never copy customer identities, keys, or private logs to the public board.</p><label>Title<input v-model="title" required maxlength="120"></label><label>Plugin / product ID<input v-model="productId" maxlength="100"></label><label>Issue and workaround<textarea v-model="body" required maxlength="4000" rows="6"></textarea></label><label>Status<select v-model="issueStatus"><option value="open">Open</option><option value="investigating">Investigating</option><option value="resolved">Resolved</option></select></label><label class="website-check"><input v-model="published" type="checkbox">Publish in Community Support #known-issues</label><div class="website-actions"><button class="website-primary" type="submit" :disabled="saving">Save known issue</button><button type="button" :disabled="saving" @click="editIssue()">Clear draft</button></div></form>

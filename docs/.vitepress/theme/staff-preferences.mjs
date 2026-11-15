@@ -28,3 +28,28 @@ export function toggleStaffPreference(storage, actorId, field, guideId) {
 export function clearStaffPreferences(storage, actorId) {
   storage.removeItem(keyFor(actorId))
 }
+
+const widgetNames = ['launchpad', 'checklist', 'handover', 'progress']
+const widgetKey = actorId => `${keyFor(actorId)}:widgets`
+
+export function readStaffWidgets(storage, actorId) {
+  const saved = storage.getItem(widgetKey(actorId))
+  if (!saved) return [...widgetNames]
+  const widgets = JSON.parse(saved)
+  if (!Array.isArray(widgets) || widgets.some(name => !widgetNames.includes(name)) || new Set(widgets).size !== widgets.length) {
+    throw new Error('Saved widget preferences are invalid. Reset widgets to recover.')
+  }
+  return widgets
+}
+
+export function setStaffWidget(storage, actorId, widget, enabled) {
+  if (!widgetNames.includes(widget) || typeof enabled !== 'boolean') throw new Error('Choose a valid widget.')
+  const widgets = readStaffWidgets(storage, actorId).filter(name => name !== widget)
+  if (enabled) widgets.push(widget)
+  storage.setItem(widgetKey(actorId), JSON.stringify(widgets))
+  return widgets
+}
+
+export function clearStaffWidgets(storage, actorId) {
+  storage.removeItem(widgetKey(actorId))
+}

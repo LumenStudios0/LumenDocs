@@ -3,6 +3,11 @@ export const PERMISSIONS = [
   ['trials.request', 'Request product trials', 'Member features'],
   ['forum.post', 'Create community threads and replies', 'Member features'],
   ['staff.docs', 'Open Staff mode and private staff/developer guides', 'Staff knowledge'],
+  ['staff.presence', 'View team operations and update your availability', 'Staff operations'],
+  ['staff.tasks', 'Create and update staff tasks', 'Staff operations'],
+  ['staff.warnings', 'Warn staff strictly below your rank', 'Staff operations'],
+  ['staff.commissions', 'Manage the commission pipeline', 'Staff operations'],
+  ['staff.feedback', 'Submit and read private guide feedback', 'Staff operations'],
   ['dashboard.view', 'Open Staff Dashboard', 'Dashboard'],
   ['customers.view', 'View customers and their license data', 'Licensing'],
   ['customers.restrict', 'Ban, hold and release customer accounts', 'Licensing'],
@@ -39,7 +44,7 @@ export const PERMISSIONS = [
 
 export const MEMBER_PERMISSIONS = ['support.create', 'trials.request', 'forum.post']
 const support = [
-  ...MEMBER_PERMISSIONS, 'staff.docs',
+  ...MEMBER_PERMISSIONS, 'staff.docs', 'staff.presence', 'staff.tasks', 'staff.commissions', 'staff.feedback',
   'dashboard.view', 'customers.view', 'customers.verify', 'licenses.grant', 'licenses.status', 'licenses.ips',
   'audit.view', 'plugins.view', 'tickets.view', 'tickets.reply', 'tickets.manage', 'tickets.alerts',
   'forum.moderate', 'roles.assign',

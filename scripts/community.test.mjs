@@ -29,7 +29,7 @@ async function tokenFor(id, name) {
 
 function createD1() {
   const sqlite = new DatabaseSync(':memory:')
-  const migrations = Promise.all(['0001_community.sql', '0002_ticket_routing.sql', '0003_community_forum.sql', '0004_website_access.sql', '0005_member_registration.sql', '0006_community_expansion.sql', '0007_product_tools.sql', '0010_trial_duration.sql', '0011_staff_docs_permissions.sql'].map(
+  const migrations = Promise.all(['0001_community.sql', '0002_ticket_routing.sql', '0003_community_forum.sql', '0004_website_access.sql', '0005_member_registration.sql', '0006_community_expansion.sql', '0007_product_tools.sql', '0010_trial_duration.sql', '0011_staff_docs_permissions.sql', '0012_staff_operations.sql'].map(
     name => readFile(new URL(`../worker/migrations/community/${name}`, import.meta.url), 'utf8'),
   ))
   const database = {

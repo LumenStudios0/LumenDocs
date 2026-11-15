@@ -37,7 +37,7 @@ export async function rolePolicies(env) {
     ? (await env.COMMUNITY_DB.prepare('SELECT * FROM website_role_permissions').all()).results || [] : []
   return ROLES.map(role => {
     const saved = rows.find(row => row.role_id === role.id)
-    const permissions = saved ? JSON.parse(saved.permissions) : role.permissions
+    const permissions = role.id === 'owner' ? role.permissions : saved ? JSON.parse(saved.permissions) : role.permissions
     if (!Array.isArray(permissions) || permissions.some(id => !permissionIds.has(id))) throw new Error('Invalid saved role permissions')
     return { ...role, permissions: role.rank < 2 ? permissions.filter(id => MEMBER_PERMISSIONS.includes(id)) : [...permissions], revision: saved?.revision || 0 }
   })

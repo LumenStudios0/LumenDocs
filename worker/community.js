@@ -1,6 +1,7 @@
 import { hasPermission, resolveAccess, siteSettings } from './access-control.js'
 import { expansionRoute, runCommunityExpansionChecks, validImageUrl } from './community-expansion.js'
 import { runProductChecks } from './product-tools.js'
+import { estimatedWait, staffEditorEligibilitySql, ticketWaitEstimates } from './staff-operations.js'
 
 const STATUS_VALUES = new Set(['operational', 'degraded', 'outage', 'maintenance'])
 const SERVICES = [
@@ -30,7 +31,7 @@ function cleanText(value) {
   return value.trim()
 }
 
-function ticketView(row, staff = false) {
+function ticketView(row, staff = false, estimates = {}) {
   return {
     id: row.id,
     type: row.type,
@@ -38,6 +39,7 @@ function ticketView(row, staff = false) {
     body: row.body,
     productId: row.product_id,
     status: row.status,
+    estimatedWait: estimatedWait(row, estimates),
     customerName: row.owner_name,
     assignedTo: row.assignee_id ? { id: row.assignee_id, name: row.assignee_name } : null,
     labels: JSON.parse(row.labels || '[]'),
@@ -244,7 +246,7 @@ async function createTicket(request, env, user, deps, body, typeOverride) {
     owner_name: user.globalName || user.username,
   }
   const alertDelivery = await deliverTicketAlert(env, id)
-  return { ...ticketView(record), ...(await deps.getAdminRole(user.id, env) ? { alertDelivery } : {}) }
+  return { ...ticketView(record, false, deps.ticketEstimates), ...(await deps.getAdminRole(user.id, env) ? { alertDelivery } : {}) }
 }
 
 async function tickets(request, env, url, user, deps) {
@@ -256,7 +258,7 @@ async function tickets(request, env, url, user, deps) {
     [user.id],
     page,
   )
-  return json(request, { ...result, items: result.items.map(row => ticketView(row)) }, 200, deps.respond)
+  return json(request, { ...result, items: result.items.map(row => ticketView(row, false, deps.ticketEstimates)) }, 200, deps.respond)
 }
 
 async function ticketDetail(request, env, user, deps, id, isStaff) {
@@ -268,7 +270,7 @@ async function ticketDetail(request, env, user, deps, id, isStaff) {
   ).bind(id).all()
   return json(request, {
     ticket: {
-      ...ticketView(row, isStaff),
+      ...ticketView(row, isStaff, deps.ticketEstimates),
       ...(isStaff ? { alertConfigured: Boolean(env.DISCORD_BUG_REPORT_WEBHOOK), alert: await env.COMMUNITY_DB.prepare(
         'SELECT state, attempts, last_error AS lastError FROM community_ticket_alerts WHERE ticket_id = ?',
       ).bind(id).first() } : {}),
@@ -288,19 +290,37 @@ async function addReply(request, env, user, deps, id, isStaff) {
   if (!ticket || (!isStaff && ticket.owner_id !== user.id)) return json(request, { error: 'Ticket not found' }, 404, deps.respond)
   if (ticket.status === 'closed') return json(request, { error: 'This ticket is closed' }, 409, deps.respond)
   const now = new Date().toISOString()
+  const replyId = crypto.randomUUID()
   const statements = [env.COMMUNITY_DB.prepare(
-    'INSERT INTO community_replies (id, ticket_id, author_id, author_name, staff, body, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-  ).bind(crypto.randomUUID(), id, user.id, user.globalName || user.username, isStaff ? 1 : 0, cleanText(parsed.value.body), now),
-  env.COMMUNITY_DB.prepare('UPDATE community_tickets SET status = ?, updated_at = ? WHERE id = ?').bind(
-    isStaff ? 'waiting' : 'open', now, id,
+    `INSERT INTO community_replies (id, ticket_id, author_id, author_name, staff, body, created_at)
+     SELECT ?, ?, ?, ?, ?, ?, ?
+     WHERE EXISTS (SELECT 1 FROM community_tickets WHERE id=? AND status!='closed')
+     AND (? = 0 OR NOT EXISTS (SELECT 1 FROM staff_ticket_editors e WHERE ticket_id=? AND member_id!=? AND expires_at>?
+       AND ${staffEditorEligibilitySql(env)}))`,
+  ).bind(replyId, id, user.id, user.globalName || user.username, isStaff ? 1 : 0, cleanText(parsed.value.body), now,
+    id, isStaff ? 1 : 0, id, user.id, now),
+  env.COMMUNITY_DB.prepare('UPDATE community_tickets SET status = ?, updated_at = ? WHERE id = ? AND EXISTS (SELECT 1 FROM community_replies WHERE id=?)').bind(
+    isStaff ? 'waiting' : 'open', now, id, replyId,
   )]
   if (isStaff) {
     statements.push(env.COMMUNITY_DB.prepare(
       `INSERT INTO community_notifications (id, recipient_id, title, body, kind, product_id, audience, link, created_at)
-       VALUES (?, ?, ?, ?, 'ticket', ?, 'user', ?, ?)`,
-    ).bind(crypto.randomUUID(), ticket.owner_id, `Reply to ${ticket.title}`, cleanText(parsed.value.body).slice(0, 500), ticket.product_id, `/account/tickets?ticket=${id}`, now))
+       SELECT ?, ?, ?, ?, 'ticket', ?, 'user', ?, ? WHERE EXISTS (SELECT 1 FROM community_replies WHERE id=?)`,
+    ).bind(crypto.randomUUID(), ticket.owner_id, `Reply to ${ticket.title}`, cleanText(parsed.value.body).slice(0, 500), ticket.product_id, `/account/tickets?ticket=${id}`, now, replyId))
+    statements.push(env.COMMUNITY_DB.prepare(`INSERT INTO website_access_audit(id,actor_id,actor_role,action,target,details,created_at)
+      SELECT ?,?,?,'staff.ticket_replied',?,'{}',? WHERE EXISTS (SELECT 1 FROM community_replies WHERE id=?)`)
+      .bind(crypto.randomUUID(), user.id, (await resolveAccess(user.id, env)).role, id, now, replyId))
+    statements.push(env.COMMUNITY_DB.prepare(`INSERT INTO staff_presence(member_id,last_online,last_did,last_activity_at)
+      SELECT ?,?,'Replied to a support ticket',? WHERE EXISTS (SELECT 1 FROM community_replies WHERE id=?)
+      ON CONFLICT(member_id) DO UPDATE SET last_online=excluded.last_online,last_did=excluded.last_did,last_activity_at=excluded.last_activity_at`)
+      .bind(user.id, now, now, replyId))
   }
-  await env.COMMUNITY_DB.batch(statements)
+  const results = await env.COMMUNITY_DB.batch(statements)
+  if (!results[0].meta?.changes) return json(request, {
+    error: isStaff ? 'Another staff member is editing this ticket, or it has closed. Refresh the ticket presence and coordinate before replying.'
+      : 'This ticket closed before your reply was saved.',
+    ...(isStaff ? { code: 'TICKET_REPLY_CONFLICT' } : {}),
+  }, 409, deps.respond)
   return json(request, { ok: true }, 200, deps.respond)
 }
 
@@ -470,7 +490,7 @@ async function staffTickets(request, env, url, deps) {
     `SELECT * FROM community_tickets${filter} ORDER BY updated_at DESC LIMIT ? OFFSET ?`,
     values, page,
   )
-  return json(request, { ...result, items: result.items.map(row => ticketView(row, true)) }, 200, deps.respond)
+  return json(request, { ...result, items: result.items.map(row => ticketView(row, true, deps.ticketEstimates)) }, 200, deps.respond)
 }
 
 async function updateStaffTicket(request, env, deps, id, user) {
@@ -496,10 +516,19 @@ async function updateStaffTicket(request, env, deps, id, user) {
   if (!validText(title, 3, 160)) return json(request, { error: 'Title must be 3–160 characters' }, 400, deps.respond)
   const assignedName = assigneeId === user.id ? user.globalName || user.username
     : assigneeId === row.assignee_id ? row.assignee_name : assigneeId ? 'Studio staff' : null
-  const result = await env.COMMUNITY_DB.prepare(
+  const now = new Date().toISOString()
+  const results = await env.COMMUNITY_DB.batch([env.COMMUNITY_DB.prepare(
     'UPDATE community_tickets SET status = ?, assignee_id = ?, assignee_name = ?, labels = ?, title = ?, updated_at = ?, follow_up_hours = ? WHERE id = ?',
   ).bind(body.status, assigneeId, assignedName, JSON.stringify([...new Set(labels.map(label => label.trim().toLowerCase()))]),
-    cleanText(title), new Date().toISOString(), body.followUpHours ?? row.follow_up_hours, id).run()
+    cleanText(title), now, body.followUpHours ?? row.follow_up_hours, id),
+    env.COMMUNITY_DB.prepare(`INSERT INTO website_access_audit(id,actor_id,actor_role,action,target,details,created_at)
+      SELECT ?,?,?,'staff.ticket_updated',?,'{}',? WHERE changes()=1`)
+      .bind(crypto.randomUUID(), user.id, (await resolveAccess(user.id, env)).role, id, now),
+    env.COMMUNITY_DB.prepare(`INSERT INTO staff_presence(member_id,last_online,last_did,last_activity_at)
+      SELECT ?,?,'Updated ticket routing',? WHERE changes()=1
+      ON CONFLICT(member_id) DO UPDATE SET last_online=excluded.last_online,last_did=excluded.last_did,last_activity_at=excluded.last_activity_at`)
+      .bind(user.id, now, now)])
+  const result = results[0]
   return result.meta?.changes === 0 ? json(request, { error: 'Ticket not found' }, 404, deps.respond) : json(request, { ok: true }, 200, deps.respond)
 }
 
@@ -992,8 +1021,10 @@ export async function handleCommunity(request, env, origin, path, deps) {
   }
 
   try {
+    deps = { ...deps, ticketEstimates: await ticketWaitEstimates(env.COMMUNITY_DB) }
+    const serializedTicket = (row, staff = false) => ticketView(row, staff, deps.ticketEstimates)
     const expansion = await expansionRoute(request, env, suffix, user, access, deps,
-      { json, bodyJson, paginate, parsePage, validText, ticketView, notificationView })
+      { json, bodyJson, paginate, parsePage, validText, ticketView: serializedTicket, notificationView })
     if (expansion) return expansion
     if (legacyAlias) {
       const parsed = await bodyJson(request, 8000)

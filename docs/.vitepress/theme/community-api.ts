@@ -23,6 +23,7 @@ export interface Ticket {
   rating?: { score: number; comment?: string } | null
   escalation?: { reason: string; by: string; createdAt: string; targetId?: string } | null
   followUpHours?: number
+  estimatedWait?: { minutes: number | null; label: string; basis: string } | null
 }
 export interface StaffMember { id: string; name: string }
 export interface Reply { id: string; body: string; authorName: string; staff: boolean; createdAt: string }

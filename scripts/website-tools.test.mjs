@@ -3,7 +3,8 @@ import assert from 'node:assert/strict'
 import { checkCompatibility, compareVersions, versionParts } from '../docs/.vitepress/theme/compatibility-utils.mjs'
 import { clearBookmarks, readBookmarks, toggleBookmark, validBookmarkPath } from '../docs/.vitepress/theme/doc-bookmarks.mjs'
 import { communityAvailabilityError, CommunityUnavailableError } from '../docs/.vitepress/theme/community-errors.mjs'
-import { clearStaffPreferences, readStaffPreferences, toggleStaffPreference } from '../docs/.vitepress/theme/staff-preferences.mjs'
+import { clearStaffPreferences, readStaffPreferences, toggleStaffPreference, readStaffWidgets, setStaffWidget, clearStaffWidgets } from '../docs/.vitepress/theme/staff-preferences.mjs'
+import { mergeStaffDrafts } from '../docs/.vitepress/theme/staff-operation-drafts.mjs'
 
 test('missing Worker routes are connection failures, not missing user tickets', () => {
   for (const path of ['/status', '/tickets', '/staff/tickets', '/issues', '/preferences']) {
@@ -93,4 +94,25 @@ test('staff guide preference corruption and persistence errors are surfaced with
   browser.setItem = () => { throw new Error('Storage blocked') }
   assert.throws(() => toggleStaffPreference(browser, id, 'read', 'integration'), /blocked/)
   assert.deepEqual(readStaffPreferences(browser, id), { saved: ['integration'], read: [] })
+})
+
+test('staff widget preferences are actor-scoped and reject invalid or corrupt values', () => {
+  const browser = storage(), first = '223456789012345698', second = '323456789012345698'
+  assert.throws(() => readStaffWidgets(browser, 'unverified'), /identity/)
+  setStaffWidget(browser, first, 'handover', false)
+  assert.equal(readStaffWidgets(browser, first).includes('handover'), false)
+  assert.equal(readStaffWidgets(browser, second).includes('handover'), true)
+  assert.throws(() => setStaffWidget(browser, first, 'private guide body', true), /valid/)
+  browser.setItem(`lumen-staff-guides-v1:${first}:widgets`, '["progress","progress"]')
+  assert.throws(() => readStaffWidgets(browser, first), /invalid/)
+  clearStaffWidgets(browser, first)
+  assert.equal(readStaffWidgets(browser, first).length, 4)
+})
+
+test('refresh retains unsaved staff drafts and their stale revisions', () => {
+  const drafts = { one: { id: 'one', title: 'Unsaved', revision: 1 } }
+  const merged = mergeStaffDrafts(drafts, [{ id: 'one', title: 'Remote edit', revision: 2 }, { id: 'two', title: 'New', revision: 0 }], 'id', item => ({ ...item }))
+  assert.deepEqual(merged.one, { id: 'one', title: 'Unsaved', revision: 1 })
+  assert.deepEqual(merged.two, { id: 'two', title: 'New', revision: 0 })
+  assert.equal(Object.hasOwn(drafts, 'two'), false)
 })

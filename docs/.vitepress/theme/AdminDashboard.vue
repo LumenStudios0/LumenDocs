@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { getDiscordSession } from './discord-session'
+import { studioRequest } from './studio-api'
 import { documentedGrantOptions, effectiveLicenseStatus, fetchRegistryItems, hasConnectedAccount, licenseNeedsAttention, normalizeIpAddress, redactAuditDetails, toSafeCsv } from './licensing-utils.mjs'
 import pluginData from './plugin-compatibility-data.json'
 import { clearAdminTestData, createAdminTestStore, TEST_OWNER_ID } from './admin-test-store.mjs'
@@ -111,6 +112,9 @@ let testStore: ReturnType<typeof createAdminTestStore> | null = null
 let generation = 0
 let lastToken = ''
 let clockTimer: ReturnType<typeof setInterval> | undefined
+let presenceTimer: ReturnType<typeof setInterval> | undefined
+let presenceController: AbortController | null = null
+const presenceError = ref('')
 const busy = computed(() => loading.value || submitting.value || verifyingOwner.value)
 const maxPage = computed(() => Math.max(1, Math.ceil(totals[view.value] / pageSize)))
 const sourceLicenses = computed(() => user.value?.licenses ?? [])
@@ -185,9 +189,10 @@ async function verifyAccess() {
     accessError.value = ''
     accessReady.value = true
     if (result.user.id === TEST_OWNER_ID && result.user.role === 'owner') { verifiedToken = token; ownerVerified.value = true }
+    void heartbeat()
     return result.user
   } catch (verificationError) {
-    if (requestId === identityGeneration) { clearWorkspace(); accessError.value = messageOf(verificationError); permissions.value = []; accessReady.value = true }
+    if (requestId === identityGeneration) { presenceController?.abort(); presenceController = null; presenceError.value = ''; clearWorkspace(); accessError.value = messageOf(verificationError); permissions.value = []; accessReady.value = true }
     return null
   } finally { if (requestId === identityGeneration) verifyingOwner.value = false }
 }
@@ -559,6 +564,7 @@ function exportLicenses() {
 function handleSession() {
   try {
     if (lastToken === getDiscordSession()) return
+    presenceController?.abort(); presenceController = null; presenceError.value = ''
     testMode.value = false
     testStore = null
     ownerVerified.value = false
@@ -577,6 +583,7 @@ function handleSession() {
     clearKey()
     void initialize()
   } catch (sessionError) {
+    presenceController?.abort(); presenceController = null; presenceError.value = ''
     generation++
     identityGeneration++
     testMode.value = false
@@ -592,20 +599,41 @@ function handleSession() {
     error.value = messageOf(sessionError)
   }
 }
+async function heartbeat() {
+  const token = getDiscordSession()
+  if (document.hidden || !accessReady.value || !permissions.value.includes('staff.presence') || !token || token !== lastToken || presenceController) return
+  const active = new AbortController(); presenceController = active
+  try {
+    await studioRequest('/staff/presence', { method: 'POST', signal: active.signal, body: '{}' })
+    if (token === getDiscordSession() && token === lastToken) presenceError.value = ''
+  } catch (value) {
+    if (!active.signal.aborted && token === getDiscordSession() && token === lastToken) presenceError.value = `Presence update failed: ${messageOf(value)}`
+  } finally { if (presenceController === active) presenceController = null }
+}
+function presenceVisibilityChanged() {
+  if (document.hidden) { presenceController?.abort(); presenceController = null }
+  else void heartbeat()
+}
 onMounted(() => {
   if (/^[0-9a-f-]{36}$/i.test(new URLSearchParams(window.location.search).get('ticket') || '')) websiteOperations.value = true
   void initialize()
   clockTimer = setInterval(() => { clock.value = Date.now() }, 60000)
   window.addEventListener('lumen-discord-user', handleSession)
+  window.addEventListener('storage', handleSession)
   window.addEventListener('hashchange', linkedAreaChanged)
+  document.addEventListener('visibilitychange', presenceVisibilityChanged)
+  presenceTimer = setInterval(() => { void heartbeat() }, 30000)
 })
 onUnmounted(() => {
   identityGeneration++
   generation++
   clearInterval(clockTimer)
+  clearInterval(presenceTimer); presenceController?.abort(); presenceController = null
   clearKey()
   window.removeEventListener('lumen-discord-user', handleSession)
+  window.removeEventListener('storage', handleSession)
   window.removeEventListener('hashchange', linkedAreaChanged)
+  document.removeEventListener('visibilitychange', presenceVisibilityChanged)
 })
 </script>
 
@@ -616,6 +644,7 @@ onUnmounted(() => {
       <span class="staff-access">{{ accessRole || 'Authorized staff only' }}</span>
     </header>
     <p v-if="accessError" class="staff-message staff-error" role="alert">{{ accessError }}</p>
+    <p v-if="presenceError" class="staff-message staff-error" role="alert">{{ presenceError }} <button type="button" @click="heartbeat">Retry presence</button></p>
     <button v-if="accessError" type="button" :disabled="verifyingOwner" @click="initialize">Recheck website access</button>
     <p v-if="accessReady && !can('dashboard.view') && !accessError" class="staff-message" role="status">Your role does not have Staff Dashboard access.</p>
     <p v-if="can('dashboard.view') && !availableViews.length && !communityAccess && !can('roles.assign') && !can('settings.view')" class="staff-message" role="status">Dashboard access is enabled, but your role has no tools assigned yet.</p>
