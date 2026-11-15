@@ -4,19 +4,20 @@ import AccountLicenseOverview from './AccountLicenseOverview.vue'
 import AccountConnectedServers from './AccountConnectedServers.vue'
 import { getDiscordSession } from './discord-session'
 import { studioRequest } from './studio-api'
+import LoyaltyBadge from './LoyaltyBadge.vue'
 
-const loyalty = ref('')
+const loyalty = ref<{ id: string; name: string } | null>(null)
 const loyaltyError = ref('')
 let loyaltyGeneration = 0
 async function loadLoyalty() {
   const generation = ++loyaltyGeneration
   const token = getDiscordSession()
-  loyalty.value = ''
+  loyalty.value = null
   loyaltyError.value = ''
   if (!token) return
   try {
-    const data = await studioRequest<{ tier: { name: string } | null }>('/loyalty')
-    if (generation === loyaltyGeneration && token === getDiscordSession()) loyalty.value = data.tier?.name || ''
+    const data = await studioRequest<{ tier: { id: string; name: string } | null }>('/loyalty')
+    if (generation === loyaltyGeneration && token === getDiscordSession()) loyalty.value = data.tier
   } catch {
     if (generation === loyaltyGeneration && token === getDiscordSession()) loyaltyError.value = 'Loyalty unavailable'
   }
@@ -43,7 +44,7 @@ const destinations = [
       <p class="customer-eyebrow">LUMEN STUDIOS / CUSTOMER WORKSPACE</p>
       <h1>Your plugins.<br><span>Your control center.</span></h1>
       <p>Real license information, purchase verification, and server access. All in one place.</p>
-      <a v-if="loyalty || loyaltyError" class="customer-loyalty-badge" href="/account/loyalty">{{ loyalty || loyaltyError }}</a>
+      <a v-if="loyalty || loyaltyError" class="customer-loyalty-badge" href="/account/loyalty"><LoyaltyBadge v-if="loyalty" :tier="loyalty" /><span v-else>{{ loyaltyError }}</span></a>
       <a href="/account/licenses">Manage my licenses <span aria-hidden="true">→</span></a>
     </header>
     <AccountLicenseOverview />
@@ -68,7 +69,7 @@ const destinations = [
 .customer-hero h1 span { color: var(--vp-c-brand-1); }
 .customer-hero > p:last-of-type { position: relative; max-width: 430px; color: var(--vp-c-text-2); font-size: .9rem; }
 .customer-hero > a { position: relative; display: inline-flex; gap: 22px; margin-top: 12px; padding: 10px 16px; border-radius: 9px; background: #7b3ff2; color: white; text-decoration: none; font-size: .8rem; }
-.customer-hero > a.customer-loyalty-badge { margin-right: 10px; border: 1px solid #aa82ff; background: var(--vp-c-bg); color: var(--vp-c-brand-1); font-weight: 750; }
+.customer-hero > a.customer-loyalty-badge { margin-right: 10px; padding: 0; background: transparent; color: var(--vp-c-brand-1); }
 .customer-hero-orbit { position: absolute; right: -55px; top: -50px; display: grid; width: 270px; height: 270px; place-items: center; border: 1px solid #9a6bf333; border-radius: 50%; box-shadow: 0 0 0 36px #9a6bf30a, 0 0 0 72px #9a6bf308; transform: rotateX(35deg) rotateY(-25deg); }
 .customer-hero-orbit::before, .customer-hero-orbit::after { content: ""; position: absolute; inset: -36px; border: 2px solid transparent; border-top-color: #a77bff80; border-bottom-color: #a77bff40; border-radius: 50%; animation: customer-access-trace 16s linear infinite; }
 .customer-hero-orbit::after { inset: -72px; animation-direction: reverse; animation-duration: 24s; opacity: .5; }

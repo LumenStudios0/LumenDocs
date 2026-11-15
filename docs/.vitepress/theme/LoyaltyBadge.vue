@@ -1,0 +1,112 @@
+<script setup lang="ts">
+defineProps<{ tier: { id: string; name: string }; compact?: boolean }>()
+</script>
+
+<template>
+  <span class="loyalty-badge" :class="{ 'loyalty-badge--compact': compact }" :data-tier="tier.id">
+    <svg class="badge-effects" viewBox="0 0 160 40" preserveAspectRatio="none" aria-hidden="true">
+      <path class="badge-circuit" d="M0 31H25L36 20H72M88 20H120L133 7H160" />
+      <path class="badge-trace" d="M0 31H25L36 20H72M88 20H120L133 7H160" />
+      <g v-if="tier.id === 'nova' || tier.id === 'elite'" class="badge-dust">
+        <circle cx="9" cy="11" r="1" /><circle cx="42" cy="33" r="1" />
+        <circle cx="108" cy="9" r="1.2" /><circle cx="148" cy="29" r="1" />
+      </g>
+      <path v-if="tier.id === 'elite'" class="badge-flash" d="M138 5L140 11L146 13L140 15L138 21L136 15L130 13L136 11Z" />
+    </svg>
+    <span class="badge-sheen" aria-hidden="true" />
+    <svg class="badge-art" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <g v-if="tier.id === 'spark'" class="spark-art">
+        <path class="badge-facet" d="M18 3L7 18H14L12 29L25 13H18Z" />
+        <path class="badge-ink spark-draw" d="M18 3L7 18H14L12 29L25 13H18Z" />
+        <path class="spark-flicker" d="M3 7L5 9M26 24L29 26M26 5L28 3" />
+      </g>
+      <g v-else-if="tier.id === 'radiance'">
+        <g class="radiance-rays">
+          <path d="M16 2V6M16 26V30M2 16H6M26 16H30M6 6L9 9M23 23L26 26M6 26L9 23M23 9L26 6" />
+        </g>
+        <path class="badge-facet" d="M16 8L23 16L16 24L9 16Z" />
+        <path class="badge-ink radiance-core" d="M16 8L23 16L16 24L9 16Z" />
+        <circle class="radiance-orbit" cx="16" cy="16" r="11" />
+      </g>
+      <g v-else-if="tier.id === 'nova'">
+        <ellipse class="nova-orbit" cx="16" cy="16" rx="14" ry="6" transform="rotate(-35 16 16)" />
+        <path class="badge-facet nova-core" d="M16 5L19 12L27 16L19 19L16 27L13 19L5 16L13 12Z" />
+        <path class="badge-ink nova-draw" d="M16 5L19 12L27 16L19 19L16 27L13 19L5 16L13 12Z" />
+        <g class="nova-stars"><circle cx="5" cy="5" r="1.5" /><circle cx="28" cy="26" r="1.5" /></g>
+      </g>
+      <g v-else-if="tier.id === 'elite'">
+        <path class="elite-halo" d="M4 17A12 12 0 1 1 28 17" />
+        <path class="badge-facet" d="M5 12L11 17L16 7L21 17L27 12L24 25H8Z" />
+        <path class="badge-ink elite-draw" d="M5 12L11 17L16 7L21 17L27 12L24 25H8Z" />
+        <path class="elite-crystal" d="M16 14L20 20L16 25L12 20Z" />
+        <path class="elite-sparks" d="M3 4V8M1 6H5M28 4V8M26 6H30" />
+      </g>
+    </svg>
+    <span class="badge-label">{{ tier.name }}</span>
+  </span>
+</template>
+
+<style scoped>
+.loyalty-badge {
+  --badge-color: #ffd798;
+  --badge-secondary: #caa3ff;
+  --badge-bg: #302136;
+  position: relative;
+  isolation: isolate;
+  contain: paint;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 6px 12px 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--badge-color) 65%, transparent);
+  border-radius: 8px 13px 8px 13px;
+  background: linear-gradient(120deg, var(--badge-bg), #161522);
+  color: #fff4ff;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.2;
+  vertical-align: middle;
+}
+.loyalty-badge[data-tier=radiance] { --badge-color: #c8afff; --badge-secondary: #86f6f1; --badge-bg: #292348; }
+.loyalty-badge[data-tier=nova] { --badge-color: #9bdfff; --badge-secondary: #ca9dff; --badge-bg: #202b49; border-radius: 13px 5px; }
+.loyalty-badge[data-tier=elite] { --badge-color: #ffe1a0; --badge-secondary: #f5a3f5; --badge-bg: #3a2444; border-radius: 6px; }
+.badge-label { position: relative; z-index: 2; overflow-wrap: anywhere; color: #fff4ff; }
+.badge-art { position: relative; z-index: 2; width: 26px; height: 26px; flex-shrink: 0; color: var(--badge-color); stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+.badge-facet { fill: var(--badge-color); fill-opacity: .2; stroke: none; }
+.badge-ink { stroke-dasharray: 90; animation: badge-ink-draw 5s ease-in-out infinite; }
+.badge-effects { position: absolute; inset: 0; width: 100%; height: 100%; color: var(--badge-secondary); pointer-events: none; }
+.badge-circuit { fill: none; stroke: currentColor; stroke-width: .6; opacity: .18; }
+.badge-trace { fill: none; stroke: currentColor; stroke-width: 1; stroke-dasharray: 6 110; animation: badge-circuit-travel 5s linear infinite; opacity: .55; }
+.badge-sheen { position: absolute; inset: 0; background: linear-gradient(110deg, transparent 35%, #ffffff19 48%, transparent 61%); transform: translateX(-110%); animation: badge-sheen-travel 7s ease-in-out infinite; pointer-events: none; }
+.spark-flicker { animation: badge-spark 4s ease-in-out infinite; }
+.radiance-rays { transform-origin: 16px 16px; animation: badge-ray-orbit 18s linear infinite; }
+.radiance-core { animation-duration: 6s; }
+.radiance-orbit { stroke: var(--badge-secondary); stroke-dasharray: 3 14; transform-origin: 16px 16px; animation: badge-ray-orbit 12s linear infinite reverse; opacity: .65; }
+.nova-orbit { stroke: var(--badge-secondary); stroke-dasharray: 8 5; animation: badge-nova-orbit 6s linear infinite; }
+.nova-core { animation: badge-nova-breathe 5s ease-in-out infinite; }
+.nova-stars { fill: var(--badge-secondary); stroke: none; animation: badge-spark 5s ease-in-out infinite reverse; }
+.badge-dust { fill: currentColor; animation: badge-dust-drift 6s ease-in-out infinite; }
+.elite-halo { stroke: var(--badge-secondary); stroke-dasharray: 4 8; animation: badge-nova-orbit 5s linear infinite reverse; }
+.elite-draw { animation-duration: 4s; }
+.elite-crystal { fill: var(--badge-secondary); stroke: none; animation: badge-crystal-glow 4s ease-in-out infinite; }
+.elite-sparks { animation: badge-spark 4s ease-in-out infinite reverse; }
+.badge-flash { fill: var(--badge-color); transform-origin: 138px 13px; animation: badge-flash-bloom 6s ease-in-out infinite; }
+.loyalty-badge--compact { gap: 4px; padding: 2px 7px 2px 4px; font-size: 10px; border-radius: 5px 8px; }
+.loyalty-badge--compact .badge-art { width: 18px; height: 18px; }
+@keyframes badge-ink-draw { 0%, 100% { stroke-dashoffset: 0; } 35% { stroke-dashoffset: 90; opacity: .4; } 65% { stroke-dashoffset: 0; opacity: 1; } }
+@keyframes badge-circuit-travel { to { stroke-dashoffset: -232; } }
+@keyframes badge-sheen-travel { 0%, 35% { transform: translateX(-110%); } 75%, 100% { transform: translateX(110%); } }
+@keyframes badge-spark { 0%, 100% { opacity: .3; } 40%, 65% { opacity: 1; } }
+@keyframes badge-ray-orbit { to { transform: rotate(360deg); } }
+@keyframes badge-nova-orbit { to { stroke-dashoffset: -78; } }
+@keyframes badge-nova-breathe { 50% { fill-opacity: .65; } }
+@keyframes badge-dust-drift { 50% { transform: translateY(-3px); opacity: .4; } }
+@keyframes badge-crystal-glow { 50% { fill: var(--badge-color); opacity: .5; } }
+@keyframes badge-flash-bloom { 0%, 30%, 100% { transform: scale(.35); opacity: .2; } 55% { transform: scale(1); opacity: .9; } }
+@media (prefers-reduced-motion: reduce) {
+  .loyalty-badge *, .loyalty-badge *::before, .loyalty-badge *::after { animation: none; }
+  .badge-sheen { display: none; }
+}
+</style>

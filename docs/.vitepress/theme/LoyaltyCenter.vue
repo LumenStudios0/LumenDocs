@@ -3,6 +3,7 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import { getDiscordSession } from './discord-session'
 import { studioRequest } from './studio-api'
 import { useSiteDialog } from './site-dialog'
+import LoyaltyBadge from './LoyaltyBadge.vue'
 
 interface Tier { id: string; name: string; ips: number; subclients: number; discount: number }
 interface Status {
@@ -13,10 +14,10 @@ interface Status {
   subclients: { productId: string; memberId: string; createdAt: string }[]
 }
 const cards = [
-  { name: 'Spark', need: '1 product', ips: 4, clients: 1, extra: 'Customer-exclusive giveaways' },
-  { name: 'Radiance', need: '3 products', ips: 5, clients: 2, extra: '5% off plugins and feature voting' },
-  { name: 'Nova', need: '7 products', ips: 7, clients: 3, extra: '10% off plugins and priority support' },
-  { name: 'Lumen Elite', need: 'Every product', ips: 10, clients: 5, extra: '15% off plugins and early access to new plugins' },
+  { id: 'spark', name: 'Spark', need: '1 product', ips: 4, clients: 1, extra: 'Customer-exclusive giveaways' },
+  { id: 'radiance', name: 'Radiance', need: '3 products', ips: 5, clients: 2, extra: '5% off plugins and feature voting' },
+  { id: 'nova', name: 'Nova', need: '7 products', ips: 7, clients: 3, extra: '10% off plugins and priority support' },
+  { id: 'elite', name: 'Lumen Elite', need: 'Every product', ips: 10, clients: 5, extra: '15% off plugins and early access to new plugins' },
 ]
 const status = ref<Status | null>(null)
 const loading = ref(false)
@@ -71,12 +72,12 @@ onUnmounted(() => { generation++; window.removeEventListener('lumen-discord-user
 <template>
   <div class="loyalty">
     <header class="loyalty-hero"><p>LUMEN STUDIOS / LOYALTY</p><h1>Your plugins unlock more.</h1><p>Meet Lumen Loyalty. Every tier includes the perks before it; larger limits and discounts replace the earlier ones.</p>
-      <div class="loyalty-current" aria-live="polite"><span>YOUR CURRENT TIER</span><strong>{{ loading ? 'Checking…' : status ? status.tier?.name || 'Not yet unlocked' : 'Unavailable' }}</strong><small v-if="status">{{ status.count }} / {{ status.total }} active registered products owned</small><button type="button" :disabled="loading || busy" @click="load">Refresh</button></div>
+      <div class="loyalty-current" aria-live="polite"><span>YOUR CURRENT TIER</span><LoyaltyBadge v-if="!loading && status?.tier" :tier="status.tier" /><strong v-else>{{ loading ? 'Checking…' : status ? 'Not yet unlocked' : 'Unavailable' }}</strong><small v-if="status">{{ status.count }} / {{ status.total }} active registered products owned</small><button type="button" :disabled="loading || busy" @click="load">Refresh</button></div>
     </header>
     <p v-if="error" class="loyalty-error" role="alert">{{ error }}</p>
     <p v-if="notice" role="status">{{ notice }}</p>
     <section aria-labelledby="loyalty-tiers"><h2 id="loyalty-tiers">Explore the tiers</h2><p>Elite requires all currently active, linked products in the licensing registry. Expired, revoked or inactive access does not count. Active staff grants and trials count too.</p>
-      <div class="loyalty-grid"><article v-for="card in cards" :key="card.name" :class="{ current: status?.tier?.name === card.name }"><span>{{ card.need }}</span><h3>{{ card.name }}</h3><ul><li>{{ card.name }} profile badge</li><li>{{ card.ips }} server IP slots</li><li>{{ card.clients }} sub-client{{ card.clients === 1 ? '' : 's' }} per plugin</li><li>{{ card.extra }}</li></ul></article></div>
+      <div class="loyalty-grid"><article v-for="card in cards" :key="card.name" :class="{ current: status?.tier?.name === card.name }"><span>{{ card.need }}</span><h3><LoyaltyBadge :tier="card" /></h3><ul><li>{{ card.name }} profile badge</li><li>{{ card.ips }} server IP slots</li><li>{{ card.clients }} sub-client{{ card.clients === 1 ? '' : 's' }} per plugin</li><li>{{ card.extra }}</li></ul></article></div>
       <p class="loyalty-note"><strong>Available now:</strong> tier identification, customer dashboard badge and shared website downloads. <strong>Planned, not yet active:</strong> expanded IP limits, giveaways, discounts, voting, priority support and early access. Your existing IP limit remains unchanged.</p>
     </section>
     <section class="loyalty-manage" aria-labelledby="loyalty-clients"><h2 id="loyalty-clients">Sub-clients by plugin</h2>
@@ -101,7 +102,7 @@ onUnmounted(() => { generation++; window.removeEventListener('lumen-discord-user
 .loyalty-hero>p:first-child{color:var(--vp-c-brand-1);font-size:.68rem;letter-spacing:.14em;font-weight:700}
 .loyalty-hero h1{font-size:clamp(2rem,5vw,3.8rem);letter-spacing:-.05em;line-height:1.08;margin:18px 0}
 .loyalty p{color:var(--vp-c-text-2);line-height:1.7}.loyalty-current{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:24px;padding:18px;border:1px solid #9a6bf344;border-radius:12px;background:var(--vp-c-bg)}
-.loyalty-current span,.loyalty-grid article>span{font-size:.65rem;letter-spacing:.1em;color:var(--vp-c-brand-1);font-weight:700}.loyalty-current strong{font-size:1.3rem}.loyalty-current small{color:var(--vp-c-text-2)}.loyalty-current button{margin-left:auto}
+.loyalty-current>span:not(.loyalty-badge),.loyalty-grid article>span{font-size:.65rem;letter-spacing:.1em;color:var(--vp-c-brand-1);font-weight:700}.loyalty-current strong{font-size:1.3rem}.loyalty-current small{color:var(--vp-c-text-2)}.loyalty-current button{margin-left:auto}
 .loyalty section{margin-top:32px}.loyalty h2{border:0;font-size:1.5rem}.loyalty-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
 .loyalty-grid article{padding:20px;border:1px solid var(--vp-c-divider);border-radius:16px;background:var(--vp-c-bg-soft)}.loyalty-grid article.current{border-color:var(--vp-c-brand-1);box-shadow:0 0 30px #7b3ff222}.loyalty-grid h3{margin:12px 0;font-size:1.2rem}.loyalty-grid ul{padding-left:18px;color:var(--vp-c-text-2);font-size:.82rem;line-height:1.8}
 .loyalty-note{font-size:.8rem;padding:14px;border:1px solid var(--vp-c-divider);border-radius:10px}.loyalty-error{padding:12px;border:1px solid #d96176;border-radius:8px;color:var(--vp-c-text-1)!important}
