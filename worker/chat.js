@@ -3,6 +3,7 @@ import { adminPermission, getAdminRole, getStaffMembers, hasPermission, remember
 import { claimDiscordPurchases, submitBuiltByBitClaim } from './builtbybit.js'
 import { handleProductTools } from './product-tools.js'
 import { staffAssistant } from './staff-assistant.js'
+import { activityCustomerName, staffActivityStatement } from './staff-operations.js'
 
 const jsonHeaders = {
   'Content-Type': 'application/json; charset=utf-8',
@@ -956,6 +957,17 @@ async function adminApi(request, env, origin, path) {
       return respond({ error: 'The licensing API did not apply the new name. Refresh the registry and update the VPS API before retrying.' }, 502, origin)
     }
     if (upstream.ok && licenseGrant) {
+      let activityWarning
+      try {
+        const customer = await env.COMMUNITY_DB.prepare(
+          'SELECT display_name, username FROM website_members WHERE discord_id = ?',
+        ).bind(licenseGrant.customerId).first()
+        const name = activityCustomerName(customer?.display_name || customer?.username)
+        await staffActivityStatement(env.COMMUNITY_DB, user.id, `Gave ${name} a license`).run()
+      } catch (error) {
+        console.error('License granted, but staff activity could not be saved:', error instanceof Error ? error.name : 'Unknown error')
+        activityWarning = 'License granted, but Last did could not be updated. Do not grant it again.'
+      }
       try {
         await env.COMMUNITY_DB.prepare(
           `INSERT INTO community_notifications (id, recipient_id, title, body, kind, product_id, audience, link, created_at)
@@ -965,8 +977,12 @@ async function adminApi(request, env, origin, path) {
           licenseGrant.productId, '/account/licenses', new Date().toISOString()).run()
       } catch (error) {
         console.error('License granted, but notification could not be saved:', error)
-        return respond({ ...payload, notificationWarning: 'License granted, but the notification could not be saved. Tell the customer directly; do not grant it again.' }, upstream.status, origin)
+        return respond({ ...payload, notificationWarning: [
+          'License granted, but the notification could not be saved. Tell the customer directly; do not grant it again.',
+          activityWarning,
+        ].filter(Boolean).join(' ') }, upstream.status, origin)
       }
+      if (activityWarning) return respond({ ...payload, notificationWarning: activityWarning }, upstream.status, origin)
     }
     return respond(payload, upstream.status, origin)
   } catch (error) {

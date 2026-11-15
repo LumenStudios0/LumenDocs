@@ -17,6 +17,12 @@ const commissionView = r => ({ ticketId: r.ticket_id, title: r.title, status: r.
 const warningView = r => ({ id: r.id, targetId: r.target_id, actorId: r.actor_id, reason: r.reason,
   createdAt: r.created_at, acknowledgedAt: r.acknowledged_at })
 
+export function activityCustomerName(name) {
+  return typeof name === 'string' && name.trim()
+    ? name.replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, '').trim().slice(0, 80) || 'Customer'
+    : 'Customer'
+}
+
 export function staffActivityStatement(db, id, label, now = new Date().toISOString()) {
   return db.prepare(`INSERT INTO staff_presence(member_id,last_online,last_did,last_activity_at) VALUES (?,?,?,?)
     ON CONFLICT(member_id) DO UPDATE SET last_online=excluded.last_online,
@@ -258,13 +264,13 @@ export async function handleStaffOperations(request, env, origin, path, deps) {
           !validText(body.scope, 0, 6000) || !validText(body.acceptanceCriteria, 0, 6000) || !Array.isArray(body.milestones) ||
           body.milestones.length > 20 || body.milestones.some(v => !validText(v, 1, 240))) return send({ error: 'Provide a valid stage, scope, acceptance criteria, up to 20 text milestones, and current revision.' }, 400)
       target = commission[1]
-      const ticket = await db.prepare('SELECT type FROM community_tickets WHERE id=?').bind(target).first()
+      const ticket = await db.prepare('SELECT type,owner_name FROM community_tickets WHERE id=?').bind(target).first()
       if (ticket?.type !== 'commission') return send({ error: 'Commission ticket not found.' }, 404)
       statement = db.prepare(`UPDATE staff_commissions SET stage=?,scope=?,acceptance_criteria=?,milestones=?,
         revision=revision+1,updated_at=? WHERE ticket_id=? AND revision=?
         AND EXISTS (SELECT 1 FROM community_tickets WHERE id=? AND type='commission')`)
         .bind(body.stage, body.scope.trim(), body.acceptanceCriteria.trim(), JSON.stringify(body.milestones.map(v => v.trim())), now, target, body.revision, target)
-      action = 'staff.commission_saved'; label = 'Updated the commission pipeline'
+      action = 'staff.commission_saved'; label = `Updated ${activityCustomerName(ticket.owner_name)}'s commission`
       resultView = async () => ({ commission: commissionView(await db.prepare('SELECT c.*,t.title,t.status FROM staff_commissions c JOIN community_tickets t ON t.id=c.ticket_id WHERE c.ticket_id=?').bind(target).first()) })
     } else if (path === '/studio/staff/guide-feedback' && request.method === 'POST') {
       if (typeof body.guideId !== 'string' || !staffGuideIds.has(body.guideId) || !validText(body.message, 3, 2000)) return send({ error: 'Choose a known staff guide and a message of 3–2000 characters.' }, 400)

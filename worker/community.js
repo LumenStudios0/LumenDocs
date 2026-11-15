@@ -1,7 +1,7 @@
 import { hasPermission, resolveAccess, siteSettings } from './access-control.js'
 import { expansionRoute, runCommunityExpansionChecks, validImageUrl } from './community-expansion.js'
 import { runProductChecks } from './product-tools.js'
-import { estimatedWait, staffEditorEligibilitySql, ticketWaitEstimates } from './staff-operations.js'
+import { activityCustomerName, estimatedWait, staffEditorEligibilitySql, ticketWaitEstimates } from './staff-operations.js'
 
 const STATUS_VALUES = new Set(['operational', 'degraded', 'outage', 'maintenance'])
 const SERVICES = [
@@ -311,9 +311,9 @@ async function addReply(request, env, user, deps, id, isStaff) {
       SELECT ?,?,?,'staff.ticket_replied',?,'{}',? WHERE EXISTS (SELECT 1 FROM community_replies WHERE id=?)`)
       .bind(crypto.randomUUID(), user.id, (await resolveAccess(user.id, env)).role, id, now, replyId))
     statements.push(env.COMMUNITY_DB.prepare(`INSERT INTO staff_presence(member_id,last_online,last_did,last_activity_at)
-      SELECT ?,?,'Replied to a support ticket',? WHERE EXISTS (SELECT 1 FROM community_replies WHERE id=?)
+      SELECT ?,?,?,? WHERE EXISTS (SELECT 1 FROM community_replies WHERE id=?)
       ON CONFLICT(member_id) DO UPDATE SET last_online=excluded.last_online,last_did=excluded.last_did,last_activity_at=excluded.last_activity_at`)
-      .bind(user.id, now, now, replyId))
+      .bind(user.id, now, `Replied to ${activityCustomerName(ticket.owner_name)}'s ticket`, now, replyId))
   }
   const results = await env.COMMUNITY_DB.batch(statements)
   if (!results[0].meta?.changes) return json(request, {
@@ -525,9 +525,9 @@ async function updateStaffTicket(request, env, deps, id, user) {
       SELECT ?,?,?,'staff.ticket_updated',?,'{}',? WHERE changes()=1`)
       .bind(crypto.randomUUID(), user.id, (await resolveAccess(user.id, env)).role, id, now),
     env.COMMUNITY_DB.prepare(`INSERT INTO staff_presence(member_id,last_online,last_did,last_activity_at)
-      SELECT ?,?,'Updated ticket routing',? WHERE changes()=1
+      SELECT ?,?,?,? WHERE changes()=1
       ON CONFLICT(member_id) DO UPDATE SET last_online=excluded.last_online,last_did=excluded.last_did,last_activity_at=excluded.last_activity_at`)
-      .bind(user.id, now, now)])
+      .bind(user.id, now, `${body.status === 'closed' ? 'Closed' : 'Updated'} ${activityCustomerName(row.owner_name)}'s ticket`, now)])
   const result = results[0]
   return result.meta?.changes === 0 ? json(request, { error: 'Ticket not found' }, 404, deps.respond) : json(request, { ok: true }, 200, deps.respond)
 }

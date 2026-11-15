@@ -173,7 +173,7 @@ test('editor leases prevent staff reply collisions for every type without leakin
     assert.equal((await api(`/community/tickets/${id}/replies`, 'POST', { body: 'Actual staff response' }, developer)).status, 200)
   }
   const activity = sqlite.prepare('SELECT last_did FROM staff_presence WHERE member_id=?').get(developer)
-  assert.equal(activity.last_did, 'Replied to a support ticket')
+  assert.equal(activity.last_did, "Replied to Customer's ticket")
   const id = ticket()
   await api(`/studio/staff/tickets/${id}/presence`, 'POST', { editing: true }, support)
   await api(`/studio/staff/tickets/${id}/presence`, 'POST', { editing: false }, support)
@@ -195,6 +195,21 @@ test('a lease acquired after the reply was read still blocks the atomic write an
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM community_notifications').get().n, 0)
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM website_access_audit').get().n, 0)
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM staff_presence').get().n, 0)
+})
+
+test('ticket activity names the customer and distinguishes replies, updates, and closures', async t => {
+  const { api, ticket, sqlite } = await fixture(t)
+  const id = ticket()
+  sqlite.prepare('UPDATE community_tickets SET owner_name=? WHERE id=?').run('Alex', id)
+  const lastDid = () => sqlite.prepare('SELECT last_did FROM staff_presence WHERE member_id=?').get(support).last_did
+  assert.equal((await api(`/community/tickets/${id}/replies`, 'POST', { body: 'Private ticket details must not appear in activity' }, support)).status, 200)
+  assert.equal(lastDid(), "Replied to Alex's ticket")
+  assert.equal((await api(`/community/staff/tickets/${id}`, 'PUT', { status: 'waiting' }, support)).status, 200)
+  assert.equal(lastDid(), "Updated Alex's ticket")
+  assert.equal((await api(`/community/staff/tickets/${id}`, 'PUT', { status: 'closed' }, support)).status, 200)
+  assert.equal(lastDid(), "Closed Alex's ticket")
+  assert.equal((await api(`/community/tickets/${id}/replies`, 'POST', { body: 'Rejected reply' }, support)).status, 409)
+  assert.equal(lastDid(), "Closed Alex's ticket")
 })
 
 test('wait estimates use recent actual first responses by type with sample floor and closed label', async t => {

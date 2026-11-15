@@ -132,6 +132,7 @@ test('staff license grants notify only the recipient even when ticket alerts are
   const grant = await api('/admin/licenses', 'POST', { customerDiscordId: customerId, productId: 'gladiator' }, owner)
   assert.equal(grant.status, 201)
   assert.equal(calls, 1)
+  assert.equal(db.sqlite.prepare('SELECT last_did FROM staff_presence WHERE member_id=?').get(staffId).last_did, 'Gave Customer a license')
   const page = await (await api('/community/notifications', 'GET', undefined, customer)).json()
   assert.equal(page.unreadTotal, 1)
   assert.equal(page.items[0].kind, 'license')
@@ -161,6 +162,30 @@ test('staff grant reports notification failure without retrying a committed gran
   assert.equal(calls, 1)
   assert.equal(result.licenseKey, 'private-test-key')
   assert.match(result.notificationWarning, /do not grant it again/i)
+})
+
+test('license activity uses the verified customer name and never records failed grants as successful', async t => {
+  const { db, owner, api } = await accessFixture(t)
+  await api('/auth/me', 'GET', undefined, await tokenFor(customerId, 'Alex'))
+  const originalFetch = globalThis.fetch
+  const originalPrepare = db.prepare
+  t.after(() => { globalThis.fetch = originalFetch; db.prepare = originalPrepare })
+  let status = 403, calls = 0
+  globalThis.fetch = async () => { calls++; return Response.json({ message: 'Synthetic result' }, { status }) }
+  const body = { customerDiscordId: customerId, productId: 'gladiator' }
+  assert.equal((await api('/admin/licenses', 'POST', body, owner)).status, 403)
+  assert.equal(db.sqlite.prepare('SELECT last_did FROM staff_presence WHERE member_id=?').get(staffId), undefined)
+  status = 201
+  assert.equal((await api('/admin/licenses', 'POST', body, owner)).status, 201)
+  assert.equal(db.sqlite.prepare('SELECT last_did FROM staff_presence WHERE member_id=?').get(staffId).last_did, 'Gave Alex a license')
+  db.prepare = function (sql) {
+    if (sql.includes('INSERT INTO staff_presence')) return { bind: () => ({ run: async () => { throw new Error('Injected activity failure') } }) }
+    return originalPrepare.call(this, sql)
+  }
+  const response = await api('/admin/licenses', 'POST', body, owner)
+  assert.equal(response.status, 201)
+  assert.match((await response.json()).notificationWarning, /Last did could not be updated.*Do not grant it again/)
+  assert.equal(calls, 3)
 })
 
 test('community routes require configured persistent storage and valid sign-in', async () => {
