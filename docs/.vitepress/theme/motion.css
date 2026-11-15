@@ -1,0 +1,79 @@
+:root {
+  --studio-motion-ease: cubic-bezier(.16, 1, .3, 1);
+  --studio-motion-accent: #9f72ff;
+}
+html.lumen-staff-mode { --studio-motion-accent: #f54e66; }
+.lumen-route-sweep { position: fixed; inset: 0; z-index: 100; pointer-events: none; opacity: 0; background: linear-gradient(90deg,transparent 25%,color-mix(in srgb,var(--studio-motion-accent) 12%,transparent) 48%,color-mix(in srgb,var(--studio-motion-accent) 35%,transparent) 50%,transparent 65%); }
+
+body::before { content: none; }
+.lumen-motion-backdrop {
+  position: fixed; inset: 0; z-index: 0; overflow: hidden;
+  pointer-events: none; contain: strict;
+}
+.lumen-motion-grid {
+  position: absolute; inset: 0;
+  background-image: linear-gradient(color-mix(in srgb, var(--studio-motion-accent) 8%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, var(--studio-motion-accent) 8%, transparent) 1px, transparent 1px);
+  background-size: 80px 80px;
+  mask-image: linear-gradient(transparent, black 45%, transparent);
+  opacity: .5;
+}
+.lumen-motion-light {
+  position: absolute; width: min(800px, 80vw); height: 450px; border-radius: 50%;
+  background: radial-gradient(ellipse, color-mix(in srgb, var(--studio-motion-accent) 15%, transparent), transparent 65%);
+  animation: studio-light-travel 22s cubic-bezier(.45,0,.55,1) infinite alternate;
+}
+.lumen-motion-light-one { left: -20%; top: -20%; }
+.lumen-motion-light-two { right: -20%; bottom: -20%; animation-delay: -11s; animation-direction: alternate-reverse; }
+.lumen-motion-circuits { position: absolute; inset: 0; width: 100%; height: 100%; fill: none; stroke: var(--studio-motion-accent); stroke-width: 1; opacity: .22; }
+.lumen-motion-circuits path { stroke-opacity: .25; }
+.lumen-motion-circuits .lumen-circuit-packet { stroke-opacity: .9; stroke-width: 2; stroke-dasharray: .035 .965; animation: studio-circuit-travel 12s linear infinite; animation-delay: calc(var(--circuit) * -4s); }
+@keyframes studio-light-travel { from { transform: translate3d(0,0,0) scale(.9); } to { transform: translate3d(30vw,15vh,0) scale(1.2); } }
+@keyframes studio-circuit-travel { to { stroke-dashoffset: -1; } }
+
+.studio-shell :is(.lumen-card, .VPCard, .VPFeature, .staff-panel, .staff-profile, .staff-customers, .knowledge-hero, .knowledge-article, .ops .panel, .account-product-card) { animation: none !important; }
+.studio-shell .lumen-motion-pending { opacity: 0; }
+.studio-shell :is(.lumen-card, .home-entry-card, .home-step, .knowledge-launchpad a, .staff-panel, .ops .panel, .customer-destinations > a, .account-product-card) {
+  transition: transform 500ms var(--studio-motion-ease), border-color 300ms ease, box-shadow 500ms var(--studio-motion-ease), background-color 250ms ease;
+}
+.studio-shell :is(.home-entry-card, .home-step, .lumen-card, .knowledge-launchpad a, .customer-destinations > a, .account-product-card):hover {
+  transform: translateY(-6px);
+  border-color: var(--studio-motion-accent);
+  box-shadow: 0 14px 38px color-mix(in srgb, var(--studio-motion-accent) 14%, transparent);
+}
+.studio-shell .lumen-interactive {
+  background-image: radial-gradient(240px circle at var(--pointer-x, -300px) var(--pointer-y, -300px), color-mix(in srgb, var(--studio-motion-accent) 15%, transparent), transparent 75%);
+}
+.studio-shell :is(.home-button, .VPButton, .staff-actions button, .ops button) {
+  transition: transform 400ms var(--studio-motion-ease), box-shadow 400ms var(--studio-motion-ease), border-color 250ms ease, background-color 250ms ease;
+}
+.studio-shell :is(.home-button, .VPButton):hover { transform: translateY(-3px); box-shadow: 0 10px 32px color-mix(in srgb, var(--studio-motion-accent) 24%, transparent); }
+.studio-shell :is(.staff-panel, .ops .panel):focus-within { border-color: var(--studio-motion-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--studio-motion-accent) 8%, transparent); }
+.studio-sidebar-tree .VPLink, .VPSidebarItem .link, .VPDocAsideOutline .outline-link { transition: color 220ms ease, translate 400ms var(--studio-motion-ease); }
+.VPSidebarItem .link:hover, .VPDocAsideOutline .outline-link:hover { translate: 3px 0; }
+.lumen-nav-menu-panel, .lumen-account-menu, .lumen-notification-panel { transform-origin: top right; animation: studio-menu-unfold 420ms var(--studio-motion-ease) both; }
+@keyframes studio-menu-unfold { from { opacity: 0; transform: perspective(800px) rotateX(-12deg) translateY(-10px) scale(.96); } to { opacity: 1; transform: none; } }
+.lumen-nav-menu-link { animation-name: studio-menu-link; animation-duration: 450ms; animation-timing-function: var(--studio-motion-ease); }
+@keyframes studio-menu-link { from { opacity: 0; translate: -12px 0; } to { opacity: 1; translate: 0 0; } }
+.assistant-popover-enter-active { transition: opacity 300ms ease, transform 600ms var(--studio-motion-ease), filter 400ms ease; }
+.assistant-popover-leave-active { transition: opacity 180ms ease, transform 250ms ease; }
+.assistant-popover-enter-from { opacity: 0; transform: perspective(900px) rotateX(8deg) translateY(30px) scale(.92); filter: blur(5px); }
+.assistant-popover-leave-to { opacity: 0; transform: translateY(12px) scale(.97); }
+.assistant-panel { transform-origin: bottom right; }
+.assistant-launcher { transition: transform 450ms var(--studio-motion-ease), box-shadow 450ms ease; }
+.assistant-launcher:hover { transform: translateY(-4px); box-shadow: 0 10px 35px color-mix(in srgb, var(--studio-motion-accent) 28%, transparent); }
+.assistant-message, .assistant-staff-response { animation: studio-response-enter 420ms var(--studio-motion-ease) both; }
+@keyframes studio-response-enter { from { opacity: 0; translate: 0 10px; } to { opacity: 1; translate: 0 0; } }
+
+.lumen-scene-paused, .lumen-scene-paused *, .lumen-scene-paused::before, .lumen-scene-paused::after,
+.lumen-scene-paused *::before, .lumen-scene-paused *::after,
+.lumen-motion-suspended *, .lumen-motion-suspended *::before, .lumen-motion-suspended *::after { animation-play-state: paused !important; }
+@media (hover: none) {
+  .studio-shell :is(.home-entry-card, .home-step, .lumen-card, .home-button, .VPButton):hover { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .studio-shell .lumen-motion-pending { opacity: 1; }
+  .studio-shell *, .studio-shell *::before, .studio-shell *::after { animation: none !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+  .lumen-motion-backdrop *, .lumen-motion-backdrop *::before, .lumen-motion-backdrop *::after { animation: none !important; }
+  .studio-shell :is(.home-entry-card, .home-step, .lumen-card, .knowledge-launchpad a, .home-button, .VPButton):hover { transform: none; }
+  .assistant-popover-enter-from, .assistant-popover-leave-to { transform: none; filter: none; }
+}

@@ -2,24 +2,33 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 
 const experienceRoot = ref<HTMLElement | null>(null)
-let revealObserver: IntersectionObserver | undefined
-let sceneObserver: IntersectionObserver | undefined
 let motionPreference: MediaQueryList | undefined
 let pointerFrame = 0
+let scrollFrame = 0
+
+function syncSceneScroll() {
+  cancelAnimationFrame(scrollFrame)
+  scrollFrame = requestAnimationFrame(() => {
+    const hero = experienceRoot.value?.querySelector('.launch')
+    if (!hero || motionPreference?.matches) return
+    const bounds = hero.getBoundingClientRect()
+    const progress = Math.max(0, Math.min(1, -bounds.top / bounds.height))
+    experienceRoot.value?.style.setProperty('--launch-progress', String(progress))
+  })
+}
 
 function syncMotionPreference() {
   const root = experienceRoot.value
   if (!root) return
-  root.classList.toggle('home-motion-paused', document.hidden)
   if (motionPreference?.matches) {
     cancelAnimationFrame(pointerFrame)
-    root.querySelectorAll('.home-reveal').forEach(element => element.classList.add('is-visible'))
     root.querySelectorAll<HTMLElement>('.home-feature-card').forEach(card => {
       card.style.setProperty('--tilt-x', '0deg')
       card.style.setProperty('--tilt-y', '0deg')
     })
     root.style.setProperty('--hero-x', '0')
     root.style.setProperty('--hero-y', '0')
+    root.style.setProperty('--launch-progress', '0')
   }
 }
 
@@ -68,36 +77,16 @@ onMounted(() => {
   if (!root) return
   motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
   motionPreference.addEventListener('change', syncMotionPreference)
-  document.addEventListener('visibilitychange', syncMotionPreference)
+  window.addEventListener('scroll', syncSceneScroll, { passive: true })
   syncMotionPreference()
-
-  if (!('IntersectionObserver' in window)) {
-    root.querySelectorAll('.home-reveal').forEach(element => element.classList.add('is-visible'))
-    return
-  }
-  root.classList.add('home-motion-ready')
-  revealObserver = new IntersectionObserver((entries, observer) => {
-    entries.forEach(entry => {
-      if (!entry.isIntersecting) return
-      entry.target.classList.add('is-visible')
-      observer.unobserve(entry.target)
-    })
-  }, { threshold: 0.16 })
-
-  root.querySelectorAll('.home-reveal').forEach(element => revealObserver?.observe(element))
-  sceneObserver = new IntersectionObserver(entries => {
-    entries.forEach(entry => entry.target.classList.toggle('home-scene-sleeping', !entry.isIntersecting))
-  }, { rootMargin: '80px', threshold: 0 })
-  root.querySelectorAll('.launch-atmosphere, .workspace-stage, .home-orbit-scene, .home-feature-card, .home-license-art, .home-portal-visual')
-    .forEach(element => sceneObserver?.observe(element))
+  syncSceneScroll()
 })
 
 onUnmounted(() => {
-  revealObserver?.disconnect()
-  sceneObserver?.disconnect()
   motionPreference?.removeEventListener('change', syncMotionPreference)
-  document.removeEventListener('visibilitychange', syncMotionPreference)
+  window.removeEventListener('scroll', syncSceneScroll)
   cancelAnimationFrame(pointerFrame)
+  cancelAnimationFrame(scrollFrame)
 })
 </script>
 
@@ -106,9 +95,8 @@ onUnmounted(() => {
     <section class="launch" aria-labelledby="launch-title" @pointermove="handleHeroPointer" @pointerleave="resetHeroPointer">
       <div class="launch-atmosphere" aria-hidden="true">
         <div class="launch-grid" />
-        <div class="launch-aurora launch-aurora-one" /><div class="launch-aurora launch-aurora-two" />
-        <div class="launch-light-ring" />
-        <span v-for="spark in 9" :key="spark" class="launch-star" :style="{ '--spark': spark }" />
+        <div class="launch-beam launch-beam-one" /><div class="launch-beam launch-beam-two" />
+        <div class="launch-scan" />
       </div>
       <div class="launch-copy">
         <a class="launch-label" href="/plugins/"><span /> LUMEN STUDIOS <i>/</i> MINECRAFT PLUGINS <span aria-hidden="true">↗</span></a>
@@ -121,26 +109,28 @@ onUnmounted(() => {
         <div class="launch-notes"><span>One license key</span><span>Plugin-by-plugin guides</span><span>Built for your community</span></div>
       </div>
 
-      <div class="workspace-stage">
-      <div class="workspace" aria-label="Explore the Lumen workspace">
-        <div class="workspace-bar"><span class="workspace-mark">L</span><strong>Your Lumen workspace</strong><span class="workspace-preview">PREVIEW</span></div>
-        <div class="workspace-body">
-          <div class="workspace-rail" aria-hidden="true"><span class="workspace-rail-active">◈</span><span>⌘</span><span>✦</span><span>⚙</span><i /></div>
-          <div class="workspace-main">
-            <div class="workspace-heading"><div><span class="workspace-kicker">A LITTLE LESS ADMIN</span><h2>A lot more possibility.</h2></div><span class="workspace-emblem" aria-hidden="true">✦</span></div>
-            <a href="/getting-started/" class="workspace-setup"><span class="workspace-setup-icon" aria-hidden="true">↗</span><span><strong>Your next great server starts here</strong><small>Requirements. Installation. First launch.</small></span><span aria-hidden="true">→</span></a>
-            <div class="workspace-section-label"><span>THE TOOLKIT</span><span>Made to work together</span></div>
-            <div class="workspace-tools">
-              <a href="/plugins/"><span class="workspace-tool-icon" aria-hidden="true">✦</span><strong>Plugins</strong><small>Find your next upgrade</small><span class="workspace-tool-link">Explore library ↗</span></a>
-              <a href="/getting-started/licensing"><span class="workspace-tool-icon" aria-hidden="true">⌘</span><strong>One key.</strong><small>Every Lumen plugin</small><span class="workspace-tool-link">License guide ↗</span></a>
+      <div class="engine-stage" aria-label="Lumen plugin engine illustration">
+        <div class="engine-art" aria-hidden="true">
+          <div class="engine-plane" />
+          <svg class="engine-wires" viewBox="0 0 520 520"><path d="M85 115H165L260 210L355 115H435M85 390H170L260 300L350 390H435" /><path class="engine-packet" d="M85 115H165L260 210L355 115H435M85 390H170L260 300L350 390H435" /></svg>
+          <div class="engine-halo engine-halo-one" /><div class="engine-halo engine-halo-two" />
+          <div class="engine-core">
+            <div class="engine-cube">
+              <span class="engine-face engine-front">L</span><span class="engine-face engine-back">L</span>
+              <span class="engine-face engine-left" /><span class="engine-face engine-right" />
+              <span class="engine-face engine-top" /><span class="engine-face engine-bottom" />
             </div>
-            <a class="workspace-guide" href="/docs/"><span aria-hidden="true">≡</span><span><strong>Answers, without the digging.</strong><small>Commands, configuration &amp; permissions</small></span><span aria-hidden="true">→</span></a>
-            <div class="workspace-footer"><span><i /> BUILT FOR MINECRAFT</span><span>Less friction. More creating.</span></div>
           </div>
+          <span class="engine-coordinate engine-coordinate-top">LUMEN / PLUGIN ENGINE</span>
+          <span class="engine-coordinate engine-coordinate-bottom">BUILT FOR YOUR NEXT WORLD</span>
+          <div v-for="(plugin, index) in ['DUELS', 'SHARDS', 'ECONOMY', 'AUCTION']" :key="plugin" class="engine-module" :class="`engine-module-${index}`" :style="{ '--module': index }"><i /><span>{{ plugin }}</span><b>+</b></div>
         </div>
-      </div>
-      <span class="workspace-float-tag workspace-float-tag-top" aria-hidden="true"><i /> YOUR NEXT SERVER UPGRADE</span>
-      <span class="workspace-float-tag workspace-float-tag-bottom" aria-hidden="true">PLUGINS. POSSIBILITIES. LUMEN.</span>
+        <a class="engine-console" href="/getting-started/">
+          <span class="engine-console-label"><i /> THE NEXT CHAPTER OF YOUR SERVER <span>↗</span></span>
+          <span class="engine-console-line"><b>01</b> Find your plugin.<i /></span>
+          <span class="engine-console-line"><b>02</b> Make it yours.<i /></span>
+          <span class="engine-console-line"><b>03</b> Build something great.<i /></span>
+        </a>
       </div>
     </section>
 
@@ -173,30 +163,13 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div class="home-orbit-scene" aria-label="Animated illustration of a plugin moving from setup to a running server">
-        <div class="home-orbit home-orbit-outer" />
-        <div class="home-orbit home-orbit-inner" />
-        <div class="home-orbit home-orbit-dash" />
-        <div class="home-glow" />
-        <div class="home-energy-line"><i /><i /><i /></div>
-        <div class="home-float-card home-float-card-top">
-          <span class="home-card-dot" />
-          <span>Ready to install</span>
-          <strong>Plugin.jar</strong>
-        </div>
-        <div class="home-cube">
-          <div class="home-cube-face home-cube-front"><span>✦</span></div>
-          <div class="home-cube-face home-cube-side" />
-          <div class="home-cube-face home-cube-top" />
-        </div>
-        <div class="home-float-card home-float-card-bottom">
-          <span class="home-server-icon"><i /><i /><i /></span>
-          <span><strong>Server online</strong><small>All systems ready</small></span>
-          <span class="home-online-dot" />
-        </div>
-        <span class="home-spark home-spark-one">✦</span>
-        <span class="home-spark home-spark-two">·</span>
-        <span class="home-spark home-spark-three">✧</span>
+      <div class="deploy-scene" aria-label="Illustration of plugin installation steps, not live server status">
+        <span class="deploy-caption">FROM THE FIRST DOWNLOAD / TO YOUR NEXT WORLD</span>
+        <svg class="deploy-path" viewBox="0 0 440 280" aria-hidden="true"><path d="M65 55H220V140H375V225H65" /><path class="deploy-signal" d="M65 55H220V140H375V225H65" /></svg>
+        <div class="deploy-node deploy-download"><span>01 / DOWNLOAD</span><strong>Plugin.jar</strong><div class="deploy-bars" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /><i /></div></div>
+        <div class="deploy-node deploy-config"><span>02 / CONFIGURE</span><strong>Make it yours.</strong><code>your-server: your-rules</code></div>
+        <div class="deploy-node deploy-ready"><span>03 / FIRST LAUNCH</span><strong><i aria-hidden="true" /> A world of possibility.</strong></div>
+        <span class="deploy-caption deploy-caption-bottom">ILLUSTRATIVE WORKFLOW / NO LIVE TELEMETRY</span>
       </div>
     </section>
 
@@ -281,18 +254,11 @@ onUnmounted(() => {
 
     <section class="home-license home-reveal" aria-labelledby="home-license-title">
       <div class="home-license-art" aria-hidden="true">
-        <span class="home-license-halo" />
-        <span class="home-license-orbit home-license-orbit-one" />
-        <span class="home-license-orbit home-license-orbit-two" />
-        <div class="home-license-token">
-          <span>✦</span>
-          <small>ONE KEY</small>
-        </div>
-        <div class="home-license-chip home-license-chip-one"><i>LA</i> Lumen Auction</div>
-        <div class="home-license-chip home-license-chip-two"><i>LD</i> Lumen Duels</div>
-        <div class="home-license-chip home-license-chip-three"><i>LS</i> Lumen Shards</div>
-        <span class="home-license-spark home-license-spark-one">✧</span>
-        <span class="home-license-spark home-license-spark-two">✦</span>
+        <svg class="access-network" viewBox="0 0 400 300"><path d="M200 150L60 70M200 150L340 70M200 150V250" /><path class="access-network-charge" pathLength="1" d="M200 150L60 70M200 150L340 70M200 150V250" /></svg>
+        <div class="access-vault"><svg viewBox="0 0 80 80"><path pathLength="1" d="M44 32a14 14 0 1 0-10 13l17 17h11V51H51V40Z" /><circle cx="28" cy="28" r="4" /></svg><span>ONE KEY</span></div>
+        <span class="access-product access-product-one"><i>LA</i> Auction</span>
+        <span class="access-product access-product-two"><i>LD</i> Duels</span>
+        <span class="access-product access-product-three"><i>LS</i> Shards</span>
       </div>
       <div class="home-license-copy">
         <span class="home-eyebrow"><span class="home-pulse" /> SIMPLER LICENSES, LESS FRICTION</span>
@@ -354,7 +320,6 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
-        <div class="home-portal-spark">✦</div>
       </div>
       <div class="home-portal-copy">
         <span class="home-eyebrow">YOUR CUSTOMER PORTAL</span>
@@ -408,51 +373,76 @@ onUnmounted(() => {
   mask-image: radial-gradient(ellipse at 65% 44%, black, transparent 68%);
   opacity: 0.55;
 }
-.launch-aurora { position: absolute; width: 560px; height: 560px; border-radius: 50%; animation: launch-aurora-drift 16s ease-in-out infinite alternate; }
-.launch-aurora-one { top: -150px; right: -70px; background: radial-gradient(circle, rgb(141 76 255 / 23%), transparent 68%); }
-.launch-aurora-two { bottom: -220px; left: -160px; background: radial-gradient(circle, rgb(101 71 242 / 19%), transparent 68%); animation-delay: -7s; animation-direction: alternate-reverse; }
-.launch-light-ring {
-  position: absolute; top: 5%; right: -6%; width: 500px; height: 500px; border-radius: 50%;
-  border: 1px solid rgb(167 116 255 / 16%);
-  box-shadow: inset 0 0 60px rgb(149 108 255 / 6%), 0 0 90px rgb(149 108 255 / 8%);
-  transform: rotateX(62deg) rotateZ(-24deg);
-  animation: launch-ring-breathe 9s ease-in-out infinite alternate;
-}
-.launch-star {
-  position: absolute; left: calc(8% + var(--spark) * 9%); top: calc(8% + var(--spark) * 7%);
-  width: 3px; height: 3px; border-radius: 50%; background: #c6a5ff;
-  box-shadow: 0 0 12px #a986ff;
-  animation: launch-star-rise calc(8s + var(--spark) * 0.7s) ease-in-out infinite;
-  animation-delay: calc(var(--spark) * -1.4s);
-}
-.launch-title .launch-name { display: inline-block; background: none; -webkit-text-fill-color: currentColor; animation: launch-text-enter 850ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.launch-beam { position: absolute; width: 80%; height: 170px; background: linear-gradient(90deg, transparent, #9c57ff25, #cab0ff35, transparent); transform: rotate(-35deg); filter: blur(28px); animation: engine-light-pass 14s ease-in-out infinite; }
+.launch-beam-one { top: 8%; left: 15%; }
+.launch-beam-two { bottom: 10%; right: 0; animation-delay: -7s; opacity: .5; }
+.launch-scan { position: absolute; inset: 0; background: linear-gradient(transparent, #b990ff12, transparent); height: 100px; animation: engine-scan 9s cubic-bezier(.45,0,.55,1) infinite; }
+.launch-title .launch-name { display: inline-block; background: none; -webkit-text-fill-color: currentColor; animation: engine-type-reveal 1000ms cubic-bezier(.16,1,.3,1) both; }
 .launch-title .launch-statement {
   display: inline-block; background-size: 200% 100%;
   background-image: linear-gradient(105deg, #e5d5ff, #b188ff 35%, #8252ed 60%, #dfcaff);
-  animation: launch-text-enter 1000ms cubic-bezier(0.16, 1, 0.3, 1) 100ms both, launch-title-shift 12s ease-in-out infinite alternate;
+  animation: engine-type-reveal 1200ms cubic-bezier(.16,1,.3,1) 140ms both;
 }
-.launch-description { animation: launch-text-enter 850ms cubic-bezier(0.16, 1, 0.3, 1) 200ms both; }
-.launch-actions { animation: launch-text-enter 850ms cubic-bezier(0.16, 1, 0.3, 1) 300ms both; }
-.workspace-stage {
-  position: relative; min-width: 0; z-index: 1;
-  transform: perspective(1400px) rotateX(calc(var(--hero-y, 0) * -7deg)) rotateY(calc(var(--hero-x, 0) * 8deg)) translateY(calc(var(--hero-y, 0) * -8px));
-  transition: transform 450ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-.workspace-stage::before {
-  content: ""; position: absolute; inset: 6% -3%; border-radius: 24px;
-  background: radial-gradient(ellipse, rgb(143 75 255 / 24%), transparent 68%);
-  transform: scale(1.12); animation: launch-halo-breathe 7s ease-in-out infinite alternate;
-}
-.workspace-float-tag {
-  position: absolute; display: flex; align-items: center; gap: 7px; padding: 10px 13px;
-  border: 1px solid rgb(167 116 255 / 35%); border-radius: 10px;
-  background: var(--vp-c-bg-elv); color: var(--vp-c-brand-1); box-shadow: 0 12px 32px rgb(40 16 90 / 18%);
-  font-size: 8px; font-weight: 650; letter-spacing: 0.1em;
-  animation: launch-tag-float 6s ease-in-out infinite alternate; pointer-events: none;
-}
-.workspace-float-tag-top { top: -16px; right: 14px; }
-.workspace-float-tag-bottom { bottom: -18px; left: 10px; animation-delay: -3s; }
-.workspace-float-tag i { width: 5px; height: 5px; border-radius: 50%; background: #aa87ff; box-shadow: 0 0 10px #aa87ff; }
+.launch-description { animation: engine-copy-reveal 900ms cubic-bezier(.16,1,.3,1) 300ms both; }
+.launch-actions { animation: engine-copy-reveal 900ms cubic-bezier(.16,1,.3,1) 420ms both; }
+.engine-stage { position: relative; min-width: 0; perspective: 1000px; animation: engine-stage-enter 1300ms cubic-bezier(.16,1,.3,1) 160ms both; }
+.engine-art { position: relative; aspect-ratio: 1; transform-style: preserve-3d; transform: rotateX(calc(var(--hero-y,0) * -10deg)) rotateY(calc(var(--hero-x,0) * 12deg)); transition: transform 500ms cubic-bezier(.16,1,.3,1); }
+.engine-plane { position: absolute; inset: 10%; border: 1px solid #a77bff30; background: linear-gradient(90deg,#a77bff12 1px,transparent 1px),linear-gradient(#a77bff12 1px,transparent 1px); background-size: 28px 28px; transform: rotateX(65deg) rotateZ(-35deg); border-radius: 30px; box-shadow: 0 0 90px #7b3ff220; }
+.engine-core { position: absolute; left: 50%; top: 45%; width: 124px; height: 124px; margin: -62px; transform-style: preserve-3d; transform: rotateX(-24deg) rotateY(-35deg); }
+.engine-cube { width: 100%; height: 100%; transform-style: preserve-3d; animation: engine-assemble 12s cubic-bezier(.65,0,.35,1) infinite; }
+.engine-face { position: absolute; inset: 0; display: grid; place-items: center; border: 1px solid #c6a5ffb0; background: linear-gradient(145deg,#a175faee,#5720b9e8); box-shadow: inset 0 0 35px #b897ff50; backface-visibility: hidden; color: white; font-size: 76px; font-weight: 900; font-style: italic; text-shadow: 0 0 24px #fff6; }
+.engine-front { transform: translateZ(calc(62px + var(--launch-progress,0) * 40px)); }
+.engine-back { transform: rotateY(180deg) translateZ(calc(62px + var(--launch-progress,0) * 40px)); }
+.engine-left { transform: rotateY(-90deg) translateZ(calc(62px + var(--launch-progress,0) * 40px)); }
+.engine-right { transform: rotateY(90deg) translateZ(calc(62px + var(--launch-progress,0) * 40px)); background: linear-gradient(145deg,#8547e8,#34105e); }
+.engine-top { transform: rotateX(90deg) translateZ(calc(62px + var(--launch-progress,0) * 40px)); background: linear-gradient(145deg,#ddc6ff,#9764f0); }
+.engine-bottom { transform: rotateX(-90deg) translateZ(calc(62px + var(--launch-progress,0) * 40px)); }
+.engine-halo { position: absolute; inset: 15%; border: 1px solid #a77bff50; border-radius: 50%; transform: rotateX(65deg) rotateZ(-25deg); }
+.engine-halo::after { content: ""; position: absolute; inset: -2px; border-radius: inherit; border: 2px solid transparent; border-top-color: #d7bdff; border-left-color: #a17bff70; animation: engine-orbit-trace 8s linear infinite; }
+.engine-halo-two { inset: 8%; transform: rotateY(60deg) rotateZ(35deg); opacity: .55; }
+.engine-halo-two::after { animation-direction: reverse; animation-duration: 12s; }
+.engine-wires { position: absolute; inset: 0; width: 100%; height: 100%; fill: none; stroke: #a77bff35; stroke-width: 1; }
+.engine-packet { stroke: #bd98ff; stroke-width: 2; stroke-dasharray: 30 490; animation: engine-wire-stream 5s linear infinite; }
+.engine-coordinate { position: absolute; left: 10%; font: 8px/1.5 monospace; color: var(--vp-c-text-2); letter-spacing: .15em; }
+.engine-coordinate-top { top: 2%; }
+.engine-coordinate-bottom { bottom: 8%; }
+.engine-module { position: absolute; display: flex; gap: 9px; align-items: center; padding: 12px; border: 1px solid #a77bff50; border-radius: 10px; background: var(--vp-c-bg-elv); box-shadow: 0 10px 25px #0002; font: 9px monospace; color: var(--vp-c-brand-1); animation: engine-module-dock 12s cubic-bezier(.65,0,.35,1) infinite; animation-delay: calc(var(--module) * -3s); }
+.engine-module i { width: 6px; height: 6px; background: currentColor; box-shadow: 0 0 12px currentColor; }
+.engine-module b { margin-left: 12px; opacity: .5; }
+.engine-module-0 { left: 2%; top: 16%; }
+.engine-module-1 { right: 0; top: 17%; }
+.engine-module-2 { left: 0; bottom: 22%; }
+.engine-module-3 { right: 0; bottom: 23%; }
+.engine-console { position: relative; display: grid; gap: 9px; padding: 20px; margin: -12% 4% 0; border: 1px solid #a77bff45; border-radius: 16px; background: var(--vp-c-bg-elv); box-shadow: 0 25px 60px #0002; color: var(--vp-c-text-1); transform: rotateX(4deg); transition: border-color 250ms, transform 400ms; }
+.engine-console:hover { border-color: var(--vp-c-brand-1); transform: rotateX(0) translateY(-4px); }
+.engine-console-label { display: flex; gap: 8px; align-items: center; font: 8px/1.5 monospace; letter-spacing: .08em; color: var(--vp-c-text-2); margin-bottom: 8px; }
+.engine-console-label > span { margin-left: auto; }
+.engine-console-label > i { width: 5px; height: 5px; background: #a77bff; }
+.engine-console-line { display: flex; gap: 12px; align-items: center; font-size: 12px; animation: engine-console-step 9s ease infinite; }
+.engine-console-line:nth-child(3) { animation-delay: -6s; }
+.engine-console-line:nth-child(4) { animation-delay: -3s; }
+.engine-console-line b { font: 9px monospace; color: var(--vp-c-brand-1); }
+.engine-console-line i { margin-left: auto; width: 36px; height: 3px; background: var(--vp-c-brand-1); transform-origin: left; animation: engine-buffer 9s ease infinite; }
+.engine-console-line:nth-child(3) i { animation-delay: -6s; }
+.engine-console-line:nth-child(4) i { animation-delay: -3s; }
+.deploy-scene { position: relative; height: 360px; min-width: 0; isolation: isolate; }
+.deploy-caption { position: absolute; top: 6px; left: 5%; font: 7px monospace; letter-spacing: .09em; color: var(--vp-c-text-2); }
+.deploy-caption-bottom { top: auto; bottom: 8px; }
+.deploy-path { position: absolute; inset: 30px 0; width: 100%; height: calc(100% - 60px); fill: none; stroke: #a77bff35; stroke-width: 1; }
+.deploy-signal { stroke: #b990ff; stroke-width: 3; stroke-dasharray: 50 800; animation: engine-deploy-stream 8s linear infinite; }
+.deploy-node { position: absolute; display: grid; gap: 12px; padding: 18px; border: 1px solid #a77bff50; border-radius: 12px; background: var(--vp-c-bg-elv); box-shadow: 0 12px 30px #0002; animation: engine-deploy-node 8s cubic-bezier(.65,0,.35,1) infinite; }
+.deploy-node > span { font: 8px monospace; letter-spacing: .12em; color: var(--vp-c-brand-1); }
+.deploy-node strong { font-size: 15px; }
+.deploy-download { left: 0; top: 38px; width: 47%; }
+.deploy-config { right: 0; top: 130px; width: 59%; animation-delay: -5.3s; }
+.deploy-config code { font-size: 9px; background: none; }
+.deploy-ready { left: 0; bottom: 40px; width: 70%; animation-delay: -2.6s; }
+.deploy-ready strong { display: flex; align-items: center; gap: 10px; }
+.deploy-ready i { width: 7px; height: 7px; border-radius: 50%; background: #50d6a0; box-shadow: 0 0 14px #50d6a0; }
+.deploy-bars { display: flex; gap: 4px; height: 6px; }
+.deploy-bars i { flex: 1; background: var(--vp-c-brand-1); animation: engine-download 8s ease infinite; }
+.deploy-bars i:nth-child(2n) { animation-delay: 120ms; }
+.deploy-bars i:nth-child(3n) { animation-delay: 240ms; }
 .home-button span, .home-entry-arrow { transition: transform 300ms cubic-bezier(0.16, 1, 0.3, 1); }
 .home-button:hover span, .home-entry-card:hover .home-entry-arrow { transform: translate(3px, -2px); }
 .home-feature-card::before {
@@ -461,25 +451,28 @@ onUnmounted(() => {
   opacity: 0; transition: opacity 280ms ease;
 }
 .home-feature-card:hover::before { opacity: 1; }
-.home-motion-paused *, .home-motion-paused *::before, .home-motion-paused *::after,
-.home-scene-sleeping, .home-scene-sleeping *, .home-scene-sleeping::before,
-.home-scene-sleeping *::before, .home-scene-sleeping *::after { animation-play-state: paused !important; }
 
-@keyframes launch-text-enter { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes launch-aurora-drift { to { transform: translate3d(40px, 45px, 0) scale(1.1); } }
-@keyframes launch-title-shift { to { background-position: 100% 50%; } }
-@keyframes launch-star-rise { 0%, 100% { opacity: 0.15; transform: translateY(18px); } 50% { opacity: 0.85; transform: translateY(-22px); } }
-@keyframes launch-ring-breathe { to { transform: rotateX(58deg) rotateZ(-14deg) scale(1.08); opacity: 0.4; } }
-@keyframes launch-halo-breathe { to { transform: scale(1.2); opacity: 0.45; } }
-@keyframes launch-tag-float { to { transform: translateY(-9px) rotate(-1deg); } }
+@keyframes engine-type-reveal { from { opacity: 0; clip-path: inset(0 0 100% 0); transform: translateY(45px) rotateX(18deg); } to { opacity: 1; clip-path: inset(0); transform: none; } }
+@keyframes engine-copy-reveal { from { opacity: 0; transform: translateY(24px); filter: blur(4px); } to { opacity: 1; transform: none; filter: blur(0); } }
+@keyframes engine-stage-enter { from { opacity: 0; transform: rotateY(-18deg) translateY(45px) scale(.86); } to { opacity: 1; transform: none; } }
+@keyframes engine-assemble { 0%,18%,100% { transform: rotateY(0) scale(1); } 38%,52% { transform: rotateY(90deg) scale(.85); } 72%,86% { transform: rotateY(180deg) scale(1); } }
+@keyframes engine-module-dock { 0%,18%,100% { translate: 0 0; opacity: 1; } 35%,52% { translate: 0 -14px; opacity: .5; } 72%,86% { translate: 0 5px; opacity: 1; } }
+@keyframes engine-orbit-trace { to { transform: rotate(360deg); } }
+@keyframes engine-wire-stream { to { stroke-dashoffset: -520; } }
+@keyframes engine-deploy-stream { to { stroke-dashoffset: -850; } }
+@keyframes engine-scan { 0%,100% { translate: 0 -100px; opacity: 0; } 15%,85% { opacity: 1; } 90% { translate: 0 700px; opacity: 0; } }
+@keyframes engine-light-pass { 0%,100% { translate: -10% 0; opacity: .3; } 50% { translate: 15% -60px; opacity: 1; } }
+@keyframes engine-console-step { 0%,30%,100% { opacity: 1; translate: 3px 0; } 40%,90% { opacity: .45; translate: 0 0; } }
+@keyframes engine-buffer { 0%,100% { transform: scaleX(.15); } 30%,40% { transform: scaleX(1); } 85% { transform: scaleX(.15); } }
+@keyframes engine-deploy-node { 0%,25%,100% { translate: 0 0; border-color: #b990ff; } 40%,85% { translate: 0 6px; border-color: #a77bff30; } }
+@keyframes engine-download { 0%,100% { opacity: .2; transform: scaleX(.3); } 22%,65% { opacity: 1; transform: scaleX(1); } }
 
 @media (max-width: 720px) {
-  .workspace-stage { transform: none; }
-  .workspace-stage::before { inset: 6% 8%; }
+  .engine-art { transform: none; overflow: clip; }
   .launch-atmosphere { inset: -20px 0; }
-  .launch-aurora { width: 360px; height: 360px; }
-  .launch-light-ring { top: 35%; right: -22%; width: 360px; height: 360px; }
-  .workspace-float-tag { font-size: 7px; padding: 8px 10px; }
+  .engine-stage { max-width: 520px; width: 100%; margin: auto; }
+  .engine-module { font-size: 8px; padding: 9px; gap: 6px; }
+  .engine-coordinate { font-size: 7px; }
 }
 
 .launch-label {
@@ -533,62 +526,9 @@ onUnmounted(() => {
 .launch-notes { display: flex; flex-wrap: wrap; gap: 8px 18px; color: var(--home-muted); font-size: 10px; }
 .launch-notes span::before { content: "✓"; margin-right: 5px; color: var(--vp-c-brand-1); }
 
-.workspace {
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid rgb(149 108 255 / 28%);
-  border-radius: 16px;
-  background: var(--vp-c-bg);
-  box-shadow: 0 24px 80px rgb(52 20 110 / 18%), 0 0 90px rgb(123 63 242 / 9%);
-  transform: perspective(1400px) rotateY(-5deg) rotateX(2deg);
-  animation: workspace-enter 800ms ease both;
-}
-
-.workspace-bar { display: flex; align-items: center; gap: 10px; padding: 15px 18px; border-bottom: 1px solid var(--vp-c-divider); background: var(--vp-c-bg-soft); }
-.workspace-mark { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 6px; background: linear-gradient(135deg, #bc9cff, #6026cf); color: white; font-weight: 800; font-style: italic; }
-.workspace-bar strong { font-size: 11px; font-weight: 550; }
-.workspace-preview { margin-left: auto; font-size: 8px; letter-spacing: 0.08em; color: var(--home-muted); }
-.workspace-body { display: grid; grid-template-columns: 48px minmax(0, 1fr); }
-.workspace-rail { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 21px 0; border-right: 1px solid var(--vp-c-divider); color: var(--home-muted); }
-.workspace-rail span { display: grid; width: 28px; height: 28px; place-items: center; font-size: 16px; }
-.workspace-rail .workspace-rail-active { border-radius: 7px; background: var(--vp-c-brand-soft); color: var(--vp-c-brand-1); }
-.workspace-rail i { width: 20px; height: 20px; margin-top: auto; border: 1px solid var(--vp-c-divider); border-radius: 50%; background: var(--vp-c-brand-soft); }
-.workspace-main { min-width: 0; padding: 24px; background: radial-gradient(ellipse at 100% 0, rgb(123 63 242 / 8%), transparent 65%); }
-.workspace-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.workspace-kicker { color: var(--home-muted); font-size: 8px; letter-spacing: 0.14em; }
-.workspace-heading h2 { margin: 5px 0 22px; padding: 0; border: 0; font-size: 20px; letter-spacing: -0.04em; line-height: 1.4; }
-.workspace-emblem { color: #a986ff; font-size: 36px; filter: drop-shadow(0 0 16px rgb(149 108 255 / 50%)); }
-.workspace-setup { display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid rgb(149 108 255 / 30%); border-radius: 9px; background: linear-gradient(110deg, rgb(123 63 242 / 14%), rgb(123 63 242 / 4%)); color: var(--home-ink); }
-.workspace-setup > span:last-child { margin-left: auto; color: var(--vp-c-brand-1); }
-.workspace-setup-icon { color: #a986ff; font-size: 24px; }
-.workspace strong, .workspace small { display: block; }
-.workspace-setup strong, .workspace-guide strong { font-size: 11px; line-height: 1.5; font-weight: 600; }
-.workspace small { margin-top: 4px; color: var(--home-muted); font-size: 9px; line-height: 1.5; }
-.workspace-section-label { display: flex; justify-content: space-between; gap: 12px; margin: 24px 0 10px; color: var(--home-muted); font-size: 8px; }
-.workspace-section-label > span:first-child { letter-spacing: 0.12em; }
-.workspace-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.workspace-tools a { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; padding: 16px; border: 1px solid var(--vp-c-divider); border-radius: 9px; background: var(--vp-c-bg-soft); color: var(--home-ink); }
-.workspace-tool-icon { display: grid; width: 30px; height: 30px; margin-bottom: 12px; place-items: center; border: 1px solid rgb(149 108 255 / 25%); border-radius: 8px; color: #956cff; background: var(--vp-c-brand-soft); }
-.workspace-tools strong { font-size: 16px; letter-spacing: -0.03em; }
-.workspace-tool-link { margin-top: 16px; color: var(--vp-c-brand-1); font-size: 9px; }
-.workspace-guide { display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 14px 0; color: var(--home-ink); }
-.workspace-guide > span:first-child { color: var(--vp-c-brand-1); font-size: 24px; }
-.workspace-guide > span:last-child { margin-left: auto; }
-.workspace-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding-top: 14px; border-top: 1px solid var(--vp-c-divider); color: var(--home-muted); font-size: 8px; }
-.workspace-footer > span:first-child { display: flex; align-items: center; gap: 6px; font-size: 7px; letter-spacing: 0.08em; }
-.workspace a { transition: border-color 180ms ease, background-color 180ms ease; }
-.workspace a:hover { border-color: var(--vp-c-brand-1); background-color: var(--vp-c-brand-soft); }
-
-@keyframes workspace-enter {
-  from { opacity: 0; transform: perspective(1400px) rotateY(-9deg) translateY(24px); }
-  to { opacity: 1; transform: perspective(1400px) rotateY(-5deg) rotateX(2deg); }
-}
-
 @media (max-width: 960px) {
   .launch { gap: 32px; }
   .launch .launch-title { font-size: 46px; }
-  .workspace-main { padding: 18px; }
-  .workspace-body { grid-template-columns: 36px minmax(0, 1fr); }
 }
 
 @media (max-width: 720px) {
@@ -597,14 +537,9 @@ onUnmounted(() => {
   .launch .launch-title { font-size: clamp(40px, 10vw, 64px); }
   .launch-description { margin-inline: auto; font-size: 16px; }
   .launch-actions, .launch-notes { justify-content: center; }
-  .workspace { width: 100%; max-width: 520px; margin-inline: auto; transform: none; animation: none; }
 }
 
 .launch a:focus-visible { outline: 2px solid var(--vp-c-brand-1); outline-offset: 4px; }
-
-@media (prefers-reduced-motion: reduce) {
-  .workspace { animation: none; transform: none; }
-}
 
 .home-experience a {
   text-decoration: none;
@@ -1347,7 +1282,7 @@ onUnmounted(() => {
   border: 1px solid rgb(167 124 255 / 35%);
   border-radius: 50%;
   transform: rotate(-20deg);
-  animation: home-key-orbit 9s linear infinite;
+  animation: access-ring-charge 9s cubic-bezier(.65,0,.35,1) infinite;
 }
 
 .home-key-orbit-two {
@@ -1372,7 +1307,7 @@ onUnmounted(() => {
   color: white;
   font-size: 2rem;
   transform: rotate(-12deg);
-  animation: home-token-float 4s ease-in-out infinite;
+  animation: access-key-turn 9s cubic-bezier(.65,0,.35,1) infinite;
 }
 
 .home-key-code {
@@ -1393,7 +1328,7 @@ onUnmounted(() => {
   height: 13px;
   border-radius: 3px;
   background: #9f75f7;
-  animation: home-code-blink 1.8s ease-in-out infinite alternate;
+  animation: access-code-unlock 9s ease infinite;
 }
 
 .home-key-code i:nth-child(2n) { height: 8px; animation-delay: -0.5s; }
@@ -1416,11 +1351,11 @@ onUnmounted(() => {
   background: var(--vp-c-bg);
   color: var(--home-muted);
   font-size: 0.56rem;
-  animation: home-pill-rise 3.8s ease-in-out infinite;
+  animation: access-product-unlock 9s ease infinite;
 }
 
-.home-product-pills span:nth-child(2) { animation-delay: -1.2s; }
-.home-product-pills span:nth-child(3) { animation-delay: -2.4s; }
+.home-product-pills span:nth-child(2) { animation-delay: -6s; }
+.home-product-pills span:nth-child(3) { animation-delay: -3s; }
 
 .home-product-pills i {
   color: var(--home-purple);
@@ -1452,11 +1387,11 @@ onUnmounted(() => {
   color: var(--home-muted);
   font-size: 0.62rem;
   box-shadow: 0 6px 18px rgb(0 0 0 / 8%);
-  animation: home-slot-in 0.7s both;
+  animation: access-server-register 9s cubic-bezier(.16,1,.3,1) infinite;
 }
 
-.home-ip-slot-two { animation-delay: 0.25s; }
-.home-ip-slot-three { animation-delay: 0.5s; }
+.home-ip-slot-two { animation-delay: -6s; }
+.home-ip-slot-three { animation-delay: -3s; }
 .home-ip-slot > span { color: var(--vp-c-text-3); font-size: 0.56rem; }
 .home-ip-slot > i { width: 6px; height: 6px; border-radius: 50%; background: #54d89a; box-shadow: 0 0 9px rgb(84 216 154 / 60%); }
 .home-ip-slot > b { font-weight: 600; }
@@ -1472,7 +1407,7 @@ onUnmounted(() => {
   border: 1px solid rgb(123 63 242 / 16%);
   border-radius: 50%;
   transform: rotate(-32deg);
-  animation: home-key-orbit 12s linear infinite;
+  animation: access-ring-charge 9s cubic-bezier(.65,0,.35,1) infinite;
 }
 
 .home-server-visual {
@@ -1534,7 +1469,7 @@ onUnmounted(() => {
   border-radius: 50%;
   background: #a77cff;
   box-shadow: 0 0 8px #a77cff;
-  animation: home-link-flow 2.4s linear infinite;
+  animation: access-link-packet 6s cubic-bezier(.65,0,.35,1) infinite;
 }
 
 .home-server-link span:nth-child(2) { animation-delay: -0.8s; }
@@ -1550,7 +1485,7 @@ onUnmounted(() => {
   inset: 5% auto 5% 0;
   width: 25%;
   background: linear-gradient(90deg, transparent, rgb(123 63 242 / 10%), transparent);
-  animation: home-sweep 4s ease-in-out infinite;
+  animation: access-server-scan 6s ease-in-out infinite;
 }
 
 .home-docs-visual {
@@ -1578,31 +1513,16 @@ onUnmounted(() => {
 
 .home-search-bar { border-color: rgb(123 63 242 / 40%); }
 .home-search-icon { color: var(--home-purple); font-size: 1.3rem; line-height: 1; }
-.home-search-typing { overflow: hidden; color: var(--home-muted); font-size: 0.63rem; white-space: nowrap; animation: home-search-type 5s steps(12, end) infinite; }
-.home-search-bar > i { width: 1px; height: 12px; background: var(--home-purple); animation: home-caret 0.9s steps(2) infinite; }
-.home-search-result { min-height: 44px; margin-left: 13px; animation: home-result-in 5s ease-in-out infinite; }
+.home-search-typing { overflow: hidden; color: var(--home-muted); font-size: 0.63rem; white-space: nowrap; animation: access-query-type 8s steps(12, end) infinite; }
+.home-search-bar > i { width: 1px; height: 12px; background: var(--home-purple); animation: access-caret .9s steps(2) infinite; }
+.home-search-result { min-height: 44px; margin-left: 13px; animation: access-result-reveal 8s cubic-bezier(.16,1,.3,1) infinite; }
 .home-search-result-two { margin-left: 29px; animation-delay: -2.5s; }
 .home-search-result > span { color: var(--vp-c-text-3); font-size: 0.52rem; }
 .home-search-result > b { color: var(--home-ink); font-size: 0.61rem; }
 .home-search-result > small { color: var(--home-muted); font-size: 0.53rem; }
 .home-search-result > i { margin-left: auto; color: var(--home-purple); font-size: 0.7rem; font-style: normal; }
-.home-search-spark { position: absolute; top: 17px; right: 16px; color: #b99bff; animation: home-sparkle 2.5s ease-in-out infinite; }
+.home-search-spark { position: absolute; top: 17px; right: 16px; color: #b99bff; animation: access-verify-stamp 8s cubic-bezier(.16,1,.3,1) infinite; }
 
-.home-motion-ready .home-reveal {
-  opacity: 0;
-  transform: translateY(22px) scale(0.985);
-  transition: opacity 650ms ease, transform 650ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-.home-motion-ready .home-reveal.is-visible {
-  opacity: 1;
-  transform: translateY(0) scale(1);
-}
-
-.home-feature-card:nth-child(2) { transition-delay: 70ms; }
-.home-motion-ready .home-feature-card.is-visible { transform: perspective(900px) rotateX(var(--tilt-x)) rotateY(var(--tilt-y)); }
-.home-feature-card:nth-child(3) { transition-delay: 140ms; }
-.home-feature-card:nth-child(4) { transition-delay: 210ms; }
 
 .home-journey {
   position: relative;
@@ -1646,7 +1566,7 @@ onUnmounted(() => {
   width: 30%;
   height: 100%;
   background: linear-gradient(90deg, transparent, var(--home-purple), transparent);
-  animation: home-rail-flow 4s ease-in-out infinite;
+  animation: pathway-transfer 9s cubic-bezier(.65,0,.35,1) infinite;
 }
 
 .home-step {
@@ -1734,7 +1654,7 @@ onUnmounted(() => {
   background: var(--vp-c-bg);
   box-shadow: 0 24px 70px rgb(0 0 0 / 22%), 0 0 35px rgb(123 63 242 / 11%);
   transform: rotateY(9deg) rotateX(3deg);
-  animation: home-window-float 7s ease-in-out infinite;
+  animation: portal-perspective 12s cubic-bezier(.65,0,.35,1) infinite;
 }
 
 .home-window-bar {
@@ -1902,7 +1822,7 @@ onUnmounted(() => {
   border-radius: 50%;
   background: rgb(123 63 242 / 14%);
   filter: blur(75px);
-  animation: home-breathe 5s ease-in-out infinite;
+  animation: engine-light-pass 14s ease-in-out infinite;
 }
 
 @keyframes home-cube-float {
@@ -1969,19 +1889,58 @@ onUnmounted(() => {
   50% { transform: translateY(-8px); }
 }
 
-@keyframes home-window-float {
-  0%, 100% { transform: rotateY(9deg) rotateX(3deg) translateY(0); }
-  50% { transform: rotateY(7deg) rotateX(1deg) translateY(-7px); }
+@keyframes portal-perspective {
+  0%,18%,100% { transform: rotateY(9deg) rotateX(3deg) scale(.96); }
+  38%,65% { transform: rotateY(-6deg) rotateX(-2deg) scale(1); }
+  85% { transform: rotateY(3deg) rotateX(4deg) scale(.98); }
 }
 
 @keyframes home-orbit {
   to { transform: rotateX(68deg) rotateZ(340deg); }
 }
 
-@keyframes home-rail-flow {
-  0% { transform: translateX(-120%); }
-  100% { transform: translateX(430%); }
+@keyframes pathway-transfer {
+  0%,8% { transform: translateX(-120%); opacity: 0; }
+  20%,32% { transform: translateX(0); opacity: 1; }
+  48%,60% { transform: translateX(160%); opacity: 1; }
+  76%,88% { transform: translateX(320%); opacity: 1; }
+  100% { transform: translateX(430%); opacity: 0; }
 }
+
+.home-feature-card { transform: perspective(900px) rotateX(var(--tilt-x,0deg)) rotateY(var(--tilt-y,0deg)); }
+.home-window-stat-row i { transform-origin: bottom; animation: portal-stat-build 12s cubic-bezier(.16,1,.3,1) infinite; }
+.home-window-stat-row i:nth-child(2) { animation-delay: 180ms; }
+.home-window-stat-row i:nth-child(3) { animation-delay: 360ms; }
+.home-window-server { animation: portal-row-sync 12s cubic-bezier(.16,1,.3,1) infinite; }
+.home-window-server-short { animation-delay: 250ms; }
+@keyframes portal-stat-build { 0%,100% { transform: scaleY(.25); opacity: .4; } 25%,80% { transform: scaleY(1); opacity: 1; } }
+@keyframes portal-row-sync { 0%,100% { translate: 18px 0; opacity: .45; } 30%,82% { translate: 0 0; opacity: 1; } }
+@keyframes access-ring-charge { 0%,18%,100% { transform: rotate(-20deg) scale(.94); opacity: .3; } 40%,65% { transform: rotate(160deg) scale(1.05); opacity: 1; } 82% { transform: rotate(340deg) scale(.94); opacity: .3; } }
+@keyframes access-key-turn { 0%,18%,100% { transform: rotate(-12deg) scale(1); } 35%,50% { transform: rotate(12deg) scale(1.13); } 70%,85% { transform: rotate(-12deg) scale(1); } }
+@keyframes access-code-unlock { 0%,20%,100% { opacity: .2; transform: scaleY(.4); } 35%,75% { opacity: 1; transform: scaleY(1); } }
+@keyframes access-product-unlock { 0%,18%,100% { opacity: .55; translate: 0 6px; border-color: var(--vp-c-divider); } 35%,70% { opacity: 1; translate: 0 0; border-color: #a77bff; } }
+@keyframes access-server-register { 0%,8%,100% { opacity: .45; translate: 16px 0; } 25%,85% { opacity: 1; translate: 0 0; } }
+@keyframes access-link-packet { 0%,10% { left: -5px; opacity: 0; } 20% { opacity: 1; } 60%,100% { left: 100%; opacity: 0; } }
+@keyframes access-server-scan { 0%,100% { transform: translateX(-80%); opacity: 0; } 25% { opacity: 1; } 65%,90% { transform: translateX(420%); opacity: 0; } }
+@keyframes access-query-type { 0%,8%,100% { width: 0; } 35%,90% { width: 69px; } }
+@keyframes access-caret { 50% { opacity: 0; } }
+@keyframes access-result-reveal { 0%,32%,100% { opacity: .15; translate: 20px 0; filter: blur(3px); } 48%,90% { opacity: 1; translate: 0 0; filter: blur(0); } }
+@keyframes access-verify-stamp { 0%,40%,100% { transform: scale(.2) rotate(-45deg); opacity: 0; } 58%,90% { transform: scale(1) rotate(0); opacity: 1; } }
+
+.home-license-art { position: relative; min-height: 320px; }
+.access-network { position: absolute; inset: 0; width: 100%; height: 100%; fill: none; stroke: #a77bff35; stroke-width: 1; }
+.access-network-charge { stroke: #b990ff; stroke-width: 2; stroke-dasharray: .2 .8; animation: access-network-transfer 9s ease infinite; }
+.access-vault { position: absolute; left: 50%; top: 50%; display: grid; place-items: center; width: 100px; height: 110px; margin: -55px -50px; border: 1px solid #a77bff80; border-radius: 20px; background: var(--vp-c-bg-elv); box-shadow: 0 0 60px #7b3ff225; transform: rotate(-8deg); }
+.access-vault svg { width: 70px; height: 70px; fill: none; stroke: #b990ff; stroke-width: 2; }
+.access-vault path { stroke-dasharray: 1; animation: access-key-draw 9s ease infinite; }
+.access-vault span { font: 8px monospace; letter-spacing: .12em; color: var(--vp-c-brand-1); margin-bottom: 12px; }
+.access-product { position: absolute; display: flex; align-items: center; gap: 8px; padding: 12px; background: var(--vp-c-bg-elv); border: 1px solid #a77bff45; border-radius: 9px; font-size: 10px; animation: access-product-unlock 9s ease infinite; }
+.access-product i { font: normal 9px monospace; color: var(--vp-c-brand-1); }
+.access-product-one { top: 12%; left: 0; }
+.access-product-two { top: 12%; right: 0; animation-delay: -6s; }
+.access-product-three { bottom: 4%; left: 50%; margin-left: -42px; animation-delay: -3s; }
+@keyframes access-key-draw { 0%,8%,100% { stroke-dashoffset: 1; } 35%,88% { stroke-dashoffset: 0; } }
+@keyframes access-network-transfer { 0%,25% { stroke-dashoffset: 1; opacity: 0; } 40% { opacity: 1; } 80%,100% { stroke-dashoffset: 0; opacity: 0; } }
 
 @keyframes home-sparkle {
   0%, 100% { opacity: 0.35; transform: scale(0.8) rotate(0); }
@@ -2071,10 +2030,7 @@ onUnmounted(() => {
     transition-duration: 0.01ms !important;
   }
 
-  .home-motion-ready .home-reveal {
-    opacity: 1;
-    transform: none;
-  }
-  .workspace-stage, .home-motion-ready .home-feature-card.is-visible { transform: none; }
+  .engine-art, .engine-stage, .home-feature-card { transform: none; }
+  .home-search-typing { width: 69px; }
 }
 </style>

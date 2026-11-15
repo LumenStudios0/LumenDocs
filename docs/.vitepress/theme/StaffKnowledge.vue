@@ -286,7 +286,7 @@ onUnmounted(() => {
 <style scoped>
 .staff-knowledge{max-width:1300px;margin:auto;padding:32px clamp(16px,4vw,48px) 80px;min-height:80vh;color:#f4edf0}
 .knowledge-hero{position:relative;overflow:hidden;display:flex;justify-content:space-between;gap:20px;padding:clamp(24px,5vw,56px);border:1px solid #b6394959;border-radius:24px;background:radial-gradient(ellipse at 90% 0,#b01d3b38,transparent 65%),#101015;animation:knowledge-enter .55s ease both}
-.knowledge-hero:after{content:"";position:absolute;right:-50px;top:-120px;width:300px;height:300px;border:1px solid #ff4d6233;border-radius:50%;box-shadow:0 0 70px #cf244c18;animation:knowledge-pulse 6s ease-in-out infinite;pointer-events:none}
+.knowledge-hero:after{content:"";position:absolute;right:-50px;top:-120px;width:300px;height:300px;border:1px solid #ff4d6244;border-radius:50%;background:conic-gradient(from 0deg,transparent 40%,#ff4d6230 70%,transparent 72%);box-shadow:0 0 0 24px #cf244c08,0 0 70px #cf244c18;animation:knowledge-radar 14s linear infinite;pointer-events:none}
 .knowledge-kicker{font-size:.7rem;letter-spacing:.13em;text-transform:uppercase;color:#ff7a82;font-weight:700}
 .knowledge-hero h1{font-size:clamp(2rem,5vw,3.7rem);line-height:1.08;letter-spacing:-.04em;margin:18px 0}
 .knowledge-hero h1 span{color:#ff6969}.knowledge-hero p:not(.knowledge-kicker){max-width:550px;color:#c1b2ba}
@@ -337,7 +337,7 @@ onUnmounted(() => {
 @media(max-width:1100px){.knowledge-launchpad{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:760px){.knowledge-shift-tools{grid-template-columns:1fr}.knowledge-layout aside{max-height:360px}.knowledge-library-heading{align-items:flex-start;flex-direction:column}.knowledge-section{gap:10px}.knowledge-section-number{width:24px;height:24px}}
 @media(max-width:460px){.knowledge-launchpad{grid-template-columns:1fr}.knowledge-metrics{gap:16px}.knowledge-hero h1{font-size:2rem;overflow-wrap:anywhere}}
-@keyframes knowledge-enter{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}@keyframes knowledge-pulse{50%{transform:scale(1.1);opacity:.55}}
+@keyframes knowledge-enter{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}@keyframes knowledge-radar{to{transform:rotate(360deg)}}
 @media(max-width:760px){.knowledge-layout{grid-template-columns:1fr}.knowledge-hero{flex-direction:column}.knowledge-layout aside{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:460px){.knowledge-layout aside{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){.knowledge-hero,.knowledge-hero:after,.knowledge-article{animation:none}.knowledge-layout aside button,.knowledge-launchpad a{transition:none}.knowledge-layout aside button:hover,.knowledge-launchpad a:hover{transform:none}}
 </style>

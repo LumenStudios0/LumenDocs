@@ -20,8 +20,10 @@ import DocBookmarks from './DocBookmarks.vue'
 import SiteDialog from './SiteDialog.vue'
 import StaffKnowledge from './StaffKnowledge.vue'
 import { createSiteDialog, siteDialogKey } from './site-dialog'
+import { createStudioMotion } from './motion'
 import './custom.css'
 import './website-tools.css'
+import './motion.css'
 
 export default {
   ...DefaultTheme,
@@ -87,7 +89,10 @@ export default {
         { text: 'Developer desk', link: '/staff/?category=Developer%20desk', detail: 'Integration and build guidance.', icon: 'm8 6-6 6 6 6M16 6l6 6-6 6' },
         { text: 'Exit staff area', link: '/', detail: 'Return to the public website.', icon: 'M4 12h16M14 6l6 6-6 6' },
       ]
-      let slideFromLeft = true
+      let studioMotion: ReturnType<typeof createStudioMotion> | undefined
+      let routeAnimation: Animation | undefined
+      let routeSweep: Animation | undefined
+      let routeGeneration = 0
       let sunClicks = 0
       let moonClicks = 0
       let ambientWeatherTimer: number | undefined
@@ -361,13 +366,16 @@ export default {
       }
 
       const animatePage = async (nextPath: string) => {
+        const navigation = ++routeGeneration
         navMenuOpen.value = false
         await previousRouteChanged?.(nextPath)
         await nextTick()
+        if (navigation !== routeGeneration) return
         const previousPath = currentPath.value
         currentPath.value = nextPath
         window.dispatchEvent(new Event('lumen-staff-route'))
         addInlineCopyButtons()
+        studioMotion?.refresh()
         if (traversingHistory) {
           traversingHistory = false
         } else {
@@ -378,20 +386,29 @@ export default {
 
         if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
 
-        const fromX = slideFromLeft ? -12 : 12
-        slideFromLeft = !slideFromLeft
-        document.querySelector('.VPContent')?.animate(
-          [
-            { opacity: 0, transform: `translate3d(${fromX}px, 18px, 0) scale(0.99)` },
-            { opacity: 1, transform: 'translate3d(0, 0, 0)' },
-          ],
-          { duration: 420, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' },
+        routeAnimation?.cancel()
+        routeSweep?.cancel()
+        routeSweep = document.querySelector('.lumen-route-sweep')?.animate(
+          [{ transform: 'translateX(-160%) skewX(-16deg)', opacity: 0 },
+            { opacity: .6, offset: .35 },
+            { transform: 'translateX(180%) skewX(-16deg)', opacity: 0 }],
+          { duration: 850, easing: 'cubic-bezier(.65,0,.35,1)' },
         )
+        routeAnimation = document.querySelector('.VPContent')?.animate(
+          [
+            { opacity: 0, translate: '0 24px', filter: 'blur(5px)', scale: '.985' },
+            { opacity: 1, translate: '0 0', filter: 'blur(0)', scale: '1' },
+          ],
+          { duration: 650, easing: 'cubic-bezier(.16,1,.3,1)' },
+        )
+        if (routeAnimation) studioMotion?.track(routeAnimation)
+        if (routeSweep) studioMotion?.track(routeSweep)
       }
 
       router.onAfterRouteChange = animatePage
       onMounted(() => {
         syncStaffTheme()
+        studioMotion = createStudioMotion()
         canGoBack.value = window.history.length > 1
         window.addEventListener('popstate', handlePopState)
         document.addEventListener('pointerdown', handleNavMenuPointerDown)
@@ -403,6 +420,10 @@ export default {
       })
       onUnmounted(() => {
         router.onAfterRouteChange = previousRouteChanged
+        routeGeneration++
+        routeAnimation?.cancel()
+        routeSweep?.cancel()
+        studioMotion?.dispose()
         window.removeEventListener('popstate', handlePopState)
         document.removeEventListener('pointerdown', handleNavMenuPointerDown)
         window.removeEventListener('keydown', handleNavMenuKeydown)
@@ -483,14 +504,20 @@ export default {
           currentPath.value !== '/bookmarks' && h(DocBookmarks),
         ],
         'layout-top': () => [
+          h('div', { class: 'lumen-route-sweep', 'aria-hidden': 'true' }),
           h('div', { class: 'lumen-day-night-fade', 'aria-hidden': 'true' }),
-          h('div', { class: 'lumen-sky', 'aria-hidden': 'true' }, [
-            ...Array.from({ length: 10 }, (_, index) =>
-              h('span', { class: `lumen-pixel-star lumen-pixel-star-${index + 1}` }),
-            ),
-            ...Array.from({ length: 3 }, (_, index) =>
-              h('span', { class: `lumen-shooting-star lumen-shooting-star-${index + 1}` }),
-            ),
+          h('div', { class: 'lumen-motion-backdrop', 'aria-hidden': 'true' }, [
+            h('div', { class: 'lumen-motion-grid' }),
+            h('div', { class: 'lumen-motion-light lumen-motion-light-one' }),
+            h('div', { class: 'lumen-motion-light lumen-motion-light-two' }),
+            h('svg', { class: 'lumen-motion-circuits', viewBox: '0 0 1440 900', preserveAspectRatio: 'xMidYMid slice' }, [
+              ...['M-80 160H340L480 300H850L1030 120H1520', 'M-80 680H220L460 440H1030L1200 610H1520', 'M160 -80V150L340 330V650L500 810V980'].map((d, index) =>
+                h('g', { style: { '--circuit': index } }, [
+                  h('path', { d }),
+                  h('path', { d, class: 'lumen-circuit-packet', pathLength: 1 }),
+                ]),
+              ),
+            ]),
           ]),
           h('div', { class: 'lumen-weather-sky' }, [
             ...Array.from({ length: 12 }, (_, index) =>

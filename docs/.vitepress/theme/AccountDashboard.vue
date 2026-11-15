@@ -43,7 +43,9 @@ const destinations = [
 .customer-hero h1 span { color: var(--vp-c-brand-1); }
 .customer-hero > p:last-of-type { position: relative; max-width: 430px; color: var(--vp-c-text-2); font-size: .9rem; }
 .customer-hero > a { position: relative; display: inline-flex; gap: 22px; margin-top: 12px; padding: 10px 16px; border-radius: 9px; background: #7b3ff2; color: white; text-decoration: none; font-size: .8rem; }
-.customer-hero-orbit { position: absolute; right: -55px; top: -50px; display: grid; width: 270px; height: 270px; place-items: center; border: 1px solid #9a6bf333; border-radius: 50%; box-shadow: 0 0 0 36px #9a6bf30a, 0 0 0 72px #9a6bf308; animation: workspace-orbit 8s ease-in-out infinite; }
+.customer-hero-orbit { position: absolute; right: -55px; top: -50px; display: grid; width: 270px; height: 270px; place-items: center; border: 1px solid #9a6bf333; border-radius: 50%; box-shadow: 0 0 0 36px #9a6bf30a, 0 0 0 72px #9a6bf308; transform: rotateX(35deg) rotateY(-25deg); }
+.customer-hero-orbit::before, .customer-hero-orbit::after { content: ""; position: absolute; inset: -36px; border: 2px solid transparent; border-top-color: #a77bff80; border-bottom-color: #a77bff40; border-radius: 50%; animation: customer-access-trace 16s linear infinite; }
+.customer-hero-orbit::after { inset: -72px; animation-direction: reverse; animation-duration: 24s; opacity: .5; }
 .customer-hero-orbit span { padding: 22px; border: 1px solid #9a6bf344; border-radius: 24px; background: var(--vp-c-brand-soft); color: var(--vp-c-brand-1); font-size: 2rem; font-weight: 800; transform: rotate(12deg); opacity: .5; }
 .customer-destinations { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .customer-destinations > a { display: flex; flex-direction: column; padding: 22px; border: 1px solid var(--vp-c-divider); border-radius: 17px; color: var(--vp-c-text-1); text-decoration: none; transition: border-color .2s, transform .2s; }
@@ -55,7 +57,7 @@ const destinations = [
 .customer-support { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 22px; border: 1px solid var(--vp-c-divider); border-radius: 15px; }
 .customer-support p { margin: 5px 0 0; color: var(--vp-c-text-2); font-size: .75rem; line-height: 1.6; }
 .customer-support a { flex-shrink: 0; font-size: .8rem; }
-@keyframes workspace-orbit { 50% { transform: translateY(12px) rotate(8deg); } }
+@keyframes customer-access-trace { to { transform: rotate(360deg); } }
 @media (max-width: 640px) { .customer-destinations { grid-template-columns: 1fr; } .customer-support { align-items: flex-start; flex-direction: column; gap: 12px; } .customer-hero-orbit { right: -160px; opacity: .4; } }
 @media (prefers-reduced-motion: reduce) { .customer-hero-orbit { animation: none; } .customer-destinations > a { transition: none; } }
 </style>
