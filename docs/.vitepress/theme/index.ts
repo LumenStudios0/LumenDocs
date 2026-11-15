@@ -7,6 +7,8 @@ import AccountProductCatalog from './AccountProductCatalog.vue'
 import AccountConnectedServers from './AccountConnectedServers.vue'
 import AccountDashboard from './AccountDashboard.vue'
 import LoyaltyCenter from './LoyaltyCenter.vue'
+import MemberProfiles from './MemberProfiles.vue'
+import MemberIdentity from './MemberIdentity.vue'
 import AccountLicenseOverview from './AccountLicenseOverview.vue'
 import AccountSettings from './AccountSettings.vue'
 import AdminDashboard from './AdminDashboard.vue'
@@ -36,6 +38,8 @@ export default {
     app.component('AccountConnectedServers', AccountConnectedServers)
     app.component('AccountDashboard', AccountDashboard)
     app.component('LoyaltyCenter', LoyaltyCenter)
+    app.component('MemberProfiles', MemberProfiles)
+    app.component('MemberIdentity', MemberIdentity)
     app.component('AccountLicenseOverview', AccountLicenseOverview)
     app.component('AccountSettings', AccountSettings)
     app.component('AdminDashboard', AdminDashboard)
@@ -75,6 +79,7 @@ export default {
         { text: 'Documentation', link: '/docs/', detail: 'Answers, without the digging.', icon: 'M4 3h12l4 4v14H4zM14 3v6h6M8 13h8M8 17h5' },
         { text: 'Plugin catalog', link: '/plugins/', detail: 'Find your next server upgrade.', icon: 'm12 3 9 5-9 5-9-5zM3 8v9l9 5 9-5V8M12 13v9' },
         { text: 'Customer portal', link: '/account/', detail: 'Your products. Your workspace.', icon: 'M3 4h18v16H3zM3 9h18M9 9v11' },
+        { text: 'Member profiles', link: '/members/', detail: 'Meet the community. Customize your profile.', icon: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8M4 22v-3a8 8 0 0 1 16 0v3' },
         { text: 'Product trials', link: '/account/trials', detail: 'Request and track trial access.', icon: 'M12 3v9l6 3M5 5a9 9 0 1 0 14 0' },
         { text: 'Studio updates', link: '/updates', detail: 'The latest product news.', icon: 'M4 4h16v16H4zM7 8h10M7 12h10M7 16h6' },
         { text: 'Getting started', link: '/getting-started/', detail: 'From download to first launch.', icon: 'm12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z' },

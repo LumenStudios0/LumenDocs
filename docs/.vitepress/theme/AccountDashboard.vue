@@ -32,6 +32,7 @@ const destinations = [
   { mark: '05', title: 'Notifications', text: 'Choose plugin update topics, announcements, and ticket alerts.', href: '/account/notifications', action: 'Read updates' },
   { mark: '06', title: 'Server health tools', text: 'Check plugin requirements and view studio service status.', href: '/getting-started/compatibility', action: 'Check compatibility' },
   { mark: '07', title: 'Lumen Loyalty', text: 'See your tier, explore perks, and manage plugin sub-clients.', href: '/account/loyalty', action: 'Explore loyalty' },
+  { mark: '08', title: 'Member profiles', text: 'Customize your profile, display your badge, and find other members.', href: '/members/', action: 'Open member profiles' },
 ]
 </script>
 

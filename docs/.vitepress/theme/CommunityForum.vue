@@ -9,6 +9,7 @@ import pluginData from './plugin-compatibility-data.json'
 import IssueSubscription from './IssueSubscription.vue'
 import RichContent from './RichContent.vue'
 import RichEditor from './RichEditor.vue'
+import MemberIdentity from './MemberIdentity.vue'
 
 type ChannelId = 'all' | 'known-issues' | ForumChannel
 const channels: { id: ChannelId; name: string; icon: string; topic: string; group: string }[] = [
@@ -330,7 +331,7 @@ onUnmounted(() => {
           <article class="forum-message" :class="{ 'forum-message-staff': selected.author.staff }">
             <span class="forum-avatar" :style="{ '--avatar-hue': hue(selected.author.name) }" aria-hidden="true">{{ initials(selected.author.name) }}</span>
             <div class="forum-message-body">
-              <p class="forum-author"><strong>{{ selected.author.name }}</strong><span v-if="selected.author.staff" class="ticket-support-badge">Support</span><span class="forum-op">OP</span><time :datetime="selected.createdAt" :title="fullDate(selected.createdAt)">{{ relative(selected.createdAt) }}</time></p>
+              <p class="forum-author"><MemberIdentity :name="selected.author.name" :profile="selected.profile" /><span v-if="selected.author.staff" class="ticket-support-badge">Support</span><span class="forum-op">OP</span><time :datetime="selected.createdAt" :title="fullDate(selected.createdAt)">{{ relative(selected.createdAt) }}</time></p>
               <RichContent class="forum-text" :text="selected.body" />
             </div>
           </article>
@@ -338,7 +339,7 @@ onUnmounted(() => {
           <article v-for="post in posts" :key="post.id" class="forum-message" :class="{ 'forum-message-staff': post.staff, 'forum-message-hidden': post.hidden }">
             <span class="forum-avatar" :style="{ '--avatar-hue': hue(post.authorName) }" aria-hidden="true">{{ initials(post.authorName) }}</span>
             <div class="forum-message-body">
-              <p class="forum-author"><strong>{{ post.authorName }}</strong><span v-if="post.staff" class="ticket-support-badge">Support</span><time :datetime="post.createdAt" :title="fullDate(post.createdAt)">{{ relative(post.createdAt) }}</time>
+              <p class="forum-author"><MemberIdentity :name="post.authorName" :profile="post.profile" /><span v-if="post.staff" class="ticket-support-badge">Support</span><time :datetime="post.createdAt" :title="fullDate(post.createdAt)">{{ relative(post.createdAt) }}</time>
                 <button v-if="viewer.staff" type="button" class="forum-post-mod" :disabled="busy" @click="moderatePost(post)">{{ post.hidden ? 'Restore' : 'Hide' }}</button></p>
               <RichContent class="forum-text" :text="post.body" />
             </div>
@@ -381,7 +382,7 @@ onUnmounted(() => {
                 <span class="forum-row-meta">
                   <span class="website-badge" :data-status="thread.status">{{ thread.status }}</span>
                   <span v-if="thread.hidden" class="website-badge" data-status="outage">Hidden</span>
-                  <strong>{{ thread.author.name }}</strong><span v-if="thread.author.staff" class="ticket-support-badge">Support</span>
+                  <MemberIdentity :name="thread.author.name" :profile="thread.profile" :linked="false" /><span v-if="thread.author.staff" class="ticket-support-badge">Support</span>
                   <span v-if="channel === 'all'">#{{ channelLabel(thread.channel) }}</span>
                   <span v-if="thread.productId">{{ productName(thread.productId) }}</span>
                 </span>

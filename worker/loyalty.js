@@ -90,6 +90,8 @@ export async function handleLoyalty(request, env, origin, path, deps) {
   try {
     if (path === '/studio/loyalty') {
       const status = await loyaltyStatus(env, user.id)
+      await env.COMMUNITY_DB.prepare('UPDATE member_profiles SET tier=?,tier_checked_at=? WHERE user_id=?')
+        .bind(status.tier?.id || null, new Date().toISOString(), user.id).run()
       const rows = (await env.COMMUNITY_DB.prepare('SELECT product_id AS productId,member_id AS memberId,created_at AS createdAt FROM loyalty_subclients WHERE owner_id = ? ORDER BY created_at,member_id')
         .bind(user.id).all()).results || []
       return send({ ...status, tiers, subclients: rows })

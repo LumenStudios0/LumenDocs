@@ -2,6 +2,7 @@ import { hasPermission, resolveAccess, siteSettings } from './access-control.js'
 import { expansionRoute, runCommunityExpansionChecks, validImageUrl } from './community-expansion.js'
 import { runProductChecks } from './product-tools.js'
 import { activityCustomerName, estimatedWait, staffEditorEligibilitySql, ticketWaitEstimates } from './staff-operations.js'
+import { messageProfiles } from './profiles.js'
 
 const STATUS_VALUES = new Set(['operational', 'degraded', 'outage', 'maintenance'])
 const SERVICES = [
@@ -266,8 +267,9 @@ async function ticketDetail(request, env, user, deps, id, isStaff) {
   if (!row) return json(request, { error: 'Ticket not found' }, 404, deps.respond)
   if (!isStaff && row.owner_id !== user.id) return json(request, { error: 'Ticket not found' }, 404, deps.respond)
   const replies = await env.COMMUNITY_DB.prepare(
-    'SELECT id, body, author_name, staff, created_at FROM community_replies WHERE ticket_id = ? ORDER BY created_at',
+    'SELECT id, body, author_id, author_name, staff, created_at FROM community_replies WHERE ticket_id = ? ORDER BY created_at',
   ).bind(id).all()
+  const profiles = await messageProfiles(env.COMMUNITY_DB, (replies.results || []).map(reply => reply.author_id))
   return json(request, {
     ticket: {
       ...ticketView(row, isStaff, deps.ticketEstimates),
@@ -278,6 +280,7 @@ async function ticketDetail(request, env, user, deps, id, isStaff) {
     replies: (replies.results ?? []).map(reply => ({
       id: reply.id, body: reply.body, authorName: reply.author_name,
       staff: Boolean(reply.staff), createdAt: reply.created_at,
+      profile: profiles.get(reply.author_id) || null,
     })),
   }, 200, deps.respond)
 }
@@ -820,8 +823,9 @@ async function forumList(request, env, url, deps, staff, viewerId, canAnnounce =
     values,
     page,
   )
+  const profiles = await messageProfiles(env.COMMUNITY_DB, result.items.map(row => row.author_id))
   return json(request, {
-    ...result, items: result.items.map(row => threadView(row, staff, viewerId)), viewer: { signedIn: Boolean(viewerId), staff, canAnnounce },
+    ...result, items: result.items.map(row => ({ ...threadView(row, staff, viewerId), profile: profiles.get(row.author_id) || null })), viewer: { signedIn: Boolean(viewerId), staff, canAnnounce },
   }, 200, deps.respond)
 }
 
@@ -831,9 +835,10 @@ async function forumThread(request, env, deps, id, staff, viewerId, canAnnounce 
   const posts = await env.COMMUNITY_DB.prepare(
     `SELECT * FROM community_thread_posts WHERE thread_id = ? ${staff ? '' : 'AND hidden = 0'} ORDER BY created_at ASC LIMIT 500`,
   ).bind(id).all()
+  const profiles = await messageProfiles(env.COMMUNITY_DB, [row.author_id, ...(posts.results || []).map(post => post.author_id)])
   return json(request, {
-    thread: threadView(row, staff, viewerId),
-    posts: (posts.results ?? []).map(post => postView(post, staff)),
+    thread: { ...threadView(row, staff, viewerId), profile: profiles.get(row.author_id) || null },
+    posts: (posts.results ?? []).map(post => ({ ...postView(post, staff), profile: profiles.get(post.author_id) || null })),
     viewer: { signedIn: Boolean(viewerId), staff, canAnnounce },
   }, 200, deps.respond)
 }

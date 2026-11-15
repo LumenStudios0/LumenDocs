@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { handleProductTools, runProductChecks } from '../worker/product-tools.js'
 import worker from '../worker/chat.js'
 import { handlePluginDownloads } from '../worker/plugin-downloads.js'
+import { messageProfiles } from '../worker/profiles.js'
 
 async function fixture(t) {
   const sqlite = new DatabaseSync(':memory:')
@@ -232,6 +233,48 @@ test('loyalty counts distinct active registry entitlements and fails closed on i
   badRegistry = true
   assert.equal((await call('/studio/loyalty', 'GET', undefined, customer)).status, 503)
   assert.equal((await call('/studio/loyalty', 'GET', undefined, '')).status, 401)
+})
+
+test('member profiles enforce ownership, opt-in publication, safe fields, revisions and verified message badges', async t => {
+  const { call, env, customer, owner, sqlite } = await fixture(t)
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  globalThis.fetch = async input => new URL(input).pathname.endsWith('/products')
+    ? Response.json({ items: [{ productId: 'p1', name: 'Plugin 1', active: true, plugins: ['p1'] }], total: 1 })
+    : Response.json({ customerDiscordId: customer, status: 'active', verificationRequired: false,
+      products: [{ productId: 'p1', productActive: true, status: 'active', expiresAt: null }] })
+  assert.equal((await call('/studio/profiles/me', 'GET', undefined, '')).status, 401)
+  const initial = await (await call('/studio/profiles/me', 'GET', undefined, customer)).json()
+  assert.equal(initial.profile.public, false)
+  assert.equal(initial.profile.tier.id, 'elite')
+  assert.equal((await call('/studio/profiles/' + customer, 'GET', undefined, owner)).status, 404)
+  assert.equal((await (await call('/studio/profiles', 'GET', undefined, '')).json()).total, 0)
+  const body = { displayName: 'Alex', bio: '<script>alert(1)</script>', pronouns: 'they/them', status: 'Building a server',
+    accent: '#123456', banner: '#654321', website: 'https://example.com', showcase: '', favoritePlugin: 'Shards', public: true, revision: 0 }
+  for (const change of [{ accent: 'red;url(x)' }, { website: 'javascript:alert(1)' }, { userId: owner }, { tier: 'elite' }]) {
+    assert.equal((await call('/studio/profiles/me', 'PUT', { ...body, ...change }, customer)).status, 400)
+  }
+  assert.equal((await call('/studio/profiles/me', 'PUT', body, customer)).status, 200)
+  assert.equal((await call('/studio/profiles/' + customer, 'PUT', body, owner)).status, 405)
+  assert.equal((await call('/studio/profiles/me', 'PUT', body, customer)).status, 409)
+  const published = await (await call('/studio/profiles/' + customer, 'GET', undefined, '')).json()
+  assert.equal(published.profile.displayName, 'Alex')
+  assert.equal(published.profile.revision, undefined)
+  assert.equal(published.profile.public, undefined)
+  assert.equal((await (await call('/studio/profiles?q=Alex', 'GET', undefined, '')).json()).total, 1)
+  const identities = await messageProfiles(env.COMMUNITY_DB, [customer, owner])
+  assert.equal(identities.get(customer).tier.name, 'Lumen Elite')
+  assert.equal(identities.get(customer).bio, undefined)
+  sqlite.prepare('UPDATE member_profiles SET tier_checked_at=? WHERE user_id=?').run('2000-01-01', customer)
+  assert.equal((await messageProfiles(env.COMMUNITY_DB, [customer])).get(customer).tier, null)
+  assert.equal((await call('/studio/profiles/me', 'PUT', { ...body, public: false, revision: 1 }, customer)).status, 200)
+  assert.equal((await messageProfiles(env.COMMUNITY_DB, [customer])).size, 0)
+  assert.equal((await call('/studio/profiles/' + customer, 'GET', undefined, '')).status, 404)
+  globalThis.fetch = async () => Response.json({ error: 'Unavailable' }, { status: 503 })
+  const outage = await (await call('/studio/profiles/me', 'GET', undefined, customer)).json()
+  assert.match(outage.warning, /could not be refreshed/)
+  assert.equal(outage.profile.tier, null)
+  assert.equal(outage.profile.bio, body.bio)
 })
 
 test('sub-clients receive only explicitly shared downloads while owner eligibility and tier limits remain valid', async t => {

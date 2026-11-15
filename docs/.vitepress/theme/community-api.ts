@@ -26,7 +26,8 @@ export interface Ticket {
   estimatedWait?: { minutes: number | null; label: string; basis: string } | null
 }
 export interface StaffMember { id: string; name: string }
-export interface Reply { id: string; body: string; authorName: string; staff: boolean; createdAt: string }
+export interface MemberIdentity { id: string; displayName: string; accent: string; avatarUrl: string; tier: { id: string; name: string } | null }
+export interface Reply { id: string; body: string; authorName: string; staff: boolean; createdAt: string; profile?: MemberIdentity | null }
 export interface Issue {
   id: string
   title: string
@@ -39,6 +40,7 @@ export interface Issue {
 }
 export type ForumChannel = 'announcements' | 'general' | 'help' | 'bugs' | 'suggestions' | 'showcase'
 export interface ForumThread {
+  profile?: MemberIdentity | null
   id: string
   channel: ForumChannel
   title: string
@@ -54,7 +56,7 @@ export interface ForumThread {
   createdAt: string
   lastActivityAt: string
 }
-export interface ForumPost { id: string; body: string; authorName: string; staff: boolean; hidden?: boolean; createdAt: string }
+export interface ForumPost { id: string; body: string; authorName: string; staff: boolean; hidden?: boolean; createdAt: string; profile?: MemberIdentity | null }
 export interface ForumViewer { signedIn: boolean; staff: boolean; canAnnounce?: boolean }
 export interface Notification {
   id: string

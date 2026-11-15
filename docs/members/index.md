@@ -1,0 +1,5 @@
+---
+title: Member profiles
+---
+
+<MemberProfiles />
