@@ -29,7 +29,7 @@ async function tokenFor(id, name) {
 
 function createD1() {
   const sqlite = new DatabaseSync(':memory:')
-  const migrations = Promise.all(['0001_community.sql', '0002_ticket_routing.sql', '0003_community_forum.sql', '0004_website_access.sql', '0005_member_registration.sql', '0006_community_expansion.sql', '0007_product_tools.sql', '0010_trial_duration.sql', '0011_staff_docs_permissions.sql', '0012_staff_operations.sql'].map(
+  const migrations = Promise.all(['0001_community.sql', '0002_ticket_routing.sql', '0003_community_forum.sql', '0004_website_access.sql', '0005_member_registration.sql', '0006_community_expansion.sql', '0007_product_tools.sql', '0010_trial_duration.sql', '0011_staff_docs_permissions.sql', '0012_staff_operations.sql', '0013_staff_license_keys.sql'].map(
     name => readFile(new URL(`../worker/migrations/community/${name}`, import.meta.url), 'utf8'),
   ))
   const database = {
@@ -210,6 +210,96 @@ test('editing license expiration forwards only valid dates and requires license 
   assert.equal((await assign(id, 'client')).status, 200)
   assert.equal((await api(path, 'POST', { expiresAt }, support)).status, 403)
   assert.equal(calls.length, 1)
+})
+
+test('key permission migration excludes customers and preserves restricted staff policies', async t => {
+  const { db } = await accessFixture(t)
+  for (const [role, permissions] of [
+    ['guest', ['dashboard.view', 'customers.view']], ['client', ['dashboard.view', 'customers.view']],
+    ['support_team', ['dashboard.view', 'customers.view']], ['developer', ['dashboard.view']],
+    ['studio_lead', ['dashboard.view', 'customers.view', 'licenses.keys']],
+  ]) {
+    db.sqlite.prepare('INSERT OR REPLACE INTO website_role_permissions(role_id,permissions) VALUES (?,?)')
+      .run(role, JSON.stringify(permissions))
+  }
+  const migration = await readFile(new URL('../worker/migrations/community/0013_staff_license_keys.sql', import.meta.url), 'utf8')
+  db.sqlite.exec(migration)
+  db.sqlite.exec(migration)
+  for (const role of ['guest', 'client', 'developer']) {
+    assert.ok(!JSON.parse(db.sqlite.prepare('SELECT permissions FROM website_role_permissions WHERE role_id=?').get(role).permissions).includes('licenses.keys'))
+  }
+  for (const role of ['support_team', 'studio_lead']) {
+    const permissions = JSON.parse(db.sqlite.prepare('SELECT permissions FROM website_role_permissions WHERE role_id=?').get(role).permissions)
+    assert.equal(permissions.filter(value => value === 'licenses.keys').length, 1)
+  }
+})
+
+test('staff can inspect recoverable account keys with current permission and a key-free audit', async t => {
+  const { api, assign, db } = await accessFixture(t)
+  const id = '555555555555555555', licenseId = '12345678-1234-1234-1234-123456789012'
+  const support = await tokenFor(id, 'Support')
+  await api('/auth/me', 'GET', undefined, support)
+  assert.equal((await assign(id, 'support_team')).status, 200)
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  const calls = [], key = 'SYNTHETIC-STAFF-KEY-NOT-VALID'
+  globalThis.fetch = async url => {
+    calls.push(new URL(url).pathname)
+    return Response.json(calls.length === 1
+      ? { licenseId, customerDiscordId: customerId, productId: 'shards' }
+      : { licenseKey: key, license: { licenseId, customerDiscordId: customerId, productIds: ['shards'] } })
+  }
+  const path = `/admin/licenses/${licenseId}/key`
+  const response = await api(path, 'GET', undefined, support)
+  assert.equal(response.status, 200)
+  assert.equal(response.headers.get('cache-control'), 'no-store')
+  const payload = await response.json()
+  assert.equal(payload.licenseKey, key)
+  assert.equal(payload.kind, 'account')
+  assert.deepEqual(calls, [`/v1/admin/licenses/${licenseId}`, `/v1/admin/users/${customerId}/license-key`])
+  const audit = db.sqlite.prepare("SELECT * FROM website_access_audit WHERE action='license.key_viewed'").all()
+  assert.equal(audit.length, 1)
+  assert.doesNotMatch(JSON.stringify(audit), /SYNTHETIC-STAFF-KEY/)
+  assert.equal((await api('/admin/website/roles/support_team', 'PUT', {
+    permissions: ROLES.find(role => role.id === 'support_team').permissions.filter(permission => permission !== 'licenses.keys'), revision: 0,
+  })).status, 200)
+  assert.equal((await api(path, 'GET', undefined, support)).status, 403)
+  assert.equal(calls.length, 2)
+})
+
+test('staff key inspection rejects mismatched accounts and explains unavailable hashed keys without rotating them', async t => {
+  const { api, db } = await accessFixture(t)
+  const licenseId = '12345678-1234-1234-1234-123456789012'
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  let mode = 'wrong-account'
+  globalThis.fetch = async (url, options) => {
+    assert.ok(!options.method || options.method === 'GET')
+    if (new URL(url).pathname.endsWith(`/licenses/${licenseId}`)) return Response.json({ licenseId, productId: 'shards', customerDiscordId: customerId })
+    if (mode === 'missing') return Response.json({ detail: 'Not found' }, { status: 404 })
+    if (mode !== 'wrong-account') return Response.json({
+      licenseKey: mode === 'invalid-key' ? 'SYNTHETIC-STAFF-KEY\nNOT-VALID' : 'SYNTHETIC-STAFF-KEY-NOT-VALID',
+      license: { licenseId: 'another-row', customerDiscordId: customerId, productIds: mode === 'wrong-product' ? ['other-plugin'] : ['shards'] },
+    })
+    return Response.json({ licenseKey: 'SYNTHETIC-STAFF-KEY-NOT-VALID', license: { licenseId, customerDiscordId: '999999999999999999', productIds: ['shards'] } })
+  }
+  const path = `/admin/licenses/${licenseId}/key`
+  assert.equal((await api(path)).status, 502)
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM website_access_audit WHERE action='license.key_viewed'").get().n, 0)
+  mode = 'missing'
+  const response = await api(path)
+  assert.equal(response.status, 404)
+  assert.match((await response.json()).error, /stored only as hashes cannot be displayed/)
+  for (const invalid of ['wrong-product', 'invalid-key']) {
+    mode = invalid
+    assert.equal((await api(path)).status, 502)
+  }
+  mode = 'other-row'
+  assert.equal((await api(path)).status, 200)
+  db.sqlite.exec('DROP TABLE website_access_audit')
+  const unavailable = await api(path)
+  assert.equal(unavailable.status, 503)
+  assert.equal((await unavailable.json()).licenseKey, undefined)
 })
 
 test('community routes require configured persistent storage and valid sign-in', async () => {

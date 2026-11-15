@@ -364,6 +364,7 @@ export default {
         navMenuOpen.value = false
         await previousRouteChanged?.(nextPath)
         await nextTick()
+        const previousPath = currentPath.value
         currentPath.value = nextPath
         window.dispatchEvent(new Event('lumen-staff-route'))
         addInlineCopyButtons()
@@ -373,18 +374,18 @@ export default {
           canGoForward.value = false
         }
         canGoBack.value = window.history.length > 1
-        if (nextPath === currentPath.value) return
+        if (nextPath === previousPath) return
 
         if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
 
-        const fromX = slideFromLeft ? -36 : 36
+        const fromX = slideFromLeft ? -12 : 12
         slideFromLeft = !slideFromLeft
         document.querySelector('.VPContent')?.animate(
           [
-            { opacity: 0.6, transform: `translate3d(${fromX}px, 0, 0)` },
+            { opacity: 0, transform: `translate3d(${fromX}px, 18px, 0) scale(0.99)` },
             { opacity: 1, transform: 'translate3d(0, 0, 0)' },
           ],
-          { duration: 240, easing: 'cubic-bezier(0.2, 0.75, 0.3, 1)' },
+          { duration: 420, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' },
         )
       }
 

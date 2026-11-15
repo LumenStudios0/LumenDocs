@@ -21,6 +21,7 @@ export function adminPermission(path, method) {
   const registry = path.match(/^\/admin\/(products|plugins)\/[A-Za-z0-9_.-]{1,64}$/)
   if (registry) return method === 'DELETE' ? `${registry[1]}.delete` : method === 'PATCH' ? `${registry[1]}.manage` : null
   if (/^\/admin\/licenses\/[0-9a-f-]{36}$/.test(path) && method === 'GET') return 'customers.view'
+  if (/^\/admin\/licenses\/[0-9a-f-]{36}\/key$/.test(path) && method === 'GET') return 'licenses.keys'
   if (/^\/admin\/licenses\/[0-9a-f-]{36}\/(revoke|suspend|activate|renew)$/.test(path) && method === 'POST') return 'licenses.status'
   if (/^\/admin\/licenses\/[0-9a-f-]{36}\/ips$/.test(path) && ['POST', 'DELETE'].includes(method)) return 'licenses.ips'
   return path === '/admin/audit' && method === 'GET' ? 'audit.view' : null

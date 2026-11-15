@@ -63,6 +63,9 @@ Use the customer's signed-in Discord identity and the staff customer directory. 
 ### Grant carefully
 Staff-granted access does not require BuiltByBit login. Select an active linked product, choose expiry, review the customer ID, and save the one-time key securely if one is returned. Do not expose keys in tickets. Uncertain grants require checking the customer profile before retrying.
 
+## Inspecting account keys
+Open a customer's Licenses & plugins area and choose Manage on a license. Staff with the View customer license keys permission automatically see the current account key and can copy or hide it. Support team and above have this permission by default. Inspection records a key-free audit; the value clears when switching customers, signing out, or refreshing changed permissions. This is the shared account key, not a reconstructed legacy key. Hash-only keys cannot be recovered; missing staff-issued account keys may require the staff-license VPS updater. Viewing never rotates tokens or creates a replacement key.
+
 ### Purchase linking
 The customer must link the same Discord identity on BuiltByBit and check purchases in My licenses. Marketplace verification and website roles are separate. The first shared-key claim can replace legacy keys and requires updating configs and re-adding IPs.`,
   },

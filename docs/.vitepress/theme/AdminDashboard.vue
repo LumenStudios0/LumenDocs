@@ -83,6 +83,10 @@ const selectedLicenseIds = ref<string[]>([])
 const selectedGrantProducts = ref<string[]>([])
 const batchResults = ref<{ id: string; state: string; message: string }[]>([])
 const editExpiresAt = ref('')
+const inspectedLicenseKey = ref('')
+const inspectedKeyError = ref('')
+const inspectedKeyLoading = ref(false)
+let keyInspectionGeneration = 0
 const selectedLicense = computed(() => user.value?.licenses.find(license => license.licenseId === selectedLicenseId.value) ?? null)
 const profileAuditPage = ref(1)
 const profileAuditTotal = ref(0)
@@ -164,7 +168,8 @@ function batchItemName(id: string) {
 }
 function messageOf(value: unknown) { return value instanceof Error ? value.message : 'The admin request could not be completed.' }
 function clearMessages() { error.value = ''; notice.value = '' }
-function clearKey() { licenseKey.value = ''; licenseKeyOwner.value = ''; keyVisible.value = false }
+function clearInspectionKey() { keyInspectionGeneration++; inspectedLicenseKey.value = ''; inspectedKeyError.value = ''; inspectedKeyLoading.value = false }
+function clearKey() { licenseKey.value = ''; licenseKeyOwner.value = ''; keyVisible.value = false; clearInspectionKey() }
 function clearLicenseSelection() { selectedLicenseIds.value = []; selectedGrantProducts.value = []; batchResults.value = []; editExpiresAt.value = '' }
 function resetLicenseFilters() { licenseSearch.value = ''; licenseFilter.value = 'all'; productFilter.value = '' }
 function formatDate(value: string | null, empty = 'Never') {
@@ -442,6 +447,7 @@ async function inspectLicense(license: AdminLicense) {
   if (!user.value || user.value.discordId !== license.customerDiscordId) await lookupUser(license.customerDiscordId)
   if (!user.value || user.value.discordId !== license.customerDiscordId) return
   selectedLicenseId.value = license.licenseId
+  clearInspectionKey()
   editExpiresAt.value = ''
   if (license.expiresAt && Number.isFinite(Date.parse(license.expiresAt))) {
     const date = new Date(license.expiresAt)
@@ -450,6 +456,22 @@ async function inspectLicense(license: AdminLicense) {
   ipAddress.value = ''
   await nextTick()
   document.getElementById('license-inspector')?.focus()
+  if (can('licenses.keys')) void loadInspectedKey()
+}
+async function loadInspectedKey() {
+  const license = selectedLicense.value
+  if (!license || !can('licenses.keys') || inspectedKeyLoading.value) return
+  const requestId = ++keyInspectionGeneration, session = getDiscordSession(), customerId = user.value?.discordId
+  inspectedLicenseKey.value = ''; inspectedKeyError.value = ''; inspectedKeyLoading.value = true
+  try {
+    if (testMode.value) { inspectedLicenseKey.value = `TEST-ONLY-NOT-VALID-${license.licenseId}`; return }
+    const result = await adminRequest<{ licenseKey: string; licenseId: string; customerDiscordId: string; kind: string }>(`/licenses/${license.licenseId}/key`)
+    if (requestId !== keyInspectionGeneration || session !== getDiscordSession() || selectedLicense.value?.licenseId !== license.licenseId || user.value?.discordId !== customerId) return
+    if (result.licenseId !== license.licenseId || result.customerDiscordId !== customerId || typeof result.licenseKey !== 'string' || result.kind !== 'account') throw new Error('The service returned an invalid inspected key.')
+    inspectedLicenseKey.value = result.licenseKey
+  } catch (value) {
+    if (requestId === keyInspectionGeneration && session === getDiscordSession()) inspectedKeyError.value = messageOf(value)
+  } finally { if (requestId === keyInspectionGeneration) inspectedKeyLoading.value = false }
 }
 
 async function mutate<T>(path: string, init: RequestInit, success: string | ((result: T) => string), accept?: (result: T) => void) {
@@ -797,7 +819,7 @@ onUnmounted(() => {
       </section>
       <nav class="staff-navigation" aria-label="Customer profile areas">
         <button type="button" :aria-pressed="profileArea === 'licenses'" :disabled="busy" @click="profileArea = 'licenses'">Licenses &amp; plugins</button>
-        <button type="button" :aria-pressed="profileArea === 'account'" :disabled="busy" @click="profileArea = 'account'; selectedLicenseId = ''">Account &amp; verification</button>
+        <button type="button" :aria-pressed="profileArea === 'account'" :disabled="busy" @click="profileArea = 'account'; selectedLicenseId = ''; clearInspectionKey()">Account &amp; verification</button>
       </nav>
       <div class="staff-columns">
         <section v-if="profileArea === 'account'" class="staff-panel">
@@ -867,8 +889,16 @@ onUnmounted(() => {
     </section>
 
     <section v-if="loaded && profileArea === 'licenses' && selectedLicense" id="license-inspector" class="staff-panel staff-inspector" tabindex="-1">
-      <header><div><p class="staff-eyebrow">LICENSE INSPECTOR / {{ productName(selectedLicense.productId) }}</p><h2>Network &amp; validation</h2></div><button type="button" :disabled="busy" @click="selectedLicenseId = ''">Close inspector</button></header>
+      <header><div><p class="staff-eyebrow">LICENSE INSPECTOR / {{ productName(selectedLicense.productId) }}</p><h2>Network &amp; validation</h2></div><button type="button" :disabled="busy" @click="selectedLicenseId = ''; clearInspectionKey()">Close inspector</button></header>
       <p class="staff-license-id">{{ selectedLicense.licenseId }} <button type="button" @click="copyText(selectedLicense.licenseId, 'License ID')">Copy ID</button></p>
+      <div v-if="can('licenses.keys')" class="staff-panel" aria-label="Inspected account license key">
+        <h3>Account license key</h3>
+        <p class="staff-note">The current shared key for this customer's account. It can cover multiple plugins; it is not a reconstruction of an old per-license key.</p>
+        <p v-if="inspectedKeyLoading" role="status">Loading license key…</p>
+        <p v-if="inspectedKeyError" role="alert" class="staff-error">{{ inspectedKeyError }}</p>
+        <label v-if="inspectedLicenseKey" class="staff-field">License key<input :value="inspectedLicenseKey" readonly autocomplete="off" spellcheck="false" aria-label="Inspected license key"></label>
+        <div class="staff-actions"><button v-if="inspectedLicenseKey" type="button" @click="copyText(inspectedLicenseKey, 'License key')">Copy license key</button><button v-if="!inspectedLicenseKey" type="button" :disabled="inspectedKeyLoading" @click="loadInspectedKey">Load key</button><button v-if="inspectedLicenseKey" type="button" @click="clearInspectionKey">Hide key</button></div>
+      </div>
       <dl class="staff-facts staff-network-facts"><div><dt>API status</dt><dd>{{ selectedLicense.status }}</dd></div><div><dt>Expires</dt><dd>{{ formatDate(selectedLicense.expiresAt, 'Lifetime') }}</dd></div><div><dt>Bound server</dt><dd>{{ selectedLicense.serverId || 'Not bound' }}</dd></div><div><dt>Last validated server</dt><dd>{{ selectedLicense.lastValidatedServerId || 'Not reported' }}</dd></div><div><dt>Last validated</dt><dd>{{ formatDate(selectedLicense.lastValidatedAt) }}</dd></div></dl>
       <div v-if="can('licenses.status')" class="staff-actions">
         <button v-if="selectedLicense.status === 'active'" type="button" :disabled="busy || user?.deleted" @click="confirmAction('Suspend this license? It will stop validating until reactivated.', `/licenses/${selectedLicense.licenseId}/suspend`, 'License suspended.')">Suspend license</button>

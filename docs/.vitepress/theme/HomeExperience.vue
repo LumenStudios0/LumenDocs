@@ -3,16 +3,57 @@ import { onMounted, onUnmounted, ref } from 'vue'
 
 const experienceRoot = ref<HTMLElement | null>(null)
 let revealObserver: IntersectionObserver | undefined
+let sceneObserver: IntersectionObserver | undefined
+let motionPreference: MediaQueryList | undefined
+let pointerFrame = 0
+
+function syncMotionPreference() {
+  const root = experienceRoot.value
+  if (!root) return
+  root.classList.toggle('home-motion-paused', document.hidden)
+  if (motionPreference?.matches) {
+    cancelAnimationFrame(pointerFrame)
+    root.querySelectorAll('.home-reveal').forEach(element => element.classList.add('is-visible'))
+    root.querySelectorAll<HTMLElement>('.home-feature-card').forEach(card => {
+      card.style.setProperty('--tilt-x', '0deg')
+      card.style.setProperty('--tilt-y', '0deg')
+    })
+    root.style.setProperty('--hero-x', '0')
+    root.style.setProperty('--hero-y', '0')
+  }
+}
+
+function handleHeroPointer(event: PointerEvent) {
+  if (event.pointerType === 'touch' || motionPreference?.matches || document.hidden) return
+  const hero = event.currentTarget
+  if (!(hero instanceof HTMLElement)) return
+  const bounds = hero.getBoundingClientRect()
+  const x = Math.max(-0.5, Math.min(0.5, (event.clientX - bounds.left) / bounds.width - 0.5))
+  const y = Math.max(-0.5, Math.min(0.5, (event.clientY - bounds.top) / bounds.height - 0.5))
+  cancelAnimationFrame(pointerFrame)
+  pointerFrame = requestAnimationFrame(() => {
+    experienceRoot.value?.style.setProperty('--hero-x', String(x))
+    experienceRoot.value?.style.setProperty('--hero-y', String(y))
+  })
+}
+
+function resetHeroPointer() {
+  cancelAnimationFrame(pointerFrame)
+  experienceRoot.value?.style.setProperty('--hero-x', '0')
+  experienceRoot.value?.style.setProperty('--hero-y', '0')
+}
 
 function handleFeatureTilt(event: PointerEvent) {
   const card = event.currentTarget
-  if (!(card instanceof HTMLElement) || event.pointerType === 'touch') return
+  if (!(card instanceof HTMLElement) || event.pointerType === 'touch' || motionPreference?.matches) return
 
   const bounds = card.getBoundingClientRect()
   const x = (event.clientX - bounds.left) / bounds.width - 0.5
   const y = (event.clientY - bounds.top) / bounds.height - 0.5
-  card.style.setProperty('--tilt-x', `${-y * 3}deg`)
-  card.style.setProperty('--tilt-y', `${x * 3}deg`)
+  card.style.setProperty('--tilt-x', `${-y * 6}deg`)
+  card.style.setProperty('--tilt-y', `${x * 6}deg`)
+  card.style.setProperty('--card-pointer-x', `${(x + 0.5) * 100}%`)
+  card.style.setProperty('--card-pointer-y', `${(y + 0.5) * 100}%`)
 }
 
 function resetFeatureTilt(event: PointerEvent) {
@@ -25,6 +66,10 @@ function resetFeatureTilt(event: PointerEvent) {
 onMounted(() => {
   const root = experienceRoot.value
   if (!root) return
+  motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
+  motionPreference.addEventListener('change', syncMotionPreference)
+  document.addEventListener('visibilitychange', syncMotionPreference)
+  syncMotionPreference()
 
   if (!('IntersectionObserver' in window)) {
     root.querySelectorAll('.home-reveal').forEach(element => element.classList.add('is-visible'))
@@ -40,19 +85,34 @@ onMounted(() => {
   }, { threshold: 0.16 })
 
   root.querySelectorAll('.home-reveal').forEach(element => revealObserver?.observe(element))
+  sceneObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => entry.target.classList.toggle('home-scene-sleeping', !entry.isIntersecting))
+  }, { rootMargin: '80px', threshold: 0 })
+  root.querySelectorAll('.launch-atmosphere, .workspace-stage, .home-orbit-scene, .home-feature-card, .home-license-art, .home-portal-visual')
+    .forEach(element => sceneObserver?.observe(element))
 })
 
 onUnmounted(() => {
   revealObserver?.disconnect()
+  sceneObserver?.disconnect()
+  motionPreference?.removeEventListener('change', syncMotionPreference)
+  document.removeEventListener('visibilitychange', syncMotionPreference)
+  cancelAnimationFrame(pointerFrame)
 })
 </script>
 
 <template>
   <div ref="experienceRoot" class="home-experience">
-    <section class="launch" aria-labelledby="launch-title">
+    <section class="launch" aria-labelledby="launch-title" @pointermove="handleHeroPointer" @pointerleave="resetHeroPointer">
+      <div class="launch-atmosphere" aria-hidden="true">
+        <div class="launch-grid" />
+        <div class="launch-aurora launch-aurora-one" /><div class="launch-aurora launch-aurora-two" />
+        <div class="launch-light-ring" />
+        <span v-for="spark in 9" :key="spark" class="launch-star" :style="{ '--spark': spark }" />
+      </div>
       <div class="launch-copy">
         <a class="launch-label" href="/plugins/"><span /> LUMEN STUDIOS <i>/</i> MINECRAFT PLUGINS <span aria-hidden="true">↗</span></a>
-        <h1 id="launch-title" class="launch-title">Lumen Studios<br><span>Your server.<br>In good hands.</span></h1>
+        <h1 id="launch-title" class="launch-title"><span class="launch-name">Lumen Studios</span><br><span class="launch-statement">Your server.<br>In good hands.</span></h1>
         <p class="launch-description">One license key for your Lumen plugins, thoughtful Minecraft tools, and clear guides to get everything running.</p>
         <div class="launch-actions">
           <a class="home-button home-button-primary" href="/docs/">Explore documentation <span aria-hidden="true">→</span></a>
@@ -61,6 +121,7 @@ onUnmounted(() => {
         <div class="launch-notes"><span>One license key</span><span>Plugin-by-plugin guides</span><span>Built for your community</span></div>
       </div>
 
+      <div class="workspace-stage">
       <div class="workspace" aria-label="Explore the Lumen workspace">
         <div class="workspace-bar"><span class="workspace-mark">L</span><strong>Your Lumen workspace</strong><span class="workspace-preview">PREVIEW</span></div>
         <div class="workspace-body">
@@ -78,9 +139,12 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
+      <span class="workspace-float-tag workspace-float-tag-top" aria-hidden="true"><i /> YOUR NEXT SERVER UPGRADE</span>
+      <span class="workspace-float-tag workspace-float-tag-bottom" aria-hidden="true">PLUGINS. POSSIBILITIES. LUMEN.</span>
+      </div>
     </section>
 
-    <nav class="home-entry" aria-label="Explore Lumen Studios">
+    <nav class="home-entry home-reveal" aria-label="Explore Lumen Studios">
       <a class="home-entry-card" href="/docs/">
         <span class="home-entry-icon home-entry-icon-docs" aria-hidden="true">⌘</span>
         <span class="home-entry-copy"><strong>Documentation</strong><small>Setup guides and answers</small></span>
@@ -98,7 +162,7 @@ onUnmounted(() => {
       </a>
     </nav>
 
-    <section class="home-proof" aria-label="Lumen Studios principles">
+    <section class="home-proof home-reveal" aria-label="Lumen Studios principles">
       <div class="home-proof-copy">
         <span class="home-eyebrow"><span class="home-pulse" /> BUILT FOR THE PEOPLE BEHIND THE SERVER</span>
         <h2>Make your server<br><span>feel like yours.</span></h2>
@@ -137,7 +201,7 @@ onUnmounted(() => {
     </section>
 
     <section class="home-feature-showcase" aria-label="What you can do with Lumen Studios">
-      <div class="home-section-heading home-feature-heading">
+      <div class="home-section-heading home-feature-heading home-reveal">
         <span class="home-eyebrow">DESIGNED TO WORK TOGETHER</span>
         <h2>Small details. A smoother run.</h2>
         <p>A few of the ways we help you get from “just bought it” to “it’s working.”</p>
@@ -275,7 +339,7 @@ onUnmounted(() => {
       </div>
     </section>
 
-    <section class="home-portal">
+    <section class="home-portal home-reveal">
       <div class="home-portal-visual" aria-hidden="true">
         <div class="home-portal-window">
           <div class="home-window-bar"><i /><i /><i /><span>lumen / customer portal</span></div>
@@ -300,7 +364,7 @@ onUnmounted(() => {
       </div>
     </section>
 
-    <section class="home-final">
+    <section class="home-final home-reveal">
       <div>
         <span class="home-eyebrow">WHEN YOU NEED A HAND</span>
         <h2>Clear docs. Real support.</h2>
@@ -326,11 +390,96 @@ onUnmounted(() => {
 }
 
 .launch {
+  position: relative;
+  isolation: isolate;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: clamp(32px, 5vw, 76px);
   align-items: center;
   padding: clamp(48px, 7vw, 100px) 0 64px;
+}
+
+.launch-copy { position: relative; z-index: 1; }
+.launch-atmosphere { position: absolute; inset: -40px -32px; overflow: hidden; z-index: -1; pointer-events: none; }
+.launch-grid {
+  position: absolute; inset: 0;
+  background-image: linear-gradient(rgb(149 108 255 / 10%) 1px, transparent 1px), linear-gradient(90deg, rgb(149 108 255 / 10%) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse at 65% 44%, black, transparent 68%);
+  opacity: 0.55;
+}
+.launch-aurora { position: absolute; width: 560px; height: 560px; border-radius: 50%; animation: launch-aurora-drift 16s ease-in-out infinite alternate; }
+.launch-aurora-one { top: -150px; right: -70px; background: radial-gradient(circle, rgb(141 76 255 / 23%), transparent 68%); }
+.launch-aurora-two { bottom: -220px; left: -160px; background: radial-gradient(circle, rgb(101 71 242 / 19%), transparent 68%); animation-delay: -7s; animation-direction: alternate-reverse; }
+.launch-light-ring {
+  position: absolute; top: 5%; right: -6%; width: 500px; height: 500px; border-radius: 50%;
+  border: 1px solid rgb(167 116 255 / 16%);
+  box-shadow: inset 0 0 60px rgb(149 108 255 / 6%), 0 0 90px rgb(149 108 255 / 8%);
+  transform: rotateX(62deg) rotateZ(-24deg);
+  animation: launch-ring-breathe 9s ease-in-out infinite alternate;
+}
+.launch-star {
+  position: absolute; left: calc(8% + var(--spark) * 9%); top: calc(8% + var(--spark) * 7%);
+  width: 3px; height: 3px; border-radius: 50%; background: #c6a5ff;
+  box-shadow: 0 0 12px #a986ff;
+  animation: launch-star-rise calc(8s + var(--spark) * 0.7s) ease-in-out infinite;
+  animation-delay: calc(var(--spark) * -1.4s);
+}
+.launch-title .launch-name { display: inline-block; background: none; -webkit-text-fill-color: currentColor; animation: launch-text-enter 850ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.launch-title .launch-statement {
+  display: inline-block; background-size: 200% 100%;
+  background-image: linear-gradient(105deg, #e5d5ff, #b188ff 35%, #8252ed 60%, #dfcaff);
+  animation: launch-text-enter 1000ms cubic-bezier(0.16, 1, 0.3, 1) 100ms both, launch-title-shift 12s ease-in-out infinite alternate;
+}
+.launch-description { animation: launch-text-enter 850ms cubic-bezier(0.16, 1, 0.3, 1) 200ms both; }
+.launch-actions { animation: launch-text-enter 850ms cubic-bezier(0.16, 1, 0.3, 1) 300ms both; }
+.workspace-stage {
+  position: relative; min-width: 0; z-index: 1;
+  transform: perspective(1400px) rotateX(calc(var(--hero-y, 0) * -7deg)) rotateY(calc(var(--hero-x, 0) * 8deg)) translateY(calc(var(--hero-y, 0) * -8px));
+  transition: transform 450ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.workspace-stage::before {
+  content: ""; position: absolute; inset: 6% -3%; border-radius: 24px;
+  background: radial-gradient(ellipse, rgb(143 75 255 / 24%), transparent 68%);
+  transform: scale(1.12); animation: launch-halo-breathe 7s ease-in-out infinite alternate;
+}
+.workspace-float-tag {
+  position: absolute; display: flex; align-items: center; gap: 7px; padding: 10px 13px;
+  border: 1px solid rgb(167 116 255 / 35%); border-radius: 10px;
+  background: var(--vp-c-bg-elv); color: var(--vp-c-brand-1); box-shadow: 0 12px 32px rgb(40 16 90 / 18%);
+  font-size: 8px; font-weight: 650; letter-spacing: 0.1em;
+  animation: launch-tag-float 6s ease-in-out infinite alternate; pointer-events: none;
+}
+.workspace-float-tag-top { top: -16px; right: 14px; }
+.workspace-float-tag-bottom { bottom: -18px; left: 10px; animation-delay: -3s; }
+.workspace-float-tag i { width: 5px; height: 5px; border-radius: 50%; background: #aa87ff; box-shadow: 0 0 10px #aa87ff; }
+.home-button span, .home-entry-arrow { transition: transform 300ms cubic-bezier(0.16, 1, 0.3, 1); }
+.home-button:hover span, .home-entry-card:hover .home-entry-arrow { transform: translate(3px, -2px); }
+.home-feature-card::before {
+  content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: radial-gradient(300px circle at var(--card-pointer-x, 50%) var(--card-pointer-y, 50%), rgb(167 116 255 / 17%), transparent 75%);
+  opacity: 0; transition: opacity 280ms ease;
+}
+.home-feature-card:hover::before { opacity: 1; }
+.home-motion-paused *, .home-motion-paused *::before, .home-motion-paused *::after,
+.home-scene-sleeping, .home-scene-sleeping *, .home-scene-sleeping::before,
+.home-scene-sleeping *::before, .home-scene-sleeping *::after { animation-play-state: paused !important; }
+
+@keyframes launch-text-enter { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes launch-aurora-drift { to { transform: translate3d(40px, 45px, 0) scale(1.1); } }
+@keyframes launch-title-shift { to { background-position: 100% 50%; } }
+@keyframes launch-star-rise { 0%, 100% { opacity: 0.15; transform: translateY(18px); } 50% { opacity: 0.85; transform: translateY(-22px); } }
+@keyframes launch-ring-breathe { to { transform: rotateX(58deg) rotateZ(-14deg) scale(1.08); opacity: 0.4; } }
+@keyframes launch-halo-breathe { to { transform: scale(1.2); opacity: 0.45; } }
+@keyframes launch-tag-float { to { transform: translateY(-9px) rotate(-1deg); } }
+
+@media (max-width: 720px) {
+  .workspace-stage { transform: none; }
+  .workspace-stage::before { inset: 6% 8%; }
+  .launch-atmosphere { inset: -20px 0; }
+  .launch-aurora { width: 360px; height: 360px; }
+  .launch-light-ring { top: 35%; right: -22%; width: 360px; height: 360px; }
+  .workspace-float-tag { font-size: 7px; padding: 8px 10px; }
 }
 
 .launch-label {
@@ -1451,6 +1600,7 @@ onUnmounted(() => {
 }
 
 .home-feature-card:nth-child(2) { transition-delay: 70ms; }
+.home-motion-ready .home-feature-card.is-visible { transform: perspective(900px) rotateX(var(--tilt-x)) rotateY(var(--tilt-y)); }
 .home-feature-card:nth-child(3) { transition-delay: 140ms; }
 .home-feature-card:nth-child(4) { transition-delay: 210ms; }
 
@@ -1914,6 +2064,7 @@ onUnmounted(() => {
   .home-experience *,
   .home-experience *::before,
   .home-experience *::after {
+    animation: none !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
@@ -1924,5 +2075,6 @@ onUnmounted(() => {
     opacity: 1;
     transform: none;
   }
+  .workspace-stage, .home-motion-ready .home-feature-card.is-visible { transform: none; }
 }
 </style>

@@ -14,6 +14,7 @@ export const PERMISSIONS = [
   ['customers.verify', 'Request or approve customer verification', 'Licensing'],
   ['customers.delete', 'Delete customer accounts', 'Licensing'],
   ['licenses.grant', 'Grant customer licenses', 'Licensing'],
+  ['licenses.keys', 'View customer license keys in the inspector', 'Licensing'],
   ['licenses.status', 'Activate, suspend and revoke licenses', 'Licensing'],
   ['licenses.ips', 'Add and remove license IP addresses', 'Licensing'],
   ['audit.view', 'Read licensing audit history', 'Licensing'],
@@ -45,7 +46,7 @@ export const PERMISSIONS = [
 export const MEMBER_PERMISSIONS = ['support.create', 'trials.request', 'forum.post']
 const support = [
   ...MEMBER_PERMISSIONS, 'staff.docs', 'staff.presence', 'staff.tasks', 'staff.commissions', 'staff.feedback',
-  'dashboard.view', 'customers.view', 'customers.verify', 'licenses.grant', 'licenses.status', 'licenses.ips',
+  'dashboard.view', 'customers.view', 'customers.verify', 'licenses.grant', 'licenses.keys', 'licenses.status', 'licenses.ips',
   'audit.view', 'plugins.view', 'tickets.view', 'tickets.reply', 'tickets.manage', 'tickets.alerts',
   'forum.moderate', 'roles.assign',
 ]

@@ -4,6 +4,7 @@ import { claimDiscordPurchases, submitBuiltByBitClaim } from './builtbybit.js'
 import { handleProductTools } from './product-tools.js'
 import { staffAssistant } from './staff-assistant.js'
 import { activityCustomerName, staffActivityStatement } from './staff-operations.js'
+import { staffLicenseKey } from './staff-license-key.js'
 
 const jsonHeaders = {
   'Content-Type': 'application/json; charset=utf-8',
@@ -875,6 +876,8 @@ async function adminApi(request, env, origin, path) {
   if (!env.LICENSE_API_URL || !env.LICENSE_ADMIN_API_TOKEN) {
     return licenseServiceUnavailable(origin)
   }
+  const inspectedKey = path.match(/^\/admin\/licenses\/([0-9a-f-]{36})\/key$/)
+  if (inspectedKey) return staffLicenseKey(env, user, access, inspectedKey[1], (data, status) => respond(data, status, origin))
 
   let baseUrl
   try {
