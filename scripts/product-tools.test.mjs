@@ -6,6 +6,7 @@ import { handleProductTools, runProductChecks } from '../worker/product-tools.js
 import worker from '../worker/chat.js'
 import { handlePluginDownloads } from '../worker/plugin-downloads.js'
 import { messageProfiles } from '../worker/profiles.js'
+import { runCouponChecks } from '../worker/coupon-rewards.js'
 import { backgrounds, frames, decorations } from '../shared/profile-cosmetics.mjs'
 
 async function fixture(t) {
@@ -61,6 +62,181 @@ async function fixture(t) {
   }), env, 'https://lumenstudio.fyi', path.split('?')[0], deps)
   return { sqlite, env, call, owner, customer }
 }
+
+test('coupon checks issue private single-use review and permanent loyalty rewards only once', async t => {
+  const { call, env, customer, sqlite, owner } = await fixture(t)
+  env.BUILDBYBIT_API_AUTHORIZATION = 'private-test-token'
+  env.BUILDBYBIT_RESOURCE_IDS = '1001,1002'
+  sqlite.prepare('INSERT INTO website_members(discord_id,registered_at) VALUES (?,?)').run(customer, '2026-01-01')
+  const previous = globalThis.fetch
+  t.after(() => { globalThis.fetch = previous })
+  const posts = []
+  const issued = new Map()
+  globalThis.fetch = async (input, options = {}) => {
+    const url = new URL(input)
+    if (url.hostname === 'api.builtbybit.com' && url.pathname.endsWith('/reviews')) return Response.json({
+      result: 'success', data: { reviews: [
+        { review_id: 11, resource_id: 1001, reviewer_id: 55, stars: 1, Reviewer: { user_id: '55', banned: false, discord_id: customer } },
+        { review_id: 12, resource_id: 1002, reviewer_id: 56, stars: 5, Reviewer: { user_id: '56', banned: false, discord_id: '223456789012345678' } },
+      ], stats: { total: 2, page: 1, per_page: 100, max_page: 1 } },
+    })
+    if (url.hostname === 'api.builtbybit.com' && url.pathname.endsWith('/coupons')) {
+      const body = JSON.parse(options.body); posts.push(body)
+      issued.set(posts.length, body)
+      return Response.json({ result: 'success', data: { coupon: {
+        coupon_id: posts.length, label: `123-${body.label}`, discount: body.discount / 100, percent: true, active: true,
+        max_uses: body.max_uses || 0, max_per_user_uses: 0, expires_at: 0, all_content_types: [],
+      } } })
+    }
+    if (url.hostname === 'api.builtbybit.com' && url.pathname.endsWith('/coupons/entries')) {
+      const id = Number(url.searchParams.get('coupon_ids'))
+      const entries = issued.get(id).resources.split(',').map(content_id => ({ coupon_id: id, content_type: 'resource', content_id: Number(content_id) }))
+      return Response.json({ result: 'success', data: { 'coupon-entries': entries,
+        stats: { total: entries.length, page: 1, per_page: 100, max_page: 1 } } })
+    }
+    if (url.pathname.endsWith('/products')) return Response.json({ items: Array.from({ length: 10 }, (_, i) =>
+      ({ productId: `p${i}`, name: `Plugin ${i}`, active: true, plugins: [`p${i}`] })), total: 10 })
+    return Response.json({ customerDiscordId: customer, status: 'active', verificationRequired: false,
+      products: Array.from({ length: 3 }, (_, i) => ({ productId: `p${i}`, productActive: true, status: 'active', expiresAt: null })) })
+  }
+  await Promise.all([runCouponChecks(env), runCouponChecks(env)])
+  await runCouponChecks(env)
+  assert.equal(posts.length, 2)
+  assert.equal(posts.find(post => post.discount === 10).max_uses, 1)
+  assert.equal(posts.find(post => post.discount === 5).limited_uses, false)
+  assert.ok(posts.every(post => post.do_expiry === false && post.resources === '1001,1002'))
+  const result = await (await call('/studio/coupons', 'GET', undefined, customer)).json()
+  assert.deepEqual(result.coupons.map(item => item.kind).sort(), ['loyalty', 'review'])
+  assert.ok(result.coupons.every(item => item.state === 'issued' && /^123-[A-F0-9]{14}$/.test(item.code)))
+  assert.deepEqual((await (await call('/studio/coupons', 'GET', undefined, owner)).json()).coupons, [])
+  assert.equal((await call('/studio/coupons', 'GET', undefined, '')).status, 401)
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM community_notifications WHERE recipient_id=? AND link='/account/coupons'").get(customer).n, 2)
+})
+
+test('uncertain coupon writes are never retried and partial reviews never issue rewards', async t => {
+  const { env, customer, sqlite, call } = await fixture(t)
+  env.BUILDBYBIT_API_AUTHORIZATION = 'private-test-token'; env.BUILDBYBIT_RESOURCE_IDS = '1001'
+  sqlite.prepare('INSERT INTO website_members(discord_id,registered_at) VALUES (?,?)').run(customer, '2026-01-01')
+  const previous = globalThis.fetch
+  t.after(() => { globalThis.fetch = previous })
+  let posts = 0, incomplete = true
+  globalThis.fetch = async (input, options = {}) => {
+    const url = new URL(input)
+    if (url.hostname === 'api.builtbybit.com' && url.pathname.endsWith('/reviews')) return Response.json({
+      result: 'success', data: { reviews: [{ review_id: 11, resource_id: 1001, reviewer_id: 55, Reviewer: { user_id: '55', banned: false, discord_id: customer } }],
+        stats: { total: incomplete ? 2 : 1, page: 1, per_page: 100, max_page: 1 } },
+    })
+    if (url.hostname === 'api.builtbybit.com' && options.method === 'POST') { posts++; throw new Error('timeout') }
+    if (url.pathname.endsWith('/products')) return Response.json({ items: [{ productId: 'p', name: 'Plugin', active: true, plugins: ['p'] }], total: 1 })
+    return Response.json({ customerDiscordId: customer, status: 'active', verificationRequired: false, products: [] })
+  }
+  await assert.rejects(runCouponChecks(env), /Incomplete/)
+  assert.equal(posts, 0)
+  incomplete = false
+  await runCouponChecks(env)
+  await runCouponChecks(env)
+  assert.equal(posts, 1)
+  const result = await (await call('/studio/coupons', 'GET', undefined, customer)).json()
+  assert.equal(result.coupons[0].state, 'uncertain')
+  assert.equal(result.coupons[0].code, null)
+})
+
+test('coupon scope mismatch is never exposed or retried', async t => {
+  const { env, customer, sqlite, call } = await fixture(t)
+  env.BUILDBYBIT_API_AUTHORIZATION = 'private-test-token'; env.BUILDBYBIT_RESOURCE_IDS = '1001'
+  sqlite.prepare('INSERT INTO website_members(discord_id,registered_at) VALUES (?,?)').run(customer, '2026-01-01')
+  const previous = globalThis.fetch
+  t.after(() => { globalThis.fetch = previous })
+  let posts = 0
+  globalThis.fetch = async (input, options = {}) => {
+    const url = new URL(input)
+    if (url.pathname.endsWith('/reviews')) return Response.json({ result: 'success', data: {
+      reviews: [{ review_id: 11, resource_id: 1001, reviewer_id: 55, Reviewer: { user_id: '55', banned: false, discord_id: customer } }],
+      stats: { total: 1, page: 1, per_page: 100, max_page: 1 },
+    } })
+    if (url.pathname.endsWith('/coupons')) {
+      posts++
+      const body = JSON.parse(options.body)
+      return Response.json({ result: 'success', data: { coupon: { coupon_id: 1, label: `123-${body.label}`,
+        discount: .1, percent: true, active: true, all_content_types: [], expires_at: 0, max_uses: 1, max_per_user_uses: 0 } } })
+    }
+    if (url.pathname.endsWith('/coupons/entries')) return Response.json({ result: 'success', data: {
+      'coupon-entries': [{ coupon_id: 1, content_type: 'resource', content_id: 9999 }],
+      stats: { total: 1, page: 1, per_page: 100, max_page: 1 },
+    } })
+    if (url.pathname.endsWith('/products')) return Response.json({ items: [], total: 0 })
+    return Response.json({ customerDiscordId: customer, status: 'active', verificationRequired: false, products: [] })
+  }
+  await runCouponChecks(env)
+  await runCouponChecks(env)
+  assert.equal(posts, 1)
+  const result = await (await call('/studio/coupons', 'GET', undefined, customer)).json()
+  assert.equal(result.coupons[0].state, 'uncertain')
+  assert.equal(result.coupons[0].code, null)
+  delete env.BUILDBYBIT_API_AUTHORIZATION
+  const unconfigured = await (await call('/studio/coupons', 'GET', undefined, customer)).json()
+  assert.equal(unconfigured.configured, false)
+  assert.equal(unconfigured.coupons[0].state, 'uncertain')
+})
+
+test('coupon checks do not expose a coupon with an unexpected decimal discount', async t => {
+  const { env, customer, sqlite, call } = await fixture(t)
+  env.BUILDBYBIT_API_AUTHORIZATION = 'private-test-token'; env.BUILDBYBIT_RESOURCE_IDS = '1001'
+  sqlite.prepare('INSERT INTO website_members(discord_id,registered_at) VALUES (?,?)').run(customer, '2026-01-01')
+  const previous = globalThis.fetch
+  t.after(() => { globalThis.fetch = previous })
+  let posts = 0
+  globalThis.fetch = async (input, options = {}) => {
+    const url = new URL(input)
+    if (url.pathname.endsWith('/reviews')) return Response.json({ result: 'success', data: {
+      reviews: [{ review_id: 11, resource_id: 1001, reviewer_id: 55, Reviewer: { user_id: '55', banned: false, discord_id: customer } }],
+      stats: { total: 1, page: 1, per_page: 100, max_page: 1 },
+    } })
+    if (url.pathname.endsWith('/coupons')) {
+      posts++
+      const body = JSON.parse(options.body)
+      return Response.json({ result: 'success', data: { coupon: { coupon_id: 1, label: `123-${body.label}`,
+        discount: 10, percent: true, active: true, all_content_types: [], expires_at: 0, max_uses: 1, max_per_user_uses: 0 } } })
+    }
+    if (url.pathname.endsWith('/coupons/entries')) return Response.json({ result: 'success', data: {
+      'coupon-entries': [{ coupon_id: 1, content_type: 'resource', content_id: 1001 }],
+      stats: { total: 1, page: 1, per_page: 100, max_page: 1 },
+    } })
+    if (url.pathname.endsWith('/products')) return Response.json({ items: [], total: 0 })
+    return Response.json({ customerDiscordId: customer, status: 'active', verificationRequired: false, products: [] })
+  }
+  await runCouponChecks(env)
+  await runCouponChecks(env)
+  assert.equal(posts, 1)
+  const result = await (await call('/studio/coupons', 'GET', undefined, customer)).json()
+  assert.equal(result.coupons[0].state, 'uncertain')
+  assert.equal(result.coupons[0].code, null)
+})
+
+test('coupon checks retry explicit authorization rejection only after cooldown', async t => {
+  const { env, customer, sqlite } = await fixture(t)
+  env.BUILDBYBIT_API_AUTHORIZATION = 'private-test-token'; env.BUILDBYBIT_RESOURCE_IDS = '1001'
+  sqlite.prepare('INSERT INTO website_members(discord_id,registered_at) VALUES (?,?)').run(customer, '2026-01-01')
+  const previous = globalThis.fetch
+  t.after(() => { globalThis.fetch = previous })
+  let posts = 0
+  globalThis.fetch = async (input, options = {}) => {
+    const url = new URL(input)
+    if (url.pathname.endsWith('/reviews')) return Response.json({ result: 'success', data: {
+      reviews: [{ review_id: 11, resource_id: 1001, reviewer_id: 55, Reviewer: { user_id: '55', banned: false, discord_id: customer } }],
+      stats: { total: 1, page: 1, per_page: 100, max_page: 1 },
+    } })
+    if (url.pathname.endsWith('/coupons')) { posts++; return Response.json({ error: 'Forbidden' }, { status: 403 }) }
+    if (url.pathname.endsWith('/products')) return Response.json({ items: [], total: 0 })
+    return Response.json({ customerDiscordId: customer, status: 'active', verificationRequired: false, products: [] })
+  }
+  await runCouponChecks(env)
+  await runCouponChecks(env)
+  assert.equal(posts, 1)
+  sqlite.prepare("UPDATE coupon_rewards SET retry_at='2000-01-01' WHERE reward_key='review:11'").run()
+  await runCouponChecks(env)
+  assert.equal(posts, 2)
+})
 
 test('release manager keeps drafts private and publishes updates without exposing credentials', async t => {
   const { call, sqlite, customer } = await fixture(t)

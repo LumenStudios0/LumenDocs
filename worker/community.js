@@ -1,6 +1,7 @@
 import { hasPermission, resolveAccess, siteSettings } from './access-control.js'
 import { expansionRoute, runCommunityExpansionChecks, validImageUrl } from './community-expansion.js'
 import { runProductChecks } from './product-tools.js'
+import { runCouponChecks } from './coupon-rewards.js'
 import { activityCustomerName, estimatedWait, staffEditorEligibilitySql, ticketWaitEstimates } from './staff-operations.js'
 import { messageProfiles } from './profiles.js'
 
@@ -724,6 +725,7 @@ async function checkedStatus(url, options = {}) {
 export async function runCommunityChecks(env) {
   try { await runCommunityExpansionChecks(env) } catch { console.error('Community expansion checks failed') }
   try { await runProductChecks(env) } catch { console.error('Product checks failed') }
+  try { await runCouponChecks(env) } catch { console.error('Coupon checks failed') }
   if (env.COMMUNITY_DB && env.DISCORD_BUG_REPORT_WEBHOOK) {
     await env.COMMUNITY_DB.prepare(
       `UPDATE community_ticket_alerts SET state = 'failed', last_error = 'Previous delivery status is unknown. Check Discord before retrying.'
