@@ -83,6 +83,7 @@ onUnmounted(() => { generation++; window.removeEventListener('lumen-discord-user
     <section class="loyalty-manage" aria-labelledby="loyalty-coupons"><h2 id="loyalty-coupons">Coupons</h2>
       <p>Coupon rewards are not available yet. No loyalty or review coupons are being issued automatically.</p>
       <p class="loyalty-note">Loyalty discounts are planned at 5% for Radiance, 10% for Nova and 15% for Lumen Elite. BuiltByBit does not currently document a way to restrict a coupon to one buyer's account.</p>
+      <p class="loyalty-note"><strong>Proposed loyalty coupon policy:</strong> If found sharing this code with other users, your benefits and coupon will be taken away. All discount uses will be logged. This policy is not active yet.</p>
     </section>
     <section class="loyalty-manage" aria-labelledby="loyalty-clients"><h2 id="loyalty-clients">Sub-clients by plugin</h2>
       <p>Add someone by their Discord user ID after they sign in here. They can download the selected plugin from their own account while your access and tier remain eligible. This does not share your license key, add IP slots, or give them ownership or server validation.</p>
