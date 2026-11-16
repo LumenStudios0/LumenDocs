@@ -358,41 +358,43 @@ async function preferences(request, env, user, deps) {
   return json(request, { preferences: normalized }, 200, deps.respond)
 }
 
-async function notifications(request, env, url, user, deps, staff) {
-  const page = parsePage(url)
-  let where = ''
-  let values = []
-  if (!staff) {
-    const saved = await env.COMMUNITY_DB.prepare('SELECT * FROM community_preferences WHERE user_id = ?').bind(user.id).first()
-    let prefs = DEFAULT_PREFERENCES
-    if (saved) {
-      let products = []
-      try { products = JSON.parse(saved.products) } catch { products = [] }
-      prefs = { updates: Boolean(saved.updates), announcements: Boolean(saved.announcements), ticketReplies: Boolean(saved.ticket_replies), products }
-    }
-    const productSlots = prefs.products.length ? prefs.products.map(() => '?').join(',') : ''
-    const productParams = prefs.products
-    const allProductFilter = productSlots
-      ? `(product_id IS NULL OR product_id IN (${productSlots}))`
-      : '1 = 1'
-    const targetedProductFilter = productSlots
-      ? `product_id IN (${productSlots})`
-      : 'product_id IS NOT NULL'
-    where = `WHERE
+async function notificationAudience(env, user, deps) {
+  const saved = await env.COMMUNITY_DB.prepare('SELECT * FROM community_preferences WHERE user_id = ?').bind(user.id).first()
+  let prefs = DEFAULT_PREFERENCES
+  if (saved) {
+    let products = []
+    try { products = JSON.parse(saved.products) } catch { products = [] }
+    prefs = { updates: Boolean(saved.updates), announcements: Boolean(saved.announcements), ticketReplies: Boolean(saved.ticket_replies), products }
+  }
+  const productSlots = prefs.products.length ? prefs.products.map(() => '?').join(',') : ''
+  const productParams = prefs.products
+  const allProductFilter = productSlots
+    ? `(product_id IS NULL OR product_id IN (${productSlots}))`
+    : '1 = 1'
+  const targetedProductFilter = productSlots
+    ? `product_id IN (${productSlots})`
+    : 'product_id IS NOT NULL'
+  const where = `WHERE
       (audience = 'user' AND recipient_id = ? AND (kind IN ('license','issue','escalation','hold_alert') OR ? = 1)) OR
       (audience = 'all' AND ((kind = 'update' AND ? = 1) OR (kind = 'announcement' AND ? = 1)) AND
         ${allProductFilter}) OR
       (audience = 'product' AND ((kind = 'update' AND ? = 1) OR (kind = 'announcement' AND ? = 1)) AND
         ${targetedProductFilter}) OR
       (audience = 'staff' AND ? = 1)`
-    const isStaff = Boolean(await deps.getAdminRole(user.id, env))
-    values = [
-      user.id, +prefs.ticketReplies,
-      +prefs.updates, +prefs.announcements, ...productParams,
-      +prefs.updates, +prefs.announcements, ...productParams,
-      +isStaff,
-    ]
-  } else where = "WHERE kind != 'hold_alert'"
+  const isStaff = Boolean(await deps.getAdminRole(user.id, env))
+  const values = [
+    user.id, +prefs.ticketReplies,
+    +prefs.updates, +prefs.announcements, ...productParams,
+    +prefs.updates, +prefs.announcements, ...productParams,
+    +isStaff,
+  ]
+  return { where, values }
+}
+
+async function notifications(request, env, url, user, deps, staff) {
+  const page = parsePage(url)
+  const { where, values } = staff ? { where: "WHERE kind != 'hold_alert'", values: [] }
+    : await notificationAudience(env, user, deps)
   const result = await paginate(
     env.COMMUNITY_DB,
     `SELECT COUNT(*) AS total FROM community_notifications ${where}`,
@@ -470,6 +472,15 @@ async function markRead(request, env, user, deps, id) {
     'INSERT OR IGNORE INTO community_notification_reads (notification_id, user_id, read_at) VALUES (?, ?, ?)',
   ).bind(id, user.id, new Date().toISOString()).run()
   return json(request, { ok: true }, 200, deps.respond)
+}
+
+async function markAllRead(request, env, user, deps) {
+  const { where, values } = await notificationAudience(env, user, deps)
+  const result = await env.COMMUNITY_DB.prepare(
+    `INSERT OR IGNORE INTO community_notification_reads (notification_id, user_id, read_at)
+     SELECT id, ?, ? FROM community_notifications ${where}`,
+  ).bind(user.id, new Date().toISOString(), ...values).run()
+  return json(request, { ok: true, marked: result.meta.changes }, 200, deps.respond)
 }
 
 async function staffTickets(request, env, url, deps) {
@@ -1135,6 +1146,7 @@ export async function handleCommunity(request, env, origin, path, deps) {
     }
     if (suffix === '/preferences' && ['GET', 'PUT'].includes(request.method)) return preferences(request, env, user, deps)
     if (suffix === '/notifications' && request.method === 'GET') return notifications(request, env, url, user, deps, false)
+    if (suffix === '/notifications/read-all' && request.method === 'POST') return markAllRead(request, env, user, deps)
     match = suffix.match(/^\/notifications\/([0-9a-f-]{36})\/read$/i)
     if (match && request.method === 'POST') return markRead(request, env, user, deps, match[1])
     if (suffix === '/staff/tickets' && request.method === 'GET') return staffTickets(request, env, url, deps)

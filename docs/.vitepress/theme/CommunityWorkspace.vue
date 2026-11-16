@@ -2,7 +2,7 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useData } from 'vitepress'
 import { getDiscordSession } from './discord-session'
-import { communityRequest, communityDate, type CommunityPage, type Issue, type Notification, type Preferences, type Reply, type Service, type Ticket } from './community-api'
+import { communityRequest, communityDate, type CommunityPage, type NotificationPage, type Issue, type Notification, type Preferences, type Reply, type Service, type Ticket } from './community-api'
 import pluginData from './plugin-compatibility-data.json'
 import { CommunityUnavailableError } from './community-errors.mjs'
 import RichContent from './RichContent.vue'
@@ -26,6 +26,7 @@ const total = ref(0)
 const tickets = ref<Ticket[]>([])
 const issues = ref<Issue[]>([])
 const notifications = ref<Notification[]>([])
+const unreadTotal = ref<number | null>(null)
 const services = ref<Service[]>([])
 const preferences = ref<Preferences>({ updates: true, announcements: true, ticketReplies: true, products: [] })
 const customTopics = ref('')
@@ -92,11 +93,12 @@ async function load(target = 1, quiet = false) {
       }
     } else if (signedIn.value && props.mode === 'notifications') {
       const [result, settings] = await Promise.all([
-        communityRequest<CommunityPage<Notification>>(`/notifications?page=${target}&pageSize=20`),
+        communityRequest<NotificationPage>(`/notifications?page=${target}&pageSize=20`),
         communityRequest<{ preferences: Preferences }>('/preferences'),
       ])
       if (requestId === generation) {
-        notifications.value = result.items; total.value = result.total; page.value = result.page
+        if (!Number.isSafeInteger(result.unreadTotal) || result.unreadTotal < 0) throw new Error('Invalid notification unread count.')
+        notifications.value = result.items; total.value = result.total; page.value = result.page; unreadTotal.value = result.unreadTotal
         preferences.value = settings.preferences
         serviceReady.value = true
         customTopics.value = settings.preferences.products.filter(id => !pluginData.plugins.some(plugin => plugin.id === id)).join(', ')
@@ -261,6 +263,7 @@ async function markRead(notification: Notification) {
     await communityRequest(`/notifications/${notification.id}/read`, { method: 'POST' })
     if (captured === getDiscordSession()) {
       notification.read = true
+      if (unreadTotal.value !== null) unreadTotal.value = Math.max(0, unreadTotal.value - 1)
       window.dispatchEvent(new Event('lumen-notifications-changed'))
     }
   } catch (requestError) {
@@ -270,24 +273,45 @@ async function markRead(notification: Notification) {
     }
   }
 }
+async function markAllRead() {
+  if (submitting.value) return
+  const captured = getDiscordSession(), request = generation
+  submitting.value = true; error.value = ''; notice.value = ''
+  try {
+    await communityRequest('/notifications/read-all', { method: 'POST' })
+    if (captured !== getDiscordSession() || request !== generation) return
+    window.dispatchEvent(new Event('lumen-notifications-changed'))
+    await load(page.value)
+    if (captured === getDiscordSession() && !error.value) notice.value = 'Notifications marked as read.'
+  } catch (requestError) {
+    if (captured === getDiscordSession() && request === generation) {
+      error.value = requestError instanceof Error ? requestError.message : 'Could not mark notifications read.'
+      checkAvailabilityError(requestError)
+    }
+  } finally { submitting.value = false }
+}
 function changedSession() {
   let current = ''
   try { current = getDiscordSession() } catch (sessionError) { console.error('Unable to read website session:', sessionError) }
   if (current === token) return
   generation++
   deepLinkHandled = false
-  tickets.value = []; notifications.value = []; selected.value = null; replies.value = []
+  tickets.value = []; notifications.value = []; unreadTotal.value = null; selected.value = null; replies.value = []
   title.value = ''; body.value = ''; reply.value = ''; notice.value = ''
   editing.value = false; editTitle.value = ''; editBody.value = ''; showComposer.value = false; ratingScore.value = 5; ratingComment.value = ''
   void load()
+}
+function notificationsChanged() {
+  if (props.mode === 'notifications' && signedIn.value && !loading.value && !submitting.value) void load(page.value, true)
 }
 onMounted(() => {
   void load()
   window.addEventListener('lumen-discord-user', changedSession)
   window.addEventListener('storage', changedSession)
+  window.addEventListener('lumen-notifications-changed', notificationsChanged)
   if (props.mode === 'status') timer = setInterval(() => { if (!document.hidden && !loading.value) void load(1, true) }, 5 * 60000)
 })
-onUnmounted(() => { generation++; clearInterval(timer); window.removeEventListener('lumen-discord-user', changedSession); window.removeEventListener('storage', changedSession) })
+onUnmounted(() => { generation++; clearInterval(timer); window.removeEventListener('lumen-discord-user', changedSession); window.removeEventListener('storage', changedSession); window.removeEventListener('lumen-notifications-changed', notificationsChanged) })
 </script>
 
 <template>
@@ -328,6 +352,7 @@ onUnmounted(() => { generation++; clearInterval(timer); window.removeEventListen
     </template>
 
     <template v-if="mode === 'notifications' && signedIn">
+      <button type="button" :disabled="loading || submitting || !unreadTotal" @click="markAllRead">Mark all as read<span v-if="unreadTotal"> ({{ unreadTotal }})</span></button>
       <details class="website-panel"><summary>Notification preferences</summary><form @submit.prevent="savePreferences"><label class="website-check"><input v-model="preferences.updates" type="checkbox">Plugin update notifications</label><label class="website-check"><input v-model="preferences.announcements" type="checkbox">Studio announcements</label><label class="website-check"><input v-model="preferences.ticketReplies" type="checkbox">Replies to my support tickets</label><fieldset><legend>Plugin topics</legend><p class="website-note">Select the plugins you want updates for. Leave all unchecked to receive every plugin topic. This does not change ownership or licenses.</p><div class="website-columns"><label v-for="plugin in pluginData.plugins" :key="plugin.id" class="website-check"><input v-model="preferences.products" type="checkbox" :value="plugin.id">{{ plugin.name }}</label></div></fieldset><label>Additional topic IDs (optional)<input v-model="customTopics" maxlength="1000" placeholder="Comma-separated topic IDs"></label><button class="website-primary" type="submit" :disabled="submitting">Save preferences</button></form></details>
       <div class="website-list"><article v-for="item in notifications" :key="item.id"><p class="website-meta"><span class="website-badge">{{ item.kind }}</span>{{ item.read ? 'Read' : 'Unread' }} · {{ item.productId || 'Studio' }} · {{ communityDate(item.createdAt) }}</p><h3>{{ item.title }}</h3><RichContent :text="item.body" :image-url="item.imageUrl" /><div class="website-actions"><a v-if="item.link && item.link.startsWith('/') && !item.link.startsWith('//')" :href="item.link">View details →</a><button v-if="!item.read" type="button" @click="markRead(item)">Mark read</button></div></article></div>
       <p v-if="!loading && !error && !notifications.length" class="website-note">No notifications match your preferences on this page.</p>

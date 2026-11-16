@@ -57,6 +57,18 @@ async function openNotification(notification: Notification) {
       if (unread.value !== null) unread.value = Math.max(0, unread.value - 1)
       window.dispatchEvent(new Event('lumen-notifications-changed'))
     }
+    async function markAllRead() {
+      if (opening.value || loading.value || !unread.value) return
+      const token = getDiscordSession()
+      opening.value = true; error.value = ''
+      try {
+        await communityRequest('/notifications/read-all', { method: 'POST' })
+        if (!alive || token !== getDiscordSession()) return
+        window.dispatchEvent(new Event('lumen-notifications-changed'))
+      } catch (requestError) {
+        if (alive && token === getDiscordSession()) error.value = requestError instanceof Error ? requestError.message : 'Could not mark notifications read.'
+      } finally { opening.value = false; if (alive && !error.value) void refresh() }
+    }
     if (!alive || token !== getDiscordSession()) return
     emit('update:open', false)
     await router.go(withBase(notification.link))
@@ -100,7 +112,7 @@ onUnmounted(() => {
       <span v-else-if="error" class="notification-count notification-warning" aria-hidden="true">!</span>
     </button>
     <section v-if="open" id="lumen-notification-panel" class="lumen-notification-panel" aria-label="Notifications">
-      <header><strong>Notifications <small v-if="unread !== null">{{ unread }} unread</small></strong><button type="button" :disabled="loading || opening" @click="refresh">Refresh</button></header>
+      <header><strong>Notifications <small v-if="unread !== null">{{ unread }} unread</small></strong><div><button type="button" :disabled="loading || opening || !unread" @click="markAllRead">Mark all read</button><button type="button" :disabled="loading || opening" @click="refresh">Refresh</button></div></header>
       <p v-if="error" class="notification-error" role="alert">{{ error }}</p>
       <p v-else-if="loading && unread === null" role="status">Loading notifications...</p>
       <p v-else-if="!items.length">You are all caught up.</p>

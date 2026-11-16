@@ -826,6 +826,36 @@ test('notification preferences, staff targeting, and read state are enforced', a
   assert.equal(staffItems.find(item => item.id === notificationId).audience, 'product')
 })
 
+test('mark all read covers every visible page without marking hidden or other users notifications', async t => {
+  const { db, api } = await accessFixture(t)
+  const customer = await tokenFor(customerId, 'Customer')
+  const otherId = '123456789012345679'
+  const other = await tokenFor(otherId, 'Other')
+  assert.equal((await api('/community/preferences', 'PUT', {
+    updates: true, announcements: true, ticketReplies: false, products: ['plugin-x'],
+  }, customer)).status, 200)
+  const insert = db.sqlite.prepare(`INSERT INTO community_notifications
+    (id,recipient_id,title,body,kind,product_id,audience,link,created_at) VALUES (?,?,?,?,?,?,?,?,?)`)
+  for (let i = 0; i < 25; i++) insert.run(crypto.randomUUID(), null, 'Update', 'Body', 'update', 'plugin-x', 'product', '/', new Date().toISOString())
+  const hidden = crypto.randomUUID(), privateOther = crypto.randomUUID(), staffOnly = crypto.randomUUID(), privateOwn = crypto.randomUUID()
+  insert.run(hidden, null, 'Other product', 'Body', 'update', 'plugin-y', 'product', '/', new Date().toISOString())
+  insert.run(privateOther, otherId, 'Private', 'Body', 'license', null, 'user', '/', new Date().toISOString())
+  insert.run(staffOnly, null, 'Staff only', 'Body', 'announcement', null, 'staff', '/', new Date().toISOString())
+  insert.run(privateOwn, customerId, 'Own private', 'Body', 'license', null, 'user', '/', new Date().toISOString())
+  const before = await (await api('/community/notifications?page=1&pageSize=5', 'GET', undefined, customer)).json()
+  assert.equal(before.unreadTotal, 26)
+  assert.equal((await api('/community/notifications/read-all', 'POST')).status, 200)
+  const result = await api('/community/notifications/read-all', 'POST', {}, customer)
+  assert.deepEqual(await result.json(), { ok: true, marked: 26 })
+  assert.equal((await (await api('/community/notifications?page=2&pageSize=20', 'GET', undefined, customer)).json()).unreadTotal, 0)
+  const rows = db.sqlite.prepare('SELECT notification_id FROM community_notification_reads WHERE user_id = ?').all(customerId).map(row => row.notification_id)
+  assert.ok(rows.includes(privateOwn))
+  assert.ok(!rows.includes(hidden) && !rows.includes(privateOther) && !rows.includes(staffOnly))
+  assert.equal((await (await api('/community/notifications/read-all', 'POST', {}, customer)).json()).marked, 0)
+  assert.ok((await (await api('/community/notifications', 'GET', undefined, other)).json()).unreadTotal > 0)
+  assert.equal((await api('/community/notifications/read-all', 'POST', {}, '')).status, 401)
+})
+
 test('manual service overrides persist while automatic checks update independently', async () => {
   const staff = await tokenFor(staffId, 'Staff')
   const publicStatus = await call('/community/status', 'GET')
