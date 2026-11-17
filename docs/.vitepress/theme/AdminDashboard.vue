@@ -7,6 +7,7 @@ import pluginData from './plugin-compatibility-data.json'
 import { clearAdminTestData, createAdminTestStore, TEST_OWNER_ID } from './admin-test-store.mjs'
 import StaffCommunity from './StaffCommunity.vue'
 import StaffPluginRegistry from './StaffPluginRegistry.vue'
+import StaffPluginGrantPicker from './StaffPluginGrantPicker.vue'
 import StaffAccessSettings from './StaffAccessSettings.vue'
 import ProductReleaseManager from './ProductReleaseManager.vue'
 import { useSiteDialog } from './site-dialog'
@@ -859,13 +860,15 @@ onUnmounted(() => {
           </form>
           <p class="staff-note">Only documented plugins matched to an active licensing product with a linked plugin can be selected. Unavailable entries need setup in the licensing service; coming-soon plugins cannot be granted.</p>
         </section>
-        <section v-if="profileArea === 'licenses' && can('licenses.grant') && can('plugins.view')" class="staff-panel">
-          <p class="staff-eyebrow">BULK GIVE / THIS CUSTOMER</p><h2>Grant multiple plugins</h2>
-          <p class="staff-note">Choose up to 10 plugins. Existing active access is skipped, not shortened. Grants use the expiration above, or lifetime access if blank. Each grant sends a website notification; keys are not displayed in bulk results.</p>
-          <fieldset :disabled="busy || user.deleted"><legend>Plugins to grant</legend>
-            <label v-for="option in grantOptions.filter(item => !item.reason)" :key="option.id" class="staff-field"><span><input v-model="selectedGrantProducts" type="checkbox" :value="option.productId" :disabled="!selectedGrantProducts.includes(option.productId) && selectedGrantProducts.length >= 10"> {{ option.name }}</span></label>
-          </fieldset>
-          <button type="button" class="staff-primary" :disabled="busy || user.deleted || !selectedGrantProducts.length" @click="customerLicenseBatch('grant')">Review &amp; bulk give · {{ selectedGrantProducts.length }}</button>
+        <section v-if="profileArea === 'licenses' && can('licenses.grant') && can('plugins.view')" class="staff-panel staff-bulk-grant">
+          <p class="staff-eyebrow">BULK GIVE / THIS CUSTOMER</p><h2>Build their plugin collection.</h2>
+          <p class="staff-note">Select up to 10 plugins for {{ user.globalName || user.username || user.discordId }}. Review everything before granting access.</p>
+          <StaffPluginGrantPicker v-model="selectedGrantProducts" :options="grantOptions" :disabled="busy || user.deleted" />
+          <div class="staff-grant-summary">
+            <div><small>ACCESS DURATION</small><strong>{{ grantExpiresAt ? formatDate(grantExpiresAt) : 'Lifetime access' }}</strong><span>{{ grantExpiresAt ? 'Uses the expiry set in Grant a license.' : 'Set an expiry in Grant a license for temporary access.' }}</span></div>
+            <button type="button" class="staff-primary" :disabled="busy || user.deleted || !selectedGrantProducts.length" @click="customerLicenseBatch('grant')">{{ submitting ? 'Processing...' : `Review & bulk give${selectedGrantProducts.length ? ` (${selectedGrantProducts.length})` : ''}` }}</button>
+          </div>
+          <p class="staff-grant-footnote">Each grant sends a website notification. License keys stay private.</p>
         </section>
       </div>
     </template>
@@ -1016,8 +1019,15 @@ onUnmounted(() => {
 .staff-profile p:not(.staff-eyebrow) { margin: 4px 0 12px; color: var(--vp-c-text-2); font: .75rem var(--vp-font-family-mono); overflow-wrap: anywhere; }
 .staff-profile-state { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; }
 .staff-back { margin-top: 6px; }
-.staff-columns { display: grid; grid-template-columns: 1.2fr 1fr; gap: 18px; }
+.staff-columns { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); align-items: start; gap: 18px; }
 .staff-columns .staff-panel { margin: 0; }
+.staff-bulk-grant { min-width: 0; background: radial-gradient(ellipse at 100% 0, var(--vp-c-brand-soft), transparent 55%), var(--vp-c-bg-soft); }
+.staff-grant-summary { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--vp-c-divider); }
+.staff-grant-summary > div { display: grid; gap: 5px; min-width: 0; }
+.staff-grant-summary small { color: var(--vp-c-text-3); font-size: .58rem; font-weight: 650; letter-spacing: .1em; }
+.staff-grant-summary strong { font-size: .8rem; }
+.staff-grant-summary span, .staff-grant-footnote { color: var(--vp-c-text-2); font-size: .68rem; line-height: 1.6; }
+.staff-grant-footnote { margin: 12px 0 0; }
 .staff-facts { margin: 18px 0; font-size: .76rem; }
 .staff-facts > div { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--vp-c-divider); }
 .staff-facts dt { color: var(--vp-c-text-2); }

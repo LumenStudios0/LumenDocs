@@ -11,6 +11,49 @@ import { readFile } from 'node:fs/promises'
 const now = Date.parse('2026-01-01T00:00:00Z')
 const license = { status: 'active', expiresAt: null, allowedIps: [], lastValidatedAt: null }
 
+test('bulk grant picker searches eligible plugins and preserves selections within the ten-product limit', async () => {
+  const { parse, compileScript } = await import('@vue/compiler-sfc')
+  const { transformWithEsbuild } = await import('vite')
+  const { reactive } = await import('vue')
+  const source = await readFile(new URL('../docs/.vitepress/theme/StaffPluginGrantPicker.vue', import.meta.url), 'utf8')
+  const compiled = compileScript(parse(source).descriptor, { id: 'bulk-grant-picker' }).content
+    .replaceAll("from 'vue'", `from '${import.meta.resolve('vue')}'`)
+  const { code } = await transformWithEsbuild(compiled, 'StaffPluginGrantPicker.ts', { loader: 'ts' })
+  const component = (await import('data:text/javascript;base64,' + Buffer.from(code).toString('base64'))).default
+  const options = Array.from({ length: 12 }, (_, index) => ({ id: `plugin-${index}`, productId: `product-${index}`, name: `Plugin ${index}`, reason: '' }))
+  const props = reactive({
+    options: [...options, { ...options[0], id: 'duplicate' }, { id: 'blocked', productId: 'blocked', name: 'Unavailable', reason: 'Not registered' }],
+    modelValue: [], disabled: false,
+  })
+  const ui = component.setup(props, { expose() {}, emit(_event, value) { props.modelValue = value } })
+  assert.equal(ui.available.value.length, 12)
+  ui.search.value = ' PLUGIN 11 '
+  assert.deepEqual(ui.filtered.value.map(option => option.productId), ['product-11'])
+  ui.selectVisible()
+  ui.search.value = ''
+  ui.selectVisible()
+  assert.equal(props.modelValue.length, 10)
+  assert.equal(new Set(props.modelValue).size, 10)
+  assert.equal(props.modelValue[0], 'product-11')
+  assert.equal(ui.canSelectVisible.value, false)
+  ui.toggle('product-10')
+  assert.equal(props.modelValue.includes('product-10'), false)
+  ui.toggle('product-0')
+  ui.toggle('product-10')
+  assert.equal(props.modelValue.includes('product-10'), true)
+  ui.search.value = 'no matching plugins'
+  assert.equal(ui.filtered.value.length, 0)
+  assert.equal(props.modelValue.length, 10)
+  props.disabled = true
+  ui.clear()
+  ui.toggle('product-11')
+  assert.equal(props.modelValue.length, 10)
+  props.disabled = false
+  ui.clear()
+  ui.toggle('blocked')
+  assert.deepEqual(props.modelValue, [])
+})
+
 test('registry loading includes later pages so newly registered products remain grantable', async () => {
   const calls = []
   const firstPage = Array.from({ length: 100 }, (_, id) => ({ productId: String(id), name: `Fixture ${id}`, active: true, plugins: [] }))
