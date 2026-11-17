@@ -51,7 +51,7 @@ export function utcWindowStart(window, now = new Date()) {
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
   if (window === 'monthly') {
     start.setUTCDate(1)
-  } else {
+  } else if (window === 'weekly') {
     const weekday = (start.getUTCDay() + 6) % 7
     start.setUTCDate(start.getUTCDate() - weekday)
   }
@@ -75,8 +75,8 @@ export async function staffProgressionRoute(request, env, suffix, user, access, 
 
   const url = new URL(request.url)
   const window = url.searchParams.get('window') || 'weekly'
-  if (!['weekly', 'monthly', 'all-time'].includes(window)) {
-    return helpers.json(request, { error: 'Choose weekly, monthly, or all-time' }, 400, deps.respond)
+  if (!['daily', 'weekly', 'monthly', 'all-time'].includes(window)) {
+    return helpers.json(request, { error: 'Choose daily, weekly, monthly, or all-time' }, 400, deps.respond)
   }
   const db = env.COMMUNITY_DB
   const now = new Date()

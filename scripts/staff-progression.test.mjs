@@ -144,6 +144,78 @@ test('ticket owner may rate once, only eligible closure receives star-based bonu
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM staff_xp_ledger WHERE source_type='rating_bonus'").get().count, 1)
 })
 
+test('leaderboard periods start at UTC calendar boundaries, including daily and year rollover', () => {
+  const now = new Date('2027-01-01T02:30:00+05:00')
+  assert.equal(utcWindowStart('daily', now), '2026-12-31T00:00:00.000Z')
+  assert.equal(utcWindowStart('weekly', now), '2026-12-28T00:00:00.000Z')
+  assert.equal(utcWindowStart('monthly', now), '2026-12-01T00:00:00.000Z')
+  assert.equal(utcWindowStart('all-time', now), null)
+  assert.equal(utcWindowStart('daily', new Date('2026-11-17T00:00:00Z')), '2026-11-17T00:00:00.000Z')
+})
+
+test('daily leaderboard includes midnight awards, excludes yesterday, and preserves lifetime levels', async t => {
+  const db = await setup()
+  t.after(() => db.sqlite.close())
+  const start = utcWindowStart('daily')
+  const insert = db.sqlite.prepare(`INSERT INTO staff_xp_ledger
+    (id, staff_id, points, source_type, source_id, created_at) VALUES (?, ?, ?, 'ticket_close', ?, ?)`)
+  insert.run('today', staffId, 100, 'today-ticket', start)
+  insert.run('yesterday', staffId, 200, 'yesterday-ticket', new Date(Date.parse(start) - 1).toISOString())
+  insert.run('other-today', otherStaffId, 150, 'other-ticket', start)
+  const request = new Request('https://worker.example/community/staff/progression?window=daily')
+  const result = await staffProgressionRoute(request, { COMMUNITY_DB: db }, '/staff/progression', { id: staffId },
+    { permissions: ['dashboard.view', 'tickets.view'] },
+    { getStaffMembers: async () => [{ id: staffId }, { id: otherStaffId }] },
+    { json: (_request, payload, status) => ({ payload, status }) })
+  assert.equal(result.status, 200)
+  assert.equal(result.payload.window, 'daily')
+  assert.equal(result.payload.windowStart, start)
+  assert.deepEqual(result.payload.leaderboard.map(member => [member.id, member.windowXp]), [[otherStaffId, 150], [staffId, 100]])
+  assert.deepEqual(result.payload.currentStaff, { level: 4, totalXp: 300 })
+})
+
+test('leaderboard period toggles discard stale responses and show lifetime level progress', async t => {
+  const { parse, compileScript } = await import('@vue/compiler-sfc')
+  const { transformWithEsbuild } = await import('vite')
+  const { effectScope, nextTick } = await import('vue')
+  const original = globalThis.staffProgressionUiRequest
+  const scope = effectScope()
+  t.after(() => {
+    scope.stop()
+    if (original === undefined) delete globalThis.staffProgressionUiRequest
+    else globalThis.staffProgressionUiRequest = original
+  })
+  const pending = []
+  globalThis.staffProgressionUiRequest = path => new Promise(resolve => pending.push({ path, resolve }))
+  const source = (await readFile(new URL('../docs/.vitepress/theme/StaffProgression.vue', import.meta.url), 'utf8'))
+    .replace("import { computed, onMounted, onUnmounted, ref, watch } from 'vue'", "import { computed, ref, watch } from 'vue'\nconst onMounted = () => {}; const onUnmounted = () => {}")
+    .replace("import { communityDate, communityRequest } from './community-api'", 'const communityRequest = globalThis.staffProgressionUiRequest; const communityDate = value => value')
+    .replace("import { getDiscordSession } from './discord-session'", "const getDiscordSession = () => 'verified-staff'")
+  const compiled = compileScript(parse(source).descriptor, { id: 'staff-progression' }).content
+    .replaceAll("from 'vue'", `from '${import.meta.resolve('vue')}'`)
+  const { code } = await transformWithEsbuild(compiled, 'StaffProgression.ts', { loader: 'ts' })
+  const component = (await import('data:text/javascript;base64,' + Buffer.from(code).toString('base64'))).default
+  const ui = scope.run(() => component.setup({}, { expose() {} }))
+  assert.deepEqual(ui.periods.map(period => period.id), ['daily', 'weekly', 'monthly', 'all-time'])
+  const initial = ui.load()
+  ui.windowName.value = 'daily'
+  await nextTick()
+  assert.deepEqual(pending.map(item => item.path), ['/staff/progression?window=weekly', '/staff/progression?window=daily'])
+  pending[0].resolve({ leaderboard: [{ id: 'stale' }], logs: [], currentStaff: { level: 99, totalXp: 9800 } })
+  await initial
+  assert.equal(ui.loading.value, true)
+  assert.deepEqual(ui.leaderboard.value, [])
+  const leaders = Array.from({ length: 5 }, (_, index) => ({ id: String(index), name: `Staff ${index}`, level: 4, totalXp: 350, windowXp: 100 - index }))
+  pending[1].resolve({ leaderboard: leaders, logs: [], currentStaff: { level: 4, totalXp: 350 } })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(ui.loading.value, false)
+  assert.equal(ui.levelProgress.value, 50)
+  assert.equal(ui.podium.value.length, 3)
+  assert.equal(ui.remainingLeaders.value.length, 2)
+  assert.equal(ui.periodXp.value, 490)
+  assert.equal(ui.labels[ui.windowName.value], 'Today')
+})
+
 test('leaderboard uses Monday UTC, month UTC, all-time totals, and unlimited levels', async t => {
   const db = await setup()
   t.after(() => db.sqlite.close())
