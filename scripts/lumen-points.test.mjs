@@ -103,6 +103,68 @@ async function setup(t) {
   return { db, env, sqlite, call, purchase, data: stateData, clearCache }
 }
 
+test('welcome migration credits every existing account once, preserving earnings and private notices', async t => {
+  const sqlite = new DatabaseSync(':memory:')
+  t.after(() => sqlite.close())
+  const directory = new URL('../worker/migrations/community/', import.meta.url)
+  for (const file of (await readdir(directory)).filter(name => name.endsWith('.sql') && name < '0033').sort()) {
+    sqlite.exec(await readFile(new URL(file, directory), 'utf8'))
+  }
+  for (const id of [member, referrer]) sqlite.prepare('INSERT INTO website_members(discord_id) VALUES (?)').run(id)
+  const now = new Date().toISOString()
+  sqlite.prepare('INSERT INTO lumen_points_accounts(user_id,referral_code,created_at) VALUES (?,?,?)')
+    .run(member, 'LP-AAAAAAAAAAAA', now)
+  sqlite.prepare("INSERT INTO lumen_points_rewards VALUES (?,?,'purchase',12350,'Previous purchase',?,?)")
+    .run('previous', member, now, now)
+  const migration = await readFile(new URL('0033_member_welcome_points.sql', directory), 'utf8')
+  sqlite.exec(migration)
+  assert.equal(sqlite.prepare('SELECT units FROM lumen_points_balances WHERE user_id=?').get(member).units, 22350)
+  assert.equal(sqlite.prepare('SELECT units FROM lumen_points_balances WHERE user_id=?').get(referrer).units, 10000)
+  assert.equal(sqlite.prepare('SELECT referral_code FROM lumen_points_accounts WHERE user_id=?').get(member).referral_code, 'LP-AAAAAAAAAAAA')
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM community_notifications WHERE id LIKE 'points:welcome:%' AND audience='user' AND link='/account/points'").get().n, 2)
+  sqlite.exec(`INSERT OR IGNORE INTO lumen_points_welcome_rewards(user_id,created_at)
+    SELECT user_id,strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM lumen_points_accounts;`)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_welcome_rewards').get().n, 2)
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM lumen_points_transactions WHERE label='Welcome gift' AND delta_units=10000").get().n, 2)
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM community_notifications WHERE id LIKE 'points:welcome:%'").get().n, 2)
+})
+
+test('new signups receive spendable welcome points once without purchase or referral earnings', async t => {
+  const { call, env, sqlite, data, clearCache } = await setup(t)
+  data.purchases = []
+  for (let i = 0; i < 3; i++) await rememberMember({ id: member, username: 'member' }, env)
+  let wallet = await (await call('/studio/points/sync', 'POST', {})).json()
+  assert.equal(wallet.balance, 100)
+  assert.equal(wallet.purchasePoints, 0)
+  assert.equal(wallet.referralPoints, 0)
+  assert.equal(wallet.eligibleReferralPoints, 0)
+  assert.ok(wallet.history.some(row => row.label === 'Welcome gift' && row.points === 100))
+  const now = new Date().toISOString()
+  sqlite.prepare("INSERT INTO lumen_points_rewards VALUES (?,?,'tier',15000,'Other earnings',?,?)").run('other', member, now, now)
+  const bought = await call('/studio/points/shop/redeem', 'POST', { requestId: crypto.randomUUID(), productId: 'badge_starlit' })
+  assert.equal(bought.status, 200)
+  assert.equal((await bought.json()).balance, 0)
+  clearCache()
+  wallet = await (await call('/studio/points/sync', 'POST', {})).json()
+  assert.equal(wallet.balance, 0)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_welcome_rewards WHERE user_id=?').get(member).n, 1)
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM community_notifications WHERE id=? AND recipient_id=?").get(`points:welcome:${member}`, member).n, 1)
+})
+
+test('welcome credit and private notification fail atomically and retry without a duplicate', async t => {
+  const { env, sqlite } = await setup(t)
+  sqlite.exec(`CREATE TRIGGER reject_welcome_notice BEFORE INSERT ON community_notifications
+    WHEN NEW.id LIKE 'points:welcome:%' BEGIN SELECT RAISE(ABORT,'Injected notification failure'); END;`)
+  await assert.rejects(rememberMember({ id: member, username: 'member' }, env), /Injected notification failure/)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_accounts WHERE user_id=?').get(member).n, 0)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_welcome_rewards').get().n, 0)
+  sqlite.exec('DROP TRIGGER reject_welcome_notice')
+  await rememberMember({ id: member, username: 'member' }, env)
+  await rememberMember({ id: member, username: 'member' }, env)
+  assert.equal(sqlite.prepare('SELECT units FROM lumen_points_balances WHERE user_id=?').get(member).units, 10000)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_welcome_rewards').get().n, 1)
+})
+
 test('points accounts get unique stable automatic referral codes and cannot expose another wallet', async t => {
   const { call, env, sqlite } = await setup(t)
   await rememberMember({ id: member, username: 'member' }, env)
@@ -114,7 +176,7 @@ test('points accounts get unique stable automatic referral codes and cannot expo
   assert.equal((await (await call()).json()).referralCode, first.referralCode)
   const second = await (await call('/studio/points', 'GET', undefined, referrer)).json()
   assert.notEqual(first.referralCode, second.referralCode)
-  assert.equal(first.balance, 0)
+  assert.equal(first.balance, 100 + 0)
   assert.equal((await call('/studio/points', 'GET', undefined, '')).status, 401)
   assert.equal((await call('/studio/points', 'DELETE')).status, 405)
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_accounts').get().n, 2)
@@ -141,15 +203,15 @@ test('shop prices are server controlled, cosmetics are permanent and purchase/hi
   const requestId = crypto.randomUUID()
   const body = { requestId, productId: 'badge_starlit', price: 1, userId: stranger }
   const first = await (await call('/studio/points/shop/redeem', 'POST', body)).json()
-  assert.equal(first.balance, 350)
+  assert.equal(first.balance, 100 + 350)
   assert.deepEqual(first.owned, ['badge_starlit'])
   assert.equal(first.orders[0].price, 250)
   const duplicate = await (await call('/studio/points/shop/redeem', 'POST', body)).json()
-  assert.equal(duplicate.balance, 350)
+  assert.equal(duplicate.balance, 100 + 350)
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_orders').get().n, 1)
   assert.equal((await call('/studio/points/shop/redeem', 'POST', { ...body, requestId: crypto.randomUUID() })).status, 409)
   const wallet = await (await call()).json()
-  assert.equal(wallet.balance, 350)
+  assert.equal(wallet.balance, 100 + 350)
   assert.ok(wallet.history.some(entry => entry.points === -250 && entry.label === 'Shop: Starlit badge'))
 })
 
@@ -172,7 +234,7 @@ test('free products notify all staff atomically, never earn purchase points or a
   sqlite.prepare("UPDATE website_members SET role_id='support_team' WHERE discord_id=?").run(stranger)
   const requestId = crypto.randomUUID()
   const order = await (await call('/studio/points/shop/redeem', 'POST', { requestId, productId: 'free_product', pluginId: 'p2' })).json()
-  assert.equal(order.balance, 3500)
+  assert.equal(order.balance, 100 + 3500)
   assert.equal(order.orders[0].state, 'pending')
   const recipients = sqlite.prepare("SELECT recipient_id FROM community_notifications WHERE id LIKE 'shop:%'").all().map(row => row.recipient_id)
   for (const id of ['1400375985211441242', '1012053634911064114', stranger]) assert.ok(recipients.includes(id))
@@ -185,7 +247,7 @@ test('free products notify all staff atomically, never earn purchase points or a
   const refund = { orderId: requestId, state: 'refunded', note: 'Canceled before any license was granted.' }
   assert.equal((await call('/studio/points/shop/fulfill', 'POST', refund)).status, 403)
   assert.equal((await call('/studio/points/shop/fulfill', 'POST', refund, '1400375985211441242')).status, 200)
-  assert.equal((await (await call()).json()).balance, 5000)
+  assert.equal((await (await call()).json()).balance, 100 + 5000)
   assert.equal((await call('/studio/points/shop/fulfill', 'POST', refund, '1400375985211441242')).status, 409)
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM lumen_points_shop_events WHERE delta_units>0").get().n, 1)
 })
@@ -228,18 +290,18 @@ test('shop coupons issue once, uncertain creation stays charged and known reject
   }
   const body = { requestId: crypto.randomUUID(), productId: 'coupon_5' }
   const issued = await (await call('/studio/points/shop/redeem', 'POST', body)).json()
-  assert.equal(issued.balance, 4900)
+  assert.equal(issued.balance, 100 + 4900)
   assert.equal(issued.orders[0].state, 'fulfilled')
   await call('/studio/points/shop/redeem', 'POST', body)
   assert.equal(creates, 1)
   mode = 'failed'
   const failed = await (await call('/studio/points/shop/redeem', 'POST', { requestId: crypto.randomUUID(), productId: 'coupon_10' })).json()
-  assert.equal(failed.balance, 4900)
+  assert.equal(failed.balance, 100 + 4900)
   assert.ok(failed.orders.some(order => order.state === 'refunded'))
   mode = 'uncertain'
   const pendingId = crypto.randomUUID()
   const pending = await (await call('/studio/points/shop/redeem', 'POST', { requestId: pendingId, productId: 'coupon_10' })).json()
-  assert.equal(pending.balance, 4740)
+  assert.equal(pending.balance, 100 + 4740)
   assert.equal(sqlite.prepare('SELECT state FROM lumen_points_orders WHERE id=?').get(pendingId).state, 'review')
   sqlite.prepare("UPDATE coupon_rewards SET state='issued' WHERE reward_key=?").run(`shop:${pendingId}`)
   await reconcileShopCoupons(env)
@@ -280,7 +342,7 @@ test('coupon crashes before reservation refund safely, but potentially created c
   assert.equal(sqlite.prepare('SELECT state FROM lumen_points_orders WHERE id=?').get(unissued).state, 'refunded')
   assert.equal(sqlite.prepare('SELECT state FROM lumen_points_orders WHERE id=?').get(uncertain).state, 'review')
   assert.equal(sqlite.prepare('SELECT state FROM coupon_rewards WHERE reward_key=?').get(`shop:${uncertain}`).state, 'uncertain')
-  assert.equal((await (await call()).json()).balance, 340)
+  assert.equal((await (await call()).json()).balance, 100 + 340)
 })
 
 test('background backfill credits every registered buyer without a page visit and never duplicates rewards', async t => {
@@ -340,21 +402,21 @@ test('purchase sync is idempotent and only counts verified paid amounts for the 
   const { call, data, purchase, clearCache, sqlite } = await setup(t)
   data.purchases.push(purchase({ purchase_id: 502, buyer_id: 56, Buyer: { user_id: 56, discord_id: referrer, banned: false } }))
   const first = await (await call('/studio/points/sync', 'POST', { amount: 9999, userId: referrer })).json()
-  assert.equal(first.balance, 123.5)
+  assert.equal(first.balance, 100 + 123.5)
   assert.equal(first.checks.purchases.ok, true)
   assert.equal(first.purchasePoints, 123.5)
   assert.equal(first.periods.daily.purchasePoints, 123.5)
-  assert.equal(first.history.length, 1)
+  assert.equal(first.history.length, 2)
   clearCache()
   const again = await (await call('/studio/points/sync', 'POST', {})).json()
-  assert.equal(again.balance, 123.5)
-  assert.equal(again.history.length, 1)
+  assert.equal(again.balance, 100 + 123.5)
+  assert.equal(again.history.length, 2)
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_purchases').get().n, 1)
   data.purchases[0].FinalPrice.value = 0
   clearCache()
   const free = await (await call('/studio/points/sync', 'POST', {})).json()
-  assert.equal(free.balance, 0)
-  assert.equal(free.history[0].points, -123.5)
+  assert.equal(free.balance, 100 + 0)
+  assert.ok(free.history.some(row => row.points === -123.5))
 })
 
 test('referral awards half of eligible last-24-hour purchase points once while buyer keeps everything', async t => {
@@ -365,10 +427,10 @@ test('referral awards half of eligible last-24-hour purchase points once while b
   const result = await call('/studio/points/referral', 'POST', { code: owner.referralCode.toLowerCase() })
   assert.equal(result.status, 200, JSON.stringify(await result.clone().json()))
   const buyer = await result.json()
-  assert.equal(buyer.balance, 247.1)
+  assert.equal(buyer.balance, 100 + 247.1)
   assert.ok(buyer.redeemedAt)
   const awarded = await (await call('/studio/points', 'GET', undefined, referrer)).json()
-  assert.equal(awarded.balance, 61.8)
+  assert.equal(awarded.balance, 100 + 61.8)
   assert.equal(awarded.successfulReferrals, 1)
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_referral_purchases').get().n, 2)
   const duplicate = await call('/studio/points/referral', 'POST', { code: owner.referralCode })
@@ -376,7 +438,7 @@ test('referral awards half of eligible last-24-hour purchase points once while b
   clearCache()
   data.purchases.push(purchase({ purchase_id: 504 }))
   await call('/studio/points/sync', 'POST', {})
-  assert.equal((await (await call('/studio/points', 'GET', undefined, referrer)).json()).balance, 61.8)
+  assert.equal((await (await call('/studio/points', 'GET', undefined, referrer)).json()).balance, 100 + 61.8)
 })
 
 test('self referrals, malformed codes, unknown codes and buyers without a recent paid purchase are rejected', async t => {
@@ -412,17 +474,17 @@ test('refund reconciliation adjusts buyer and referrer balances, never double-aw
   data.purchases[0].validated_at = 0
   clearCache()
   let buyer = await (await call('/studio/points/sync', 'POST', {})).json()
-  assert.equal(buyer.balance, 0)
+  assert.equal(buyer.balance, 100 + 0)
   let inviter = await (await call('/studio/points', 'GET', undefined, referrer)).json()
-  assert.equal(inviter.balance, 0)
+  assert.equal(inviter.balance, 100 + 0)
   assert.equal(inviter.successfulReferrals, 0)
-  assert.equal(inviter.history[0].points, -61.75)
+  assert.ok(inviter.history.some(row => row.points === -61.75))
   data.purchases[0].validated_at = Math.floor(Date.now() / 1000) - 30
   clearCache()
   buyer = await (await call('/studio/points/sync', 'POST', {})).json()
   inviter = await (await call('/studio/points', 'GET', undefined, referrer)).json()
-  assert.equal(buyer.balance, 123.5)
-  assert.equal(inviter.balance, 61.75)
+  assert.equal(buyer.balance, 100 + 123.5)
+  assert.equal(inviter.balance, 100 + 61.75)
   assert.equal(inviter.successfulReferrals, 1)
 })
 
@@ -432,14 +494,14 @@ test('incomplete or unauthorized scans never credit or revoke purchases and expl
   data.failed = 'purchases'
   clearCache()
   const result = await (await call('/studio/points/sync', 'POST', {})).json()
-  assert.equal(result.balance, 123.5)
+  assert.equal(result.balance, 100 + 123.5)
   assert.equal(result.checks.purchases.ok, false)
   assert.match(result.checks.purchases.error, /HTTP 403/)
   data.failed = ''
   data.malformed = true
   clearCache()
   const incomplete = await (await call('/studio/points/sync', 'POST', {})).json()
-  assert.equal(incomplete.balance, 123.5)
+  assert.equal(incomplete.balance, 100 + 123.5)
   assert.equal(incomplete.checks.purchases.ok, false)
 })
 
@@ -455,7 +517,7 @@ test('non-USD, mismatched identities and duplicate marketplace purchases cannot 
     data.purchases = purchases
     clearCache()
     const result = await (await call('/studio/points/sync', 'POST', {})).json()
-    assert.equal(result.balance, 0)
+    assert.equal(result.balance, 100 + 0)
     assert.equal(result.checks.purchases.ok, false)
   }
 })
@@ -466,12 +528,12 @@ test('a BuiltByBit account cannot earn again after linking to a different Discor
   data.purchases[0].Buyer.discord_id = stranger
   clearCache()
   const result = await (await call('/studio/points/sync', 'POST', {}, stranger)).json()
-  assert.equal(result.balance, 0)
+  assert.equal(result.balance, 100 + 0)
   assert.equal(result.checks.purchases.ok, false)
   assert.match(result.checks.purchases.error, /another points account/)
   clearCache()
   const original = await (await call('/studio/points/sync', 'POST', {})).json()
-  assert.equal(original.balance, 123.5)
+  assert.equal(original.balance, 100 + 123.5)
   assert.equal(original.checks.purchases.ok, false)
   assert.match(original.checks.purchases.error, /Discord link has changed or is missing/)
 })
@@ -485,7 +547,7 @@ test('milestones award every reached threshold once and Elite independently of c
     assert.equal(summary.milestones.filter(item => item.awarded).length, count / 3)
   }
   let summary = await (await call('/studio/points/sync', 'POST', {})).json()
-  assert.equal(summary.balance, 123.5 + 550)
+  assert.equal(summary.balance, 100 + 123.5 + 550)
   data.ownership = []
   clearCache()
   await call('/studio/points/sync', 'POST', {})
@@ -493,7 +555,7 @@ test('milestones award every reached threshold once and Elite independently of c
   data.registry = [data.registry[0]]
   clearCache()
   summary = await (await call('/studio/points/sync', 'POST', {}, stranger)).json()
-  assert.equal(summary.balance, 250)
+  assert.equal(summary.balance, 100 + 250)
   assert.deepEqual(summary.milestones.filter(item => item.awarded).map(item => item.id), ['elite'])
 })
 
@@ -525,7 +587,7 @@ test('all marketplace pages are required before awarding later purchases', async
   const { call, data, purchase } = await setup(t)
   data.purchases = Array.from({ length: 101 }, (_, index) => purchase({ purchase_id: 1000 + index }))
   const result = await (await call('/studio/points/sync', 'POST', {})).json()
-  assert.equal(result.balance, 123.5 * 101)
+  assert.equal(result.balance, 100 + 123.5 * 101)
   assert.equal(result.history.length, 50)
 })
 
@@ -533,27 +595,27 @@ test('unvalidated purchases earn no spending points and complete empty purchase 
   const { call, data, clearCache } = await setup(t)
   data.purchases[0].validated_at = 0
   let summary = await (await call('/studio/points/sync', 'POST', {})).json()
-  assert.equal(summary.balance, 0)
+  assert.equal(summary.balance, 100 + 0)
   data.purchases[0].validated_at = Math.floor(Date.now() / 1000) - 30
   clearCache()
   summary = await (await call('/studio/points/sync', 'POST', {})).json()
-  assert.equal(summary.balance, 123.5)
+  assert.equal(summary.balance, 100 + 123.5)
   data.purchases = []
   clearCache()
   summary = await (await call('/studio/points/sync', 'POST', {})).json()
-  assert.equal(summary.balance, 0)
-  assert.equal(summary.history[0].points, -123.5)
+  assert.equal(summary.balance, 100 + 0)
+  assert.ok(summary.history.some(row => row.points === -123.5))
 })
 
 test('genuine paid purchases keep their points when a license expires, but ownership without a priced eligible product earns nothing', async t => {
   const { call, data, clearCache } = await setup(t)
   data.licenses = []
   const summary = await (await call('/studio/points/sync', 'POST', {})).json()
-  assert.equal(summary.balance, 123.5)
+  assert.equal(summary.balance, 100 + 123.5)
   data.purchases = []
   clearCache()
   const free = await (await call('/studio/points/sync', 'POST', {}, stranger)).json()
-  assert.equal(free.balance, 0)
+  assert.equal(free.balance, 100 + 0)
 })
 
 test('existing staff licenses earn published-price points once and retain them after expiry or a later opt-out', async t => {
@@ -562,7 +624,7 @@ test('existing staff licenses earn published-price points once and retain them a
   let summary = await (await call('/studio/points/sync', 'POST', {})).json()
   assert.equal(summary.checks.staffLicenses.ok, true)
   assert.equal(summary.staffLicensePoints, 139.7)
-  assert.equal(summary.balance, 139.7)
+  assert.equal(summary.balance, 100 + 139.7)
   assert.equal(summary.purchasePoints, 0)
   assert.equal(summary.eligibleReferralPoints, 0)
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM community_notifications WHERE id LIKE 'points:adjust:%'").get().n, 1)
@@ -571,14 +633,14 @@ test('existing staff licenses earn published-price points once and retain them a
   productMarketplace[0].priceCents = 9999
   clearCache()
   summary = await (await call('/studio/points/sync', 'POST', {})).json()
-  assert.equal(summary.balance, 139.7)
+  assert.equal(summary.balance, 100 + 139.7)
   data.ownership = []
   clearCache()
-  assert.equal((await (await call('/studio/points/sync', 'POST', {})).json()).balance, 139.7)
+  assert.equal((await (await call('/studio/points/sync', 'POST', {})).json()).balance, 100 + 139.7)
   data.ownership = ['gladiator']
   await saveLicensePointsChoice(env.COMMUNITY_DB, member, 'gladiator', false, stranger)
   clearCache()
-  assert.equal((await (await call('/studio/points/sync', 'POST', {})).json()).balance, 139.7)
+  assert.equal((await (await call('/studio/points/sync', 'POST', {})).json()).balance, 100 + 139.7)
 })
 
 test('grant opt-outs, approved trials and shop free products cannot mint staff-license points', async t => {
@@ -607,24 +669,24 @@ test('paid plugins are never topped up as gifts and later purchases reconcile ex
   data.registry = staffRegistry(); data.ownership = ['gladiator']
   data.purchases = [purchase({ content_id: 132519 })]
   let summary = await (await call('/studio/points/sync', 'POST', {})).json()
-  assert.equal(summary.balance, 123.5)
+  assert.equal(summary.balance, 100 + 123.5)
   assert.equal(summary.staffLicensePoints, 0)
   data.purchases = []; data.ownership = ['lumenauction']
   clearCache()
   summary = await (await call('/studio/points/sync', 'POST', {})).json()
-  assert.equal(summary.balance, 89.9)
+  assert.equal(summary.balance, 100 + 89.9)
   data.purchases = [purchase({ purchase_id: 502, content_id: 132967, FinalPrice: { value: '5.00', currency: 'USD' } })]
   clearCache()
   summary = await (await call('/studio/points/sync', 'POST', {})).json()
   assert.equal(summary.purchasePoints, 50)
   assert.equal(summary.staffLicensePoints, 39.9)
-  assert.equal(summary.balance, 89.9)
+  assert.equal(summary.balance, 100 + 89.9)
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_purchases').get().n, 2)
   assert.ok(summary.history.some(row => row.points === -50 && row.label.includes('reconciliation')))
   data.purchases[0].FinalPrice.value = '20.00'
   clearCache()
   summary = await (await call('/studio/points/sync', 'POST', {})).json()
-  assert.equal(summary.balance, 200)
+  assert.equal(summary.balance, 100 + 200)
   assert.equal(summary.staffLicensePoints, 0)
 })
 
@@ -633,14 +695,14 @@ test('failed purchase verification cannot award gifts, while unpriced products d
   data.registry = staffRegistry(); data.ownership = ['gladiator']; data.purchases = []
   data.failed = 'purchases'; clearCache()
   let summary = await (await call('/studio/points/sync', 'POST', {})).json()
-  assert.equal(summary.balance, 0)
+  assert.equal(summary.balance, 100 + 0)
   assert.equal(summary.checks.staffLicenses.ok, false)
   assert.match(summary.checks.staffLicenses.error, /purchase verification/)
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_staff_rewards').get().n, 0)
   data.failed = ''; data.registry.push({ productId: 'unpriced', name: 'Unpriced plugin', active: true, plugins: ['unpriced'] })
   data.ownership.push('unpriced'); clearCache()
   summary = await (await call('/studio/points/sync', 'POST', {})).json()
-  assert.equal(summary.balance, 139.7)
+  assert.equal(summary.balance, 100 + 139.7)
   assert.equal(summary.checks.staffLicenses.ok, true)
   assert.deepEqual(summary.deferredLicenseProducts, ['Unpriced plugin'])
 })
@@ -652,14 +714,14 @@ test('newly identified priced products verify purchase identities before awardin
   let summary = await (await call('/studio/points/sync', 'POST', {})).json()
   assert.equal(summary.purchasePoints, 89.7)
   assert.equal(summary.staffLicensePoints, 59.9)
-  assert.equal(summary.balance, 149.6)
+  assert.equal(summary.balance, 100 + 149.6)
   assert.equal(sqlite.prepare("SELECT resource_id FROM lumen_points_resource_catalog WHERE product_id='lumencosmetics'").get().resource_id, '199999')
   data.purchases.push(purchase({ purchase_id: 502, content_id: 199999, FinalPrice: { value: '4.00', currency: 'USD' } }))
   clearCache()
   summary = await (await call('/studio/points/sync', 'POST', {})).json()
   assert.equal(summary.purchasePoints, 129.7)
   assert.equal(summary.staffLicensePoints, 19.9)
-  assert.equal(summary.balance, 149.6)
+  assert.equal(summary.balance, 100 + 149.6)
 })
 
 test('unavailable or ambiguous marketplace resource identities cannot mint gift points', async t => {
@@ -667,11 +729,11 @@ test('unavailable or ambiguous marketplace resource identities cannot mint gift 
   data.registry = staffRegistry(); data.ownership = ['lumencosmetics']; data.purchases = []
   data.failed = 'resources'
   let summary = await (await call('/studio/points/sync', 'POST', {})).json()
-  assert.equal(summary.balance, 0)
+  assert.equal(summary.balance, 100 + 0)
   assert.equal(summary.checks.purchases.ok, false)
   data.failed = ''; data.resourceCatalog.push({ resource_id: 199998, title: 'LumenCosmetics - Another listing' }); clearCache()
   summary = await (await call('/studio/points/sync', 'POST', {})).json()
-  assert.equal(summary.balance, 0)
+  assert.equal(summary.balance, 100 + 0)
   assert.match(summary.checks.purchases.error, /could not be uniquely verified/)
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_resource_catalog').get().n, 0)
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_staff_rewards').get().n, 0)
@@ -706,25 +768,25 @@ test('manual adjustments are idempotent, audited, privately notified, atomically
   const give = { requestId: crypto.randomUUID(), action: 'give', points: '10.25', reason: 'Community contribution' }
   const initial = await Promise.all([call(path, 'POST', give, owner), call(path, 'POST', give, owner)])
   assert.ok(initial.every(result => result.status === 200))
-  assert.equal((await (await call(path, 'POST', give, owner)).json()).balance, 10.25)
+  assert.equal((await (await call(path, 'POST', give, owner)).json()).balance, 100 + 10.25)
   assert.equal((await call(path, 'POST', { ...give, points: '99' }, owner)).status, 409)
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM website_access_audit WHERE action='points.adjust'").get().n, 1)
-  const takes = await Promise.all([1, 2].map(() => call(path, 'POST', { ...give, requestId: crypto.randomUUID(), action: 'take', points: '7' }, owner)))
+  const takes = await Promise.all([1, 2].map(() => call(path, 'POST', { ...give, requestId: crypto.randomUUID(), action: 'take', points: '107' }, owner)))
   assert.equal(takes.filter(result => result.status === 200).length, 1)
   assert.equal(takes.filter(result => result.status === 409).length, 1)
   assert.equal((await (await call()).json()).balance, 3.25)
   for (let index = 0; index < 26; index++) assert.equal((await call(path, 'POST', { ...give, requestId: crypto.randomUUID(), points: '0.01' }, owner)).status, 200)
   const first = await (await call(path, 'GET', undefined, owner)).json()
   const second = await (await call(path + '?page=2', 'GET', undefined, owner)).json()
-  assert.equal(first.total, 28); assert.equal(first.items.length, 25); assert.equal(second.items.length, 3)
-  assert.equal(new Set([...first.items, ...second.items].map(row => row.id)).size, 28)
+  assert.equal(first.total, 29); assert.equal(first.items.length, 25); assert.equal(second.items.length, 4)
+  assert.equal(new Set([...first.items, ...second.items].map(row => row.id)).size, 29)
   assert.equal(first.balance, 3.51)
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM community_notifications WHERE id LIKE 'points:adjust:%' AND recipient_id=?").get(member).n, 28)
   for (const points of ['0', '-1', '1e3', '0.001', '1000001']) {
     assert.equal((await call(path, 'POST', { ...give, requestId: crypto.randomUUID(), points }, owner)).status, 400)
   }
   assert.equal((await call(path + '?page=0', 'POST', { ...give, requestId: crypto.randomUUID() }, owner)).status, 400)
-  assert.equal((await (await call(path, 'GET', undefined, owner)).json()).total, 28)
+  assert.equal((await (await call(path, 'GET', undefined, owner)).json()).total, 29)
 })
 
 test('a failed adjustment audit rolls back both points and its notification', async t => {
@@ -734,7 +796,7 @@ test('a failed adjustment audit rolls back both points and its notification', as
   assert.equal((await call(`/studio/staff/points/${member}`, 'POST', body, '1400375985211441242')).status, 503)
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_adjustments').get().n, 0)
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM community_notifications WHERE id LIKE 'points:adjust:%'").get().n, 0)
-  assert.equal((await (await call()).json()).balance, 0)
+  assert.equal((await (await call()).json()).balance, 100 + 0)
 })
 
 test('previous positive earnings receive one retroactive notice and future awards notify atomically', async t => {
@@ -747,14 +809,14 @@ test('previous positive earnings receive one retroactive notice and future award
   sqlite.prepare("INSERT INTO lumen_points_rewards VALUES (?,?,'tier',5000,'Another reward',?,?)").run('other', member, now, now)
   const migration = await readFile(new URL('../worker/migrations/community/0031_points_notifications.sql', import.meta.url), 'utf8')
   sqlite.exec(migration)
-  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM community_notifications').get().n, 2)
-  assert.ok(sqlite.prepare('SELECT body FROM community_notifications').all().every(row => row.body.includes('not a second award')))
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM community_notifications WHERE id LIKE 'points:earn:%'").get().n, 2)
+  assert.ok(sqlite.prepare("SELECT body FROM community_notifications WHERE id LIKE 'points:earn:%'").all().every(row => row.body.includes('not a second award')))
   sqlite.exec('DROP TRIGGER lumen_points_credit_notice; DROP TRIGGER lumen_points_adjustment_notice; DROP TRIGGER lumen_points_refund_notice;')
   sqlite.exec(migration)
-  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM community_notifications').get().n, 2)
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM community_notifications WHERE id LIKE 'points:earn:%'").get().n, 2)
   sqlite.prepare("INSERT INTO lumen_points_rewards VALUES (?,?,'tier',2500,'New reward',?,?)").run('new', member, now, now)
-  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM community_notifications').get().n, 3)
-  assert.equal((await (await call()).json()).balance, 75)
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM community_notifications WHERE id LIKE 'points:earn:%'").get().n, 3)
+  assert.equal((await (await call()).json()).balance, 100 + 75)
 })
 
 test('the public roundup is broadcast once without publishing private credit notices', async t => {

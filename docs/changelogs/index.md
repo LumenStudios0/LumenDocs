@@ -8,6 +8,7 @@ Customer-facing changes from November 14-17, covering the latest 88-hour roundup
 
 #### Lumen Points and referrals
 
+- Every new and existing account receives a **free, one-time 100 LP welcome gift**, with a private notification and a wallet transaction.
 - Added [Lumen Points](/account/points): earn **10 LP per $1 USD actually paid** for eligible plugins, including previous verified purchases.
 - Eligible staff-gifted plugins now earn points once per member/plugin at their published catalog price. Trials and free points-shop plugins do not earn these credits; products without a confirmed price remain pending.
 - Every member receives a unique referral code with a copy button and a successful-referral count. A buyer can enter another member's code within 24 hours of an eligible purchase; the referrer earns an extra **50% of the eligible purchase points**, while the buyer keeps all of theirs.

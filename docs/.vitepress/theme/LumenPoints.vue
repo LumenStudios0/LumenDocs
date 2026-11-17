@@ -99,7 +99,7 @@ onUnmounted(() => { generation++; window.removeEventListener('lumen-discord-user
     <header class="points-hero">
       <div class="points-aurora" aria-hidden="true"></div>
       <div class="points-orbit" aria-hidden="true"><span>LP</span><i></i><i></i></div>
-      <div class="points-intro"><p class="points-eyebrow">LUMEN STUDIOS / MEMBER REWARDS</p><h1>Your loyalty.<br><span>More rewarding.</span></h1><p>Meet Lumen Points. Earn from real purchases, bring your friends, and celebrate every milestone.</p></div>
+      <div class="points-intro"><p class="points-eyebrow">LUMEN STUDIOS / MEMBER REWARDS</p><h1>Your loyalty.<br><span>More rewarding.</span></h1><p>      Meet Lumen Points. Start with a free, one-time 100 LP gift for every new and existing account. Earn from real purchases, bring your friends, and celebrate every milestone.</p></div>
       <div class="points-wallet">
         <span>YOUR LUMEN POINTS</span>
         <strong aria-live="polite">{{ status ? formatPoints(status.balance) : '—' }}<small>LP</small></strong>
