@@ -438,23 +438,38 @@ export async function handleStaffCoupons(request, env, origin, deps) {
     const auth = request.headers.get('Authorization') || ''
     const user = await deps.verifyLoginToken(auth.startsWith('Bearer ') ? auth.slice(7) : '', env)
     if (!user || !discordId.test(user.id)) return send({ error: 'Sign in with Discord.' }, 401)
-    if (!env.COMMUNITY_DB || !env.ADMIN_WRITE_LIMITER) return send({ error: 'Coupon grants are unavailable.' }, 503)
+    if (!env.COMMUNITY_DB || !env.ADMIN_WRITE_LIMITER || !env.ADMIN_READ_LIMITER) return send({ error: 'Coupon grants are unavailable.' }, 503)
     try {
       const access = await resolveAccess(user.id, env)
       if (access.rank < 3 || !hasPermission(access, 'dashboard.view') || !hasPermission(access, 'coupons.grant')) {
         return send({ error: 'Support rank or above with coupon-grant permission is required.' }, 403)
       }
       if (access.rank < 6 && (await staffProgress(env, user.id)).level < 2) return send({ error: 'Reach staff level 2 (100 XP) before granting coupons.' }, 403)
+      if (request.method === 'GET') {
+        if (!(await env.ADMIN_READ_LIMITER.limit({ key: `coupon-members:${user.id}` })).success) return send({ error: 'Please wait before searching again.' }, 429)
+        const params = new URL(request.url).searchParams
+        const rawPage = params.get('page') || '1', query = (params.get('query') || '').trim()
+        if (!/^[1-9]\d{0,3}$/.test(rawPage) || query.length > 120) return send({ error: 'Invalid member search or page.' }, 400)
+        const page = Number(rawPage), pageSize = 50
+        const where = `registered_at IS NOT NULL AND discord_id<>?${query ? ' AND (discord_id=? OR instr(lower(username),lower(?))>0 OR instr(lower(display_name),lower(?))>0)' : ''}`
+        const values = query ? [user.id, query, query, query] : [user.id]
+        const count = await env.COMMUNITY_DB.prepare(`SELECT COUNT(*) AS n FROM website_members WHERE ${where}`).bind(...values).first()
+        const rows = (await env.COMMUNITY_DB.prepare(
+          `SELECT discord_id,username,display_name FROM website_members WHERE ${where} ORDER BY display_name COLLATE NOCASE,username COLLATE NOCASE,discord_id LIMIT ? OFFSET ?`,
+        ).bind(...values, pageSize, (page - 1) * pageSize).all()).results || []
+        return send({ members: rows.map(row => ({ id: row.discord_id, username: row.username, displayName: row.display_name })), total: count.n, page, pageSize })
+      }
       if (request.method !== 'POST') return send({ error: 'Method not allowed.' }, 405)
       if (!(await env.ADMIN_WRITE_LIMITER.limit({ key: `coupon-grant:${user.id}` })).success) return send({ error: 'Please wait before granting another coupon.' }, 429)
       const raw = await request.text()
       if (raw.length > 2000) return send({ error: 'Request is too large.' }, 413)
       let body
       try { body = JSON.parse(raw) } catch { return send({ error: 'Expected JSON.' }, 400) }
-      if (typeof body?.userId !== 'string' || !discordId.test(body.userId) || ![5, 10, 15].includes(body.discount) ||
+      if (typeof body?.userId !== 'string' || !discordId.test(body.userId) || !Number.isInteger(body.discount) || body.discount < 1 || body.discount > 50 ||
+          (body.type !== undefined && body.type !== 'percent') ||
           !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.requestId || '') ||
           typeof body.reason !== 'string' || body.reason.trim().length < 5 || body.reason.trim().length > 300) {
-        return send({ error: 'Provide a member Discord ID, 5/10/15% discount, reason (5-300 characters), and request ID.' }, 400)
+        return send({ error: 'Provide a member, a whole-number percentage from 1-50%, reason (5-300 characters), and request ID. BuiltByBit does not support fixed-dollar or higher-percentage coupons through this API.' }, 400)
       }
       if (body.userId === user.id) return send({ error: 'You cannot grant coupons to yourself.' }, 403)
       const member = await env.COMMUNITY_DB.prepare(
@@ -481,6 +496,7 @@ export async function handleStaffCoupons(request, env, origin, deps) {
         : 'The grant was recorded but issuance was not confirmed. Inspect BuiltByBit before starting another grant.' }, reward.state === 'issued' ? 200 : 202)
     } catch (error) {
       console.error('Staff coupon grant failed:', error instanceof Error ? error.name : 'Unknown error')
-      return send({ error: 'Grant could not be completed. Retry without changing the form; if you leave this page, inspect BuiltByBit before starting a new grant.' }, 503)
+      return send({ error: request.method === 'GET' ? 'Members could not be loaded. Please try again.'
+        : 'Grant could not be completed. Retry without changing the form; if you leave this page, inspect BuiltByBit before starting a new grant.' }, 503)
     }
 }

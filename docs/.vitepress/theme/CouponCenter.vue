@@ -6,6 +6,7 @@ import { studioRequest } from './studio-api'
 
 interface Coupon { id: string; kind: 'loyalty' | 'review' | 'manual'; discount: number; state: 'issuing' | 'issued' | 'failed' | 'uncertain'; code: string | null; retryAt: string | null; createdAt: string; uses: number; resourceIds: string[] }
 interface Check { status: 'pending' | 'ok' | 'error'; code: string | null; checkedAt: string | null }
+interface Member { id: string; username: string; displayName: string }
 const props = defineProps<{ staff?: boolean }>()
 const router = useRouter()
 const coupons = ref<Coupon[]>([])
@@ -23,6 +24,13 @@ const granting = ref(false)
 const grantMessage = ref('')
 const grantError = ref('')
 const recipient = ref('')
+const members = ref<Member[]>([])
+const memberSearch = ref('')
+const memberQuery = ref('')
+const memberPage = ref(1)
+const memberTotal = ref(0)
+const membersLoading = ref(false)
+const memberError = ref('')
 const discount = ref(10)
 const reason = ref('')
 let requestId = ''
@@ -37,10 +45,27 @@ function checkMessage(check: Check) {
   return 'The latest check could not finish. Previously issued coupons remain visible; checks retry automatically.'
 }
 let generation = 0
+let memberGeneration = 0
 let token = ''
 
+async function loadMembers(target = 1) {
+  const request = ++memberGeneration, session = getDiscordSession()
+  members.value = []; recipient.value = ''; memberError.value = ''; membersLoading.value = true
+  try {
+    const data = await studioRequest<{ members: Member[]; total: number; page: number }>('/staff/coupons?page=' + target + '&query=' + encodeURIComponent(memberQuery.value))
+    if (request !== memberGeneration || session !== getDiscordSession()) return
+    members.value = data.members; memberTotal.value = data.total; memberPage.value = data.page
+  } catch (value) {
+    if (request === memberGeneration && session === getDiscordSession()) memberError.value = value instanceof Error ? value.message : 'Members could not be loaded.'
+  } finally { if (request === memberGeneration) membersLoading.value = false }
+}
+function searchMembers() {
+  memberQuery.value = memberSearch.value.trim()
+  void loadMembers()
+}
 async function load(target = 1) {
   const request = ++generation
+  memberGeneration++; members.value = []; recipient.value = ''; memberError.value = ''; membersLoading.value = false
   token = getDiscordSession()
   signedIn.value = !!token; coupons.value = []; checks.value = {}; error.value = ''; loading.value = false; configured.value = false; canGrant.value = false; canManageCoupons.value = false; staffLevel.value = null
   if (!token) return
@@ -50,6 +75,7 @@ async function load(target = 1) {
     if (request !== generation || token !== getDiscordSession()) return
     if (typeof data.configured !== 'boolean' || !Array.isArray(data.coupons) || !data.checks || !Number.isSafeInteger(data.total) || !Number.isSafeInteger(data.page)) throw new Error('Invalid coupon response.')
     configured.value = data.configured; canGrant.value = data.canGrant; canManageCoupons.value = data.canManageCoupons; staffLevel.value = data.staffLevel; coupons.value = data.coupons; checks.value = data.checks; total.value = data.total; page.value = data.page
+    if (props.staff && data.canGrant) void loadMembers()
   } catch (value) {
     if (request === generation) error.value = value instanceof Error ? value.message : 'Coupons could not be loaded.'
   } finally { if (request === generation) loading.value = false }
@@ -57,7 +83,7 @@ async function load(target = 1) {
 async function grant() {
   if (granting.value || !canGrant.value) return
   const session = getDiscordSession()
-  const payload = JSON.stringify({ userId: recipient.value.trim(), discount: discount.value, reason: reason.value.trim() })
+  const payload = JSON.stringify({ userId: recipient.value, type: 'percent', discount: discount.value, reason: reason.value.trim() })
   if (payload !== grantPayload || !requestId) { grantPayload = payload; requestId = crypto.randomUUID() }
   granting.value = true; grantError.value = ''; grantMessage.value = ''
   try {
@@ -69,7 +95,7 @@ async function grant() {
 }
 function changed() {
   if (getDiscordSession() !== token) {
-    grantMessage.value = ''; grantError.value = ''; recipient.value = ''; reason.value = ''; requestId = ''; grantPayload = ''
+    grantMessage.value = ''; grantError.value = ''; recipient.value = ''; reason.value = ''; requestId = ''; grantPayload = ''; memberSearch.value = ''; memberQuery.value = ''
     void load()
   }
 }
@@ -78,7 +104,7 @@ onMounted(() => {
   else void load()
   window.addEventListener('lumen-discord-user', changed); window.addEventListener('storage', changed)
 })
-onUnmounted(() => { generation++; window.removeEventListener('lumen-discord-user', changed); window.removeEventListener('storage', changed) })
+onUnmounted(() => { generation++; memberGeneration++; window.removeEventListener('lumen-discord-user', changed); window.removeEventListener('storage', changed) })
 </script>
 
 <template>
@@ -107,11 +133,21 @@ onUnmounted(() => { generation++; window.removeEventListener('lumen-discord-user
       <template v-else>
       <p>Support staff require level 2 (100 XP). Studio Lead and Owner can grant at any XP level. Every grant and its reason is logged; self-grants are blocked.</p>
       <p v-if="!canGrant" role="status">Your current staff level is {{ staffLevel }}. Reach level 2 to enable this form.</p>
+      <p>Choose from members who have signed into the website, excluding yourself. Search or change pages to find any registered member; they do not need to be online now.</p>
+      <form v-if="canGrant" @submit.prevent="searchMembers">
+        <label>Find a member<input v-model="memberSearch" maxlength="120" placeholder="Name, username, or Discord ID"></label>
+        <button type="submit" :disabled="membersLoading || granting">Search members</button>
+      </form>
+      <p v-if="membersLoading" role="status">Loading members…</p>
+      <p v-if="memberError" class="coupon-error" role="alert">{{ memberError }}</p>
+      <nav v-if="canGrant && memberTotal > 50" aria-label="Member pages"><button type="button" :disabled="memberPage <= 1 || membersLoading || granting" @click="loadMembers(memberPage - 1)">Previous members</button> Page {{ memberPage }} / {{ Math.ceil(memberTotal / 50) }} <button type="button" :disabled="memberPage * 50 >= memberTotal || membersLoading || granting" @click="loadMembers(memberPage + 1)">Next members</button></nav>
       <form @submit.prevent="grant"><fieldset :disabled="!canGrant || granting">
-        <label>Member Discord ID<input v-model="recipient" required inputmode="numeric" pattern="[0-9]{5,22}" :disabled="granting"></label>
-        <label>Discount<select v-model.number="discount" :disabled="granting"><option :value="5">5%</option><option :value="10">10%</option><option :value="15">15%</option></select></label>
+        <label>Member<select v-model="recipient" required :disabled="membersLoading || granting || !members.length"><option value="" disabled>{{ membersLoading ? 'Loading members…' : members.length ? 'Select a member' : 'No matching members' }}</option><option v-for="member in members" :key="member.id" :value="member.id">{{ member.displayName || member.username || member.id }}{{ member.username ? ` (@${member.username})` : '' }} · {{ member.id }}</option></select></label>
+        <label>Discount type<select aria-describedby="coupon-provider-limit"><option value="percent">Percentage off (%)</option><option value="fixed" disabled>Fixed dollars off ($) — unavailable via BuiltByBit API</option></select></label>
+        <label>Discount (%)<input v-model.number="discount" type="number" min="1" max="50" step="1" required></label>
+        <p id="coupon-provider-limit">BuiltByBit's coupon-creation API supports 1–50% only. It cannot create 95% or fixed-dollar discounts such as $3 off.</p>
         <label>Reason<textarea v-model="reason" required minlength="5" maxlength="300" :disabled="granting" /></label>
-        <button type="submit" :disabled="granting">{{ granting ? 'Granting…' : 'Grant coupon' }}</button>
+        <button type="submit" :disabled="granting || membersLoading || !recipient">{{ granting ? 'Granting…' : 'Grant coupon' }}</button>
       </fieldset></form>
       <p v-if="grantMessage" role="status">{{ grantMessage }}</p><p v-if="grantError" class="coupon-error" role="alert">{{ grantError }}</p>
       </template>

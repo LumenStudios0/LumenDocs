@@ -266,17 +266,23 @@ test('Support can grant audited one-use coupons without granting licensing power
     const body = JSON.parse(options.body)
     assert.equal(body.max_uses, 1)
     assert.equal(body.limited_uses, true)
+    assert.equal(body.discount, 50)
     return Response.json({ result: 'success', data: { coupon: { coupon_id: 1, label: `123-${body.label}`,
-      discount: .1, percent: true, active: true, all_content_types: [], expires_at: 0, max_uses: 1, max_per_user_uses: 0 } } })
+      discount: .5, percent: true, active: true, all_content_types: [], expires_at: 0, max_uses: 1, max_per_user_uses: 0 } } })
   }
-  const body = { userId: customer, discount: 10, reason: 'Ticket resolution reward', requestId: crypto.randomUUID() }
+  const body = { userId: customer, discount: 50, reason: 'Ticket resolution reward', requestId: crypto.randomUUID() }
   assert.equal((await call('/studio/staff/coupons', 'POST', body, customer)).status, 403)
   assert.equal((await call('/studio/staff/coupons', 'POST', body, junior)).status, 403)
   assert.equal((await call('/studio/staff/coupons', 'POST', body, support)).status, 403)
+  assert.equal((await call('/studio/staff/coupons', 'GET', undefined, support)).status, 403)
   sqlite.prepare(`INSERT INTO staff_xp_ledger(id,staff_id,points,source_type,source_id,created_at)
     VALUES (?,?,100,'ticket_close',?,?)`).run(crypto.randomUUID(), support, crypto.randomUUID(), new Date().toISOString())
+  assert.equal((await call('/studio/staff/coupons', 'GET', undefined, support)).status, 200)
   assert.equal((await call('/studio/staff/coupons', 'POST', { ...body, userId: support }, support)).status, 403)
-  assert.equal((await call('/studio/staff/coupons', 'POST', { ...body, discount: 50 }, support)).status, 400)
+  for (const discount of [0, 51, 95, 10.5, '50']) {
+    assert.equal((await call('/studio/staff/coupons', 'POST', { ...body, discount }, support)).status, 400)
+  }
+  assert.equal((await call('/studio/staff/coupons', 'POST', { ...body, type: 'fixed', discount: 3 }, support)).status, 400)
   assert.equal((await call('/studio/staff/coupons', 'POST', body, support)).status, 200)
   assert.equal((await call('/studio/staff/coupons', 'POST', body, support)).status, 200)
   assert.equal(posts, 1)
@@ -284,6 +290,7 @@ test('Support can grant audited one-use coupons without granting licensing power
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM website_access_audit WHERE action LIKE 'coupon.grant%'").get().n, 2)
   const rewards = await (await call('/studio/coupons', 'GET', undefined, customer)).json()
   assert.equal(rewards.coupons[0].kind, 'manual')
+  assert.equal(rewards.coupons[0].discount, 50)
   assert.equal(rewards.canGrant, false)
   assert.equal((await (await call('/studio/coupons', 'GET', undefined, support)).json()).canGrant, true)
   globalThis.fetch = async () => { posts++; throw new Error('timeout') }
@@ -292,6 +299,57 @@ test('Support can grant audited one-use coupons without granting licensing power
   assert.equal((await call('/studio/staff/coupons', 'POST', pending, support)).status, 202)
   assert.equal((await call('/studio/staff/coupons', 'POST', { ...body, requestId: crypto.randomUUID() }, support)).status, 409)
   assert.equal(posts, 2, 'An unconfirmed grant must not trigger another creation after refresh')
+})
+
+test('coupon member dropdown lists all registered recipients through private searchable pages', async t => {
+  const { sqlite, call, owner, customer } = await fixture(t)
+  sqlite.prepare('INSERT INTO website_members(discord_id,username,display_name,registered_at) VALUES (?,?,?,?)')
+    .run(owner, 'owner', 'Owner', '2026-01-01')
+  sqlite.prepare('INSERT INTO website_members(discord_id,username,display_name) VALUES (?,?,?)')
+    .run('99999999999999999', 'unregistered', 'Unregistered')
+  for (let index = 0; index < 52; index++) {
+    sqlite.prepare('INSERT INTO website_members(discord_id,username,display_name,registered_at) VALUES (?,?,?,?)')
+      .run(String(BigInt(customer) + BigInt(index)), `member${index}`, `Member ${String(index).padStart(2, '0')}`, '2026-01-01')
+  }
+  assert.equal((await call('/studio/staff/coupons', 'GET', undefined, '')).status, 401)
+  assert.equal((await call('/studio/staff/coupons', 'GET', undefined, customer)).status, 403)
+  const first = await (await call('/studio/staff/coupons')).json()
+  const second = await (await call('/studio/staff/coupons?page=2')).json()
+  assert.equal(first.total, 52)
+  assert.equal(first.members.length, 50)
+  assert.equal(second.members.length, 2)
+  assert.equal(new Set([...first.members, ...second.members].map(member => member.id)).size, 52)
+  assert.deepEqual(Object.keys(first.members[0]).sort(), ['displayName', 'id', 'username'])
+  const search = await (await call('/studio/staff/coupons?query=member51')).json()
+  assert.equal(search.members.length, 1)
+  assert.equal(search.members[0].displayName, 'Member 51')
+  const byId = await (await call('/studio/staff/coupons?query=' + customer)).json()
+  assert.equal(byId.members[0].id, customer)
+  assert.equal((await call('/studio/staff/coupons?page=0')).status, 400)
+})
+
+test('coupon discount migration preserves existing rewards, usage history and foreign keys', async () => {
+  const sqlite = new DatabaseSync(':memory:')
+  try {
+    sqlite.exec('PRAGMA foreign_keys=ON')
+    const directory = new URL('../worker/migrations/community/', import.meta.url)
+    for (const name of (await readdir(directory)).filter(name => name.endsWith('.sql') && name < '0025').sort()) {
+      sqlite.exec(await readFile(new URL(name, directory), 'utf8'))
+    }
+    sqlite.exec(`INSERT INTO coupon_rewards(reward_key,user_id,kind,discount,state,label_suffix,code,coupon_id,created_at,updated_at,uses,scope_ids)
+      VALUES ('old','12345','loyalty',15,'issued','OLD','123-OLD',1,'2026-01-01','2026-01-01',2,'["1001"]');
+      INSERT INTO coupon_usage_events VALUES ('old',2,'2026-01-01');`)
+    const before = sqlite.prepare('SELECT * FROM coupon_rewards').get()
+    sqlite.exec('BEGIN')
+    sqlite.exec(await readFile(new URL('0025_coupon_discount_range.sql', directory), 'utf8'))
+    sqlite.exec('COMMIT')
+    assert.deepEqual(sqlite.prepare('SELECT * FROM coupon_rewards').get(), before)
+    assert.equal(sqlite.prepare('SELECT uses FROM coupon_usage_events').get().uses, 2)
+    assert.deepEqual(sqlite.prepare('PRAGMA foreign_key_check').all(), [])
+    for (const discount of [1, 25, 50]) sqlite.prepare('UPDATE coupon_rewards SET discount=?').run(discount)
+    assert.throws(() => sqlite.exec("UPDATE coupon_rewards SET discount=95"), /CHECK/)
+    assert.throws(() => sqlite.exec("DELETE FROM coupon_rewards WHERE reward_key='old'"), /FOREIGN KEY/)
+  } finally { sqlite.close() }
 })
 
 test('Owner can grant customer coupons without farming XP while new Support still needs level 2', async t => {
@@ -306,15 +364,16 @@ test('Owner can grant customer coupons without farming XP while new Support stil
       stats: { total: 1, page: 1, per_page: 100, max_page: 1 },
     } })
     const body = JSON.parse(options.body)
+    assert.equal(body.discount, 1)
     return Response.json({ result: 'success', data: { coupon: { coupon_id: 1, label: `123-${body.label}`,
-      discount: .1, percent: true, active: true, all_content_types: [], expires_at: 0, max_uses: 1, max_per_user_uses: 0 } } })
+      discount: .01, percent: true, active: true, all_content_types: [], expires_at: 0, max_uses: 1, max_per_user_uses: 0 } } })
   }
   const access = await (await call('/studio/coupons')).json()
   assert.equal(access.staffLevel, 1)
   assert.equal(access.canManageCoupons, true)
   assert.equal(access.canGrant, true)
   assert.equal((await call('/studio/staff/coupons', 'POST', {
-    userId: customer, discount: 10, reason: 'Owner ticket reward', requestId: crypto.randomUUID(),
+    userId: customer, discount: 1, reason: 'Owner ticket reward', requestId: crypto.randomUUID(),
   })).status, 200)
 })
 
