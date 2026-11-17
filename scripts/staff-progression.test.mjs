@@ -17,11 +17,12 @@ const otherStaffId = '123456789012345679'
 const ownerId = '223456789012345678'
 const databaseBatch = Symbol('batch statement')
 
-async function setup(fullSchema = false) {
+async function setup(fullSchema = false, beforeStarter = false) {
   const sqlite = new DatabaseSync(':memory:')
   if (fullSchema) {
     const directory = new URL('../worker/migrations/community/', import.meta.url)
     for (const name of (await readdir(directory)).filter(name => name.endsWith('.sql')).sort()) {
+      if (beforeStarter && name === '0026_staff_starter_xp.sql') break
       sqlite.exec(await readFile(new URL(name, directory), 'utf8'))
     }
   } else {
@@ -73,6 +74,38 @@ async function setup(fullSchema = false) {
   sqlite.prepare('INSERT INTO website_members(discord_id, username, display_name) VALUES (?, ?, ?)').run(otherStaffId, 'second', 'Second Staff')
   return db
 }
+
+test('starter migration adds ten XP once to current staff without resetting earned XP or rewarding guests', async t => {
+  const db = await setup(true, true)
+  t.after(() => db.sqlite.close())
+  db.sqlite.prepare("UPDATE website_members SET role_id = 'support_team' WHERE discord_id = ?").run(staffId)
+  db.sqlite.prepare("UPDATE website_members SET role_id = 'jr_support' WHERE discord_id = ?").run(otherStaffId)
+  db.sqlite.prepare("INSERT INTO website_members(discord_id, role_id) VALUES (?, 'guest')").run(ownerId)
+  db.sqlite.prepare(`INSERT INTO staff_xp_ledger (id, staff_id, points, source_type, source_id, created_at)
+    VALUES ('earned', ?, 250, 'ticket_close', 'existing-ticket', '2026-11-16T12:00:00.000Z')`).run(staffId)
+  const migration = await readFile(new URL('../worker/migrations/community/0026_staff_starter_xp.sql', import.meta.url), 'utf8')
+  db.sqlite.exec(migration)
+  db.sqlite.exec(migration)
+  assert.deepEqual(await staffProgress({ COMMUNITY_DB: db }, staffId), { xp: 260, level: 3 })
+  assert.deepEqual(await staffProgress({ COMMUNITY_DB: db }, otherStaffId), { xp: 10, level: 1 })
+  assert.deepEqual(await staffProgress({ COMMUNITY_DB: db }, ownerId), { xp: 0, level: 1 })
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM staff_xp_ledger WHERE source_type = 'starter_bonus'").get().count, 4)
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM website_access_audit WHERE action = 'staff.xp.starter_award'").get().count, 4)
+  assert.equal(db.sqlite.prepare("SELECT MIN(points) AS min, MAX(points) AS max FROM staff_xp_ledger WHERE source_type = 'starter_bonus'").get().min, 10)
+  assert.equal(db.sqlite.prepare("SELECT MAX(points) AS max FROM staff_xp_ledger WHERE source_type = 'starter_bonus'").get().max, 10)
+})
+
+test('starter migration excludes a demoted bootstrap lead and includes every saved staff rank', async t => {
+  const db = await setup(true, true)
+  t.after(() => db.sqlite.close())
+  db.sqlite.prepare("INSERT INTO website_members(discord_id, role_id) VALUES ('1012053634911064114', 'guest')").run()
+  for (const [index, role] of ['jr_support', 'support_team', 'sr_support', 'developer', 'studio_lead', 'owner'].entries()) {
+    db.sqlite.prepare('INSERT INTO website_members(discord_id, role_id) VALUES (?, ?)').run(`staff-${index}`, role)
+  }
+  db.sqlite.exec(await readFile(new URL('../worker/migrations/community/0026_staff_starter_xp.sql', import.meta.url), 'utf8'))
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS count FROM staff_xp_ledger WHERE source_type = 'starter_bonus'").get().count, 7)
+  assert.deepEqual(await staffProgress({ COMMUNITY_DB: db }, '1012053634911064114'), { xp: 0, level: 1 })
+})
 
 function addTicket(db, id, { owner = ownerId, assignee = staffId, status = 'open' } = {}) {
   db.sqlite.prepare('INSERT INTO community_tickets(id, owner_id, status, assignee_id) VALUES (?, ?, ?, ?)')

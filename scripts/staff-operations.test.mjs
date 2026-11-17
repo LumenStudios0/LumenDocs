@@ -18,6 +18,7 @@ async function fixture(t) {
   for (const file of (await readdir(directory)).filter(f => f.endsWith('.sql')).sort()) {
     sqlite.exec(await readFile(new URL(file, directory), 'utf8'))
   }
+  sqlite.prepare("DELETE FROM website_access_audit WHERE action = 'staff.xp.starter_award'").run()
   t.after(() => sqlite.close())
   for (const [id, role] of [[support, 'support_team'], [developer, 'developer'], [customer, 'client']]) {
     sqlite.prepare('INSERT INTO website_members(discord_id,display_name,role_id) VALUES (?,?,?)').run(id, role, role)

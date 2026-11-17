@@ -5,7 +5,7 @@ import { getDiscordSession } from './discord-session'
 
 type WindowName = 'daily' | 'weekly' | 'monthly' | 'all-time'
 type Leader = { id: string; name: string; level: number; windowXp: number; totalXp: number }
-type Log = { staffId: string; staffName: string; points: number; source: 'ticket_close' | 'rating_bonus'; ticketId: string; createdAt: string }
+type Log = { staffId: string; staffName: string; points: number; source: 'ticket_close' | 'rating_bonus' | 'starter_bonus'; ticketId: string; createdAt: string }
 const windowName = ref<WindowName>('weekly')
 const leaderboard = ref<Leader[]>([])
 const logs = ref<Log[]>([])
@@ -115,7 +115,7 @@ onUnmounted(() => { generation++; window.removeEventListener('lumen-discord-user
         <ul v-if="logs.length">
           <li v-for="(entry, index) in logs" :key="`${entry.ticketId}-${entry.source}-${index}`">
             <span class="xp-award-icon" aria-hidden="true">{{ entry.source === 'ticket_close' ? '+' : '&#9734;' }}</span>
-            <div><strong>{{ entry.staffName }}</strong><p>{{ entry.source === 'ticket_close' ? 'Ticket closure' : 'Ticket rating bonus' }} / #{{ entry.ticketId.slice(0, 8) }}</p><time :datetime="entry.createdAt">{{ communityDate(entry.createdAt) }}</time></div>
+            <div><strong>{{ entry.staffName }}</strong><p>{{ entry.source === 'starter_bonus' ? 'One-time staff starter bonus' : `${entry.source === 'ticket_close' ? 'Ticket closure' : 'Ticket rating bonus'} / #${entry.ticketId.slice(0, 8)}` }}</p><time :datetime="entry.createdAt">{{ communityDate(entry.createdAt) }}</time></div>
             <span class="xp-award-points">+{{ entry.points }} XP</span>
           </li>
         </ul>

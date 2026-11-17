@@ -84,6 +84,24 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           npx --yes wrangler@4.160.0 deploy
+      - name: Verify staff starter XP awards
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx --yes wrangler@4.160.0 d1 execute lumen-community --remote --json \
+            --command "SELECT COUNT(*) AS recipients, COALESCE(SUM(points), 0) AS awarded_xp, MIN(points) AS min_points, MAX(points) AS max_points, (SELECT COUNT(*) FROM website_access_audit WHERE action = 'staff.xp.starter_award') AS audit_entries FROM staff_xp_ledger WHERE source_type = 'starter_bonus'" \
+            > "$RUNNER_TEMP/staff-starter-xp.json"
+          node --input-type=module <<'NODE'
+          import { readFile } from 'node:fs/promises'
+          const result = JSON.parse(await readFile(`${process.env.RUNNER_TEMP}/staff-starter-xp.json`, 'utf8'))
+          const award = result[0]?.results?.[0]
+          if (!award || award.recipients < 1 || award.min_points !== 10 || award.max_points !== 10 ||
+              award.awarded_xp !== award.recipients * 10 || award.audit_entries !== award.recipients) {
+            throw new Error('Staff starter XP awards or their audit entries did not verify.')
+          }
+          console.log(`Verified one-time starter bonus: ${award.recipients} staff received 10 XP each (${award.awarded_xp} XP total), with matching audit entries.`)
+          NODE
       - name: Verify public community status API
         run: |
           node --input-type=module <<'NODE'
