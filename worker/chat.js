@@ -5,6 +5,7 @@ import { handleProductTools } from './product-tools.js'
 import { staffAssistant } from './staff-assistant.js'
 import { activityCustomerName, staffActivityStatement } from './staff-operations.js'
 import { staffLicenseKey } from './staff-license-key.js'
+import { backfillMemberPoints } from './lumen-points.js'
 
 const jsonHeaders = {
   'Content-Type': 'application/json; charset=utf-8',
@@ -1354,6 +1355,9 @@ export default {
   },
 
   async scheduled(_event, env, context) {
-    context.waitUntil(runCommunityChecks(env).catch(() => undefined))
+    context.waitUntil(Promise.all([
+      runCommunityChecks(env).catch(() => undefined),
+      backfillMemberPoints(env).catch(error => console.error('Lumen Points backfill failed:', error instanceof Error ? error.message : 'Unknown error')),
+    ]))
   },
 }

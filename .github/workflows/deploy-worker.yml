@@ -227,7 +227,7 @@ jobs:
           }
           console.log('Plugin downloads, coupons, staff progression and member points reject anonymous requests.')
           NODE
-      - name: Verify member points storage
+      - name: Verify member points storage and historical credits
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
@@ -237,6 +237,8 @@ jobs:
             > "$RUNNER_TEMP/lumen-points-storage.json"
           node --input-type=module <<'NODE'
           import { readFile } from 'node:fs/promises'
+          import { execFileSync } from 'node:child_process'
+          import { setTimeout as delay } from 'node:timers/promises'
           const result = JSON.parse(await readFile(`${process.env.RUNNER_TEMP}/lumen-points-storage.json`, 'utf8'))
           const data = result[0]?.results?.[0]
           if (!data || data.wallets !== data.unique_codes || data.invalid_codes !== 0 ||
@@ -244,4 +246,26 @@ jobs:
             throw new Error('Lumen Points wallets, referral uniqueness or ledger triggers did not verify.')
           }
           console.log(`Lumen Points storage verified: ${data.wallets} wallets with unique referral codes and both audit-history triggers.`)
+          const deadline = Date.now() + 660000
+          const sql = `SELECT
+            (SELECT COUNT(*) FROM lumen_points_accounts WHERE purchase_checked_at IS NULL) AS pending,
+            (SELECT COUNT(*) FROM lumen_points_accounts WHERE purchase_checked_at IS NULL AND backfill_error IS NOT NULL) AS failed,
+            (SELECT GROUP_CONCAT(DISTINCT backfill_error) FROM lumen_points_accounts WHERE purchase_checked_at IS NULL) AS errors,
+            (SELECT COUNT(DISTINCT user_id) FROM lumen_points_rewards WHERE kind='purchase' AND points_units>0) AS recipients,
+            (SELECT COALESCE(SUM(points_units),0)/100.0 FROM lumen_points_rewards WHERE kind='purchase') AS purchase_points,
+            (SELECT COALESCE(SUM(points_units),0)/100.0 FROM lumen_points_rewards WHERE kind='tier') AS tier_points`
+          while (true) {
+            const result = JSON.parse(execFileSync('npx', ['--yes', 'wrangler@4.160.0', 'd1', 'execute',
+              'lumen-community', '--remote', '--json', '--command', sql], { encoding: 'utf8', timeout: 60000 }))
+            const summary = result[0]?.results?.[0]
+            if (!summary) throw new Error('Historical points verification returned no result.')
+            if (summary.failed) throw new Error(`Historical purchase checks failed for ${summary.failed} accounts: ${summary.errors}`)
+            if (!summary.pending) {
+              console.log(`Historical purchase credits verified: ${summary.recipients} members, ${summary.purchase_points} purchase LP, ${summary.tier_points} milestone LP.`)
+              break
+            }
+            if (Date.now() >= deadline) throw new Error(`Historical purchase checks are still pending for ${summary.pending} members.`)
+            console.log(`Waiting for scheduled purchase backfill: ${summary.pending} accounts remaining.`)
+            await delay(20000)
+          }
           NODE

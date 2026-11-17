@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile, readdir } from 'node:fs/promises'
 import { DatabaseSync } from 'node:sqlite'
 import { handleProductTools } from '../worker/product-tools.js'
-import { redeemPointReferral, syncPointEarnings, usdCents } from '../worker/lumen-points.js'
+import { backfillMemberPoints, redeemPointReferral, syncPointEarnings, usdCents } from '../worker/lumen-points.js'
 import { rememberMember } from '../worker/access-control.js'
 
 const member = '123456789012345678'
@@ -113,6 +113,56 @@ test('USD conversion preserves fractional points without trusting formatted or l
   assert.equal(usdCents({ value: 0.1, currency: 'USD' }), 10)
   for (const value of [-1, NaN, Infinity, '1.999', '1e3', null]) assert.throws(() => usdCents({ value, currency: 'USD' }))
   assert.throws(() => usdCents({ value: 12, currency: 'EUR' }), /non-USD/)
+})
+
+test('background backfill credits every registered buyer without a page visit and never duplicates rewards', async t => {
+  const { env, sqlite, data, purchase } = await setup(t)
+  for (const id of [member, referrer, stranger]) await rememberMember({ id, username: 'member' }, env)
+  data.purchases.push(purchase({ purchase_id: 502, buyer_id: 56,
+    Buyer: { user_id: 56, discord_id: referrer }, FinalPrice: { value: 20, currency: 'USD' } }))
+  data.purchases.push(purchase({ purchase_id: 503, buyer_id: 57,
+    Buyer: { user_id: 57, discord_id: '423456789012345678' } }))
+  data.ownership = ['p0', 'p1', 'p2']
+  await backfillMemberPoints(env)
+  const balance = id => sqlite.prepare('SELECT SUM(points_units)/100.0 AS n FROM lumen_points_rewards WHERE user_id=?').get(id).n
+  assert.equal(balance(member), 173.5)
+  assert.equal(balance(referrer), 250)
+  assert.equal(balance(stranger), 50)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_accounts').get().n, 3)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_accounts WHERE purchase_checked_at IS NOT NULL AND tier_checked_at IS NOT NULL AND backfill_error IS NULL').get().n, 3)
+  const historyCount = sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_history').get().n
+  await backfillMemberPoints(env)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_history').get().n, historyCount)
+})
+
+test('backfill records failed checks, preserves balances and retries without blocking other members', async t => {
+  const { env, sqlite, data, purchase } = await setup(t)
+  for (const id of [member, referrer]) await rememberMember({ id, username: 'member' }, env)
+  data.purchases.push(purchase({ purchase_id: 502, buyer_id: 56,
+    Buyer: { user_id: 56, discord_id: referrer }, FinalPrice: { value: 10, currency: 'EUR' } }))
+  await backfillMemberPoints(env)
+  assert.equal(sqlite.prepare('SELECT SUM(points_units) AS n FROM lumen_points_rewards WHERE user_id=?').get(member).n, 12350)
+  assert.match(sqlite.prepare('SELECT backfill_error FROM lumen_points_accounts WHERE user_id=?').get(referrer).backfill_error, /non-USD/)
+  data.purchases[1].FinalPrice.currency = 'USD'
+  await backfillMemberPoints(env)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_rewards WHERE user_id=?').get(referrer).n, 0)
+  sqlite.prepare('UPDATE lumen_points_accounts SET backfill_attempted_at=NULL').run()
+  await backfillMemberPoints(env)
+  assert.equal(sqlite.prepare('SELECT SUM(points_units) AS n FROM lumen_points_rewards WHERE user_id=?').get(referrer).n, 10000)
+  assert.equal(sqlite.prepare('SELECT backfill_error FROM lumen_points_accounts WHERE user_id=?').get(referrer).backfill_error, null)
+})
+
+test('backfill bounds each batch and rejects incomplete purchase feeds without crediting anyone', async t => {
+  const { env, sqlite, data } = await setup(t)
+  for (let i = 0; i < 12; i++) await rememberMember({ id: String(BigInt(member) + BigInt(i)), username: 'member' }, env)
+  data.failed = 'purchases'
+  await backfillMemberPoints(env)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_accounts WHERE backfill_attempted_at IS NOT NULL').get().n, 10)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_rewards').get().n, 0)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_accounts WHERE backfill_error LIKE ?').get('%HTTP 403%').n, 10)
+  data.failed = ''
+  await backfillMemberPoints(env)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_accounts WHERE purchase_checked_at IS NOT NULL').get().n, 2)
 })
 
 test('purchase sync is idempotent and only counts verified paid amounts for the authenticated buyer', async t => {

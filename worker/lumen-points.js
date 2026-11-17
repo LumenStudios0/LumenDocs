@@ -54,14 +54,18 @@ function buyer(row) {
   return row.Buyer
 }
 
-export async function verifiedPointPurchases(env, userId) {
+function purchaseResources(env) {
   const resources = (env.BUILDBYBIT_RESOURCE_IDS || '').split(',').map(value => value.trim())
   if (!env.BUILDBYBIT_API_AUTHORIZATION || !resources.length || resources.length > 50 || resources.some(value => !id(value))) {
     throw failure('Purchase points need the BuiltByBit creator authorization and resource IDs configured.')
   }
-  const deadline = Date.now() + 30000
+  return resources
+}
+
+export async function verifiedPointPurchases(env, userId, purchaseRows) {
+  const resources = purchaseResources(env)
   const account = await env.COMMUNITY_DB.prepare('SELECT buyer_id FROM lumen_points_accounts WHERE user_id=?').bind(userId).first()
-  const purchases = await marketplaceRows(env, 'purchases', resources, deadline)
+  const purchases = purchaseRows ?? await marketplaceRows(env, 'purchases', resources, Date.now() + 30000)
   const buyerIds = new Set(), seen = new Set(), verified = []
   const now = Date.now()
   for (const row of purchases) {
@@ -144,7 +148,7 @@ async function saveMilestones(env, userId) {
   await env.COMMUNITY_DB.batch(statements)
 }
 
-export async function syncPointEarnings(env, userId) {
+export async function syncPointEarnings(env, userId, purchaseRows) {
   const db = env.COMMUNITY_DB, now = new Date().toISOString(), token = crypto.randomUUID()
   const reserved = await db.prepare(`UPDATE lumen_points_accounts SET sync_token=?,sync_until=?
     WHERE user_id=? AND (sync_until IS NULL OR sync_until < ?)`)
@@ -157,7 +161,7 @@ export async function syncPointEarnings(env, userId) {
       const last = name === 'purchases' ? account.purchase_checked_at : account.tier_checked_at
       if (last && Date.now() - Date.parse(last) < 60000) { checks[name] = { ok: true, checkedAt: last }; continue }
       try {
-        if (name === 'purchases') await savePurchases(env, userId, await verifiedPointPurchases(env, userId))
+        if (name === 'purchases') await savePurchases(env, userId, await verifiedPointPurchases(env, userId, purchaseRows))
         else await saveMilestones(env, userId)
         checks[name] = { ok: true, checkedAt: new Date().toISOString() }
       } catch (error) {
@@ -169,6 +173,41 @@ export async function syncPointEarnings(env, userId) {
   } finally {
     await db.prepare('UPDATE lumen_points_accounts SET sync_token=NULL,sync_until=NULL WHERE user_id=? AND sync_token=?').bind(userId, token).run()
   }
+}
+
+export async function backfillMemberPoints(env) {
+  if (!env.COMMUNITY_DB) throw failure('Lumen Points storage is unavailable.')
+  const db = env.COMMUNITY_DB, now = new Date().toISOString()
+  const accounts = (await db.prepare(`SELECT user_id FROM lumen_points_accounts
+    WHERE (purchase_checked_at IS NULL OR tier_checked_at IS NULL)
+      AND (backfill_attempted_at IS NULL OR backfill_attempted_at<?)
+    ORDER BY COALESCE(backfill_attempted_at,''),user_id LIMIT 10`)
+    .bind(new Date(Date.now() - 15 * 60000).toISOString()).all()).results || []
+  if (!accounts.length) return
+  await db.batch(accounts.map(account => db.prepare('UPDATE lumen_points_accounts SET backfill_attempted_at=?,backfill_error=NULL WHERE user_id=?')
+    .bind(now, account.user_id)))
+  let purchases, purchaseError
+  try { purchases = await marketplaceRows(env, 'purchases', purchaseResources(env), Date.now() + 30000) }
+  catch (error) {
+    purchaseError = error instanceof Error ? error.message : 'Historical purchases could not be verified.'
+    console.error('Lumen Points backfill purchase scan failed:', purchaseError)
+  }
+  let completed = 0
+  for (const account of accounts) {
+    let message = purchaseError
+    if (!message) {
+      try {
+        const checks = await syncPointEarnings(env, account.user_id, purchases)
+        message = Object.values(checks).filter(check => !check.ok).map(check => check.error).join('; ')
+      } catch (error) {
+        message = error instanceof Error ? error.message : 'Historical points could not be credited.'
+      }
+    }
+    await db.prepare('UPDATE lumen_points_accounts SET backfill_error=? WHERE user_id=?').bind(message || null, account.user_id).run()
+    if (message) console.error('Lumen Points account backfill failed:', message)
+    else completed++
+  }
+  console.log(`Lumen Points backfill: ${completed}/${accounts.length} accounts verified.`)
 }
 
 export async function redeemPointReferral(db, userId, code) {
