@@ -9,11 +9,12 @@ import { useSiteDialog } from './site-dialog'
 import RichContent from './RichContent.vue'
 import RichEditor from './RichEditor.vue'
 import TrialRequests from './TrialRequests.vue'
+import StaffProgression from './StaffProgression.vue'
 import { safeUrl } from './rich-text.mjs'
 import { studioRequest } from './studio-api'
 const { confirm: confirmSiteAction } = useSiteDialog()
 
-type Tab = 'tickets' | 'issues' | 'notifications' | 'status' | 'trials'
+type Tab = 'tickets' | 'issues' | 'notifications' | 'status' | 'trials' | 'progression'
 const props = defineProps<{ permissions: string[] }>()
 const can = (permission: string) => props.permissions.includes(permission)
 const tab = ref<Tab>('tickets')
@@ -104,12 +105,15 @@ function visibilityChanged() {
     leaseTicket = id
   } else if (leaseTicket) void updateLease()
 }
+function hashChanged() {
+  if (window.location.hash === '#staff-leaderboard' && can('tickets.view')) void changeTab('progression')
+}
 const tabs: { id: Tab; name: string }[] = [
   { id: 'tickets', name: 'Website tickets' }, { id: 'issues', name: 'Known issues (#known-issues)' },
   { id: 'notifications', name: 'Publish notifications' }, { id: 'status', name: 'Service status' },
-  { id: 'trials', name: 'Trial requests' },
+  { id: 'trials', name: 'Trial requests' }, { id: 'progression', name: 'Staff leaderboard' },
 ]
-const allowedTabs = computed(() => tabs.filter(item => can(item.id === 'tickets' ? 'tickets.view' : item.id === 'issues' ? 'issues.manage' : item.id === 'notifications' ? 'notifications.manage' : item.id === 'trials' ? 'licenses.grant' : 'status.manage')))
+const allowedTabs = computed(() => tabs.filter(item => can(item.id === 'tickets' || item.id === 'progression' ? 'tickets.view' : item.id === 'issues' ? 'issues.manage' : item.id === 'notifications' ? 'notifications.manage' : item.id === 'trials' ? 'licenses.grant' : 'status.manage')))
 function textError(value: unknown) { return value instanceof Error ? value.message : 'Staff request failed.' }
 async function load(target = 1) {
   stopLease()
@@ -119,7 +123,7 @@ async function load(target = 1) {
   serviceReady.value = false; serviceUnavailable.value = false
   try {
     token = getDiscordSession()
-    if (targetTab === 'trials') {
+    if (targetTab === 'trials' || targetTab === 'progression') {
       serviceReady.value = true
     } else if (targetTab === 'status') {
       const result = await communityRequest<{ services: Service[] }>('/status')
@@ -310,8 +314,8 @@ function sessionChanged() {
 watch(allowedTabs, items => {
   if (!items.some(item => item.id === tab.value) && items.length) { tab.value = items[0].id; void load() }
 })
-onMounted(() => { if (!allowedTabs.value.some(item => item.id === tab.value) && allowedTabs.value.length) tab.value = allowedTabs.value[0].id; void load(); window.addEventListener('lumen-discord-user', sessionChanged); window.addEventListener('storage', sessionChanged); document.addEventListener('visibilitychange', visibilityChanged); leaseTimer = setInterval(() => { if (!document.hidden) void updateLease() }, 30000) })
-onUnmounted(() => { generation++; stopLease(); clearInterval(leaseTimer); window.removeEventListener('lumen-discord-user', sessionChanged); window.removeEventListener('storage', sessionChanged); document.removeEventListener('visibilitychange', visibilityChanged) })
+onMounted(() => { if (window.location.hash === '#staff-leaderboard' && can('tickets.view')) tab.value = 'progression'; if (!allowedTabs.value.some(item => item.id === tab.value) && allowedTabs.value.length) tab.value = allowedTabs.value[0].id; void load(); window.addEventListener('hashchange', hashChanged); window.addEventListener('lumen-discord-user', sessionChanged); window.addEventListener('storage', sessionChanged); document.addEventListener('visibilitychange', visibilityChanged); leaseTimer = setInterval(() => { if (!document.hidden) void updateLease() }, 30000) })
+onUnmounted(() => { generation++; stopLease(); clearInterval(leaseTimer); window.removeEventListener('hashchange', hashChanged); window.removeEventListener('lumen-discord-user', sessionChanged); window.removeEventListener('storage', sessionChanged); document.removeEventListener('visibilitychange', visibilityChanged) })
 </script>
 
 <template>
@@ -323,6 +327,7 @@ onUnmounted(() => { generation++; stopLease(); clearInterval(leaseTimer); window
     <p v-if="serviceUnavailable" class="website-note">Staff actions are disabled until the website service is connected. The Worker deployment must succeed with D1 access and both community migrations applied.</p><p v-if="notice" class="website-message" role="status">{{ notice }}</p><p v-if="loading" role="status" class="website-note">Loading authorized website data…</p>
 
     <TrialRequests v-if="tab === 'trials' && can('licenses.grant')" staff />
+    <StaffProgression v-if="tab === 'progression' && can('tickets.view')" />
     <fieldset class="website-service-controls" :disabled="loading || saving || !serviceReady" aria-label="Staff website service controls">
     <template v-if="tab === 'tickets'">
       <div v-if="!selected" class="ticket-filters"><label>Status<select v-model="ticketStatus" :disabled="saving" @change="load(1)"><option value="all">All statuses</option><option value="open">Open</option><option value="waiting">Waiting</option><option value="closed">Closed</option></select></label><label>Assignment<select v-model="assignmentFilter" :disabled="saving" @change="load(1)"><option value="all">Everyone</option><option value="unassigned">Unassigned</option><option v-if="currentStaffId" :value="currentStaffId">Assigned to me</option><option v-for="member in members.filter(item => item.id !== currentStaffId)" :key="member.id" :value="member.id">{{ member.name }}</option></select></label><form @submit.prevent="load(1)"><label>Label<input v-model="labelFilter" maxlength="30" placeholder="bug, urgent, billing"></label><button type="submit" :disabled="loading || saving">Filter</button></form></div>

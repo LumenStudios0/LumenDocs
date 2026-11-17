@@ -86,6 +86,8 @@ test('allowlist parsing canonicalizes IPv6 and rejects duplicates and unsafe inp
   assert.deepEqual(parseIpAllowlist(''), [])
   assert.throws(() => parseIpAllowlist('2001:db8::1,2001:0db8:0:0:0:0:0:1'), /unique/)
   assert.throws(() => parseIpAllowlist('1.1.1.1,2.2.2.2,3.3.3.3,4.4.4.4'), /three/)
+  assert.equal(parseIpAllowlist('1.1.1.1,2.2.2.2,3.3.3.3,4.4.4.4', 10).length, 4)
+  assert.throws(() => parseIpAllowlist('1.1.1.1,2.2.2.2,3.3.3.3,4.4.4.4', 3), /three/)
   for (const invalid of ['256.1.1.1', '01.1.1.1', 'host.example', '[::1]', '::1/path', 'fe80::1%eth0', '']) {
     assert.equal(normalizeIpAddress(invalid), null)
   }

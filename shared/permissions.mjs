@@ -20,6 +20,7 @@ export const PERMISSIONS = [
   ['licenses.revoke', 'Permanently revoke licenses', 'Licensing'],
   ['licenses.delete', 'Delete revoked license records', 'Licensing'],
   ['licenses.ips', 'Add and remove license IP addresses', 'Licensing'],
+  ['coupons.grant', 'Grant single-use customer coupons (Support and above)', 'Rewards'],
   ['audit.view', 'Read licensing audit history', 'Licensing'],
   ['plugins.view', 'View the plugin and product registry', 'Registry'],
   ['plugins.register', 'Register plugins and receive their initial token', 'Registry'],
@@ -64,9 +65,9 @@ const previousSupport = [
 ]
 const junior = [...MEMBER_PERMISSIONS, 'staff.docs', 'dashboard.view', 'tickets.view', 'tickets.reply', 'tickets.escalate']
 const support = [...previousSupport.filter(id => !['customers.verify', 'licenses.grant', 'licenses.status', 'licenses.ips', 'roles.assign'].includes(id)),
-  'customers.hold', 'tickets.escalate']
+  'customers.hold', 'tickets.escalate', 'coupons.grant']
 const senior = [...support, 'customers.verify', 'licenses.grant', 'licenses.revoke', 'licenses.delete']
-const developer = [...previousSupport.filter(id => id !== 'roles.assign'), 'customers.hold', 'licenses.revoke', 'licenses.delete', 'tickets.escalate', 'plugins.register', 'plugins.manage', 'products.create', 'products.manage',
+const developer = [...previousSupport.filter(id => id !== 'roles.assign'), 'customers.hold', 'licenses.revoke', 'licenses.delete', 'tickets.escalate', 'coupons.grant', 'plugins.register', 'plugins.manage', 'products.create', 'products.manage',
   'products.link', 'products.unlink', 'issues.manage', 'notifications.manage', 'forum.announce', 'status.manage']
 export const ROLES = [
   { id: 'guest', name: 'Guest', rank: 0, permissions: MEMBER_PERMISSIONS },

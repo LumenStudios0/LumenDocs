@@ -15,6 +15,7 @@ const hasKey = ref<boolean | null>(null)
 const productIds = ref<string[]>([])
 const status = ref('unknown')
 const ipCount = ref<number | null>(null)
+const ipLimit = ref<number | null>(null)
 const licenseError = ref('')
 const ipError = ref('')
 const notice = ref('')
@@ -35,6 +36,7 @@ async function refresh() {
   loading.value = true
   hasKey.value = null
   ipCount.value = null
+  ipLimit.value = null
   productIds.value = []
   status.value = 'unknown'
   licenseError.value = ''
@@ -66,12 +68,13 @@ async function refresh() {
       })(),
       (async () => {
         try {
-          const result = await accountRequest<{ addresses: string[] }>('/account/license-ips')
+          const result = await accountRequest<{ addresses: string[]; maxAddresses: number }>('/account/license-ips')
           if (requestId !== generation) return
-          if (!Array.isArray(result.addresses) || !result.addresses.every(address => typeof address === 'string')) {
+          if (!Array.isArray(result.addresses) || !result.addresses.every(address => typeof address === 'string') || !Number.isInteger(result.maxAddresses) || result.maxAddresses < 1 || result.maxAddresses > 100) {
             throw new Error('The license service returned an invalid IP allowlist.')
           }
           ipCount.value = result.addresses.length
+          ipLimit.value = result.maxAddresses
         } catch (error) {
           if (requestId !== generation) return
           console.error('Unable to load license IP usage:', error)
@@ -91,9 +94,10 @@ async function refresh() {
 }
 
 function handleIpUpdate(event: Event) {
-  const addresses = (event as CustomEvent<{ addresses?: string[] }>).detail?.addresses
-  if (Array.isArray(addresses)) {
+  const { addresses, maxAddresses } = (event as CustomEvent<{ addresses?: string[]; maxAddresses?: number }>).detail ?? {}
+  if (Array.isArray(addresses) && Number.isInteger(maxAddresses) && maxAddresses! >= 1 && maxAddresses! <= 100) {
     ipCount.value = addresses.length
+    ipLimit.value = maxAddresses!
     ipError.value = ''
   } else void refresh()
 }
@@ -118,7 +122,7 @@ async function copyDiagnostics() {
       'Lumen Studios — license diagnostics (no license key)',
       `Status: ${status.value}`,
       `Eligible product IDs: ${productIds.value.join(', ') || 'None reported'}`,
-      `Allowed IP slots: ${ipCount.value === null ? 'Unavailable' : `${ipCount.value}/3`}`,
+      `Allowed IP slots: ${ipCount.value === null || ipLimit.value === null ? 'Unavailable' : `${ipCount.value}/${ipLimit.value}`}`,
       `License error: ${licenseError.value || 'None'}`,
       `Allowlist error: ${ipError.value || 'None'}`,
       `Captured: ${new Date().toISOString()}`,
@@ -157,7 +161,7 @@ onUnmounted(() => {
     <div class="health-metrics">
       <article><span>LICENSE STATUS</span><strong :class="{ 'health-ready': ready }">{{ loading ? 'Checking…' : serviceDown ? 'Unavailable' : status.replaceAll('_', ' ') }}</strong><small>{{ serviceDown ? 'Please check back later' : hasKey === false ? 'Ask staff to grant your license' : 'Reported by the licensing service' }}</small></article>
       <article><span>ELIGIBLE PRODUCTS</span><strong>{{ hasKey === null ? '—' : productIds.length }}</strong><small>Verified entitlements on your shared license</small></article>
-      <article><span>SERVER IP SLOTS</span><strong>{{ ipCount === null ? '—' : ipCount }} <em>/ 3</em></strong><progress :value="ipCount ?? 0" max="3" aria-label="Used IP address slots" /><small>{{ ipCount === null ? 'Usage unavailable' : `${3 - ipCount} ${ipCount === 2 ? 'slot' : 'slots'} available` }}</small></article>
+      <article><span>SERVER IP SLOTS</span><strong>{{ ipCount === null ? '—' : ipCount }} <em>/ {{ ipLimit ?? '—' }}</em></strong><progress :value="ipCount ?? 0" :max="ipLimit ?? 1" aria-label="Used IP address slots" /><small>{{ ipCount === null || ipLimit === null ? 'Usage unavailable' : `${Math.max(0, ipLimit - ipCount)} ${ipLimit - ipCount === 1 ? 'slot' : 'slots'} available` }}</small></article>
     </div>
     <p v-if="serviceDown" class="health-service-notice" role="status">{{ licenseServiceNotice }}</p>
     <p v-if="licenseError && licenseError !== licenseServiceNotice" class="health-error" role="alert">{{ licenseError }}</p>

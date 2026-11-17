@@ -611,7 +611,7 @@ test('account IP endpoint validates addresses and reports an unconnected license
       method: 'PUT',
       origin,
       authorization: `Bearer ${token}`,
-      body: { addresses: ['192.0.2.1', '192.0.2.2', '192.0.2.3', '192.0.2.4'] },
+      body: { addresses: Array.from({ length: 101 }, (_, i) => `192.0.2.${i}`) },
     }),
     env(),
   )
@@ -647,6 +647,7 @@ test('account IP endpoint proxies reads and updates for the signed-in Discord ac
     LICENSE_API_URL: 'https://licenses.example',
     LICENSE_ADMIN_API_TOKEN: 'server-only-secret',
   })
+
   const readResponse = await worker.fetch(
     request('/account/license-ips', { origin, authorization: 'Bearer ' + token }),
     workerEnv,
@@ -669,6 +670,29 @@ test('account IP endpoint proxies reads and updates for the signed-in Discord ac
   assert.equal(requests[1].options.method, 'PUT')
   assert.equal(requests[1].options.headers.Authorization, 'Bearer ' + workerEnv.LICENSE_ADMIN_API_TOKEN)
   assert.deepEqual(JSON.parse(requests[1].options.body), { addresses: ['203.0.113.9'] })
+})
+
+test('account IP endpoint forwards expanded lists and leaves the limit to licensing', async t => {
+  const token = await createSessionToken(t)
+  const actualFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = actualFetch })
+  const seen = []
+  globalThis.fetch = async (url, options) => {
+    const body = JSON.parse(options.body)
+    seen.push(body)
+    return body.addresses.length <= 10
+      ? Response.json({ addresses: body.addresses, maxAddresses: 10 })
+      : Response.json({ detail: 'Too many addresses' }, { status: 422 })
+  }
+  const config = env({ LICENSE_API_URL: 'https://licenses.example', LICENSE_ADMIN_API_TOKEN: 'server-only-secret' })
+  const call = count => worker.fetch(request('/account/license-ips', {
+    method: 'PUT', origin, authorization: `Bearer ${token}`,
+    body: { addresses: Array.from({ length: count }, (_, i) => `192.0.2.${i + 1}`), tier: 'elite' },
+  }), config)
+  assert.equal((await call(10)).status, 200)
+  assert.equal((await call(11)).status, 422)
+  assert.equal(seen[0].addresses.length, 10)
+  assert.deepEqual(Object.keys(seen[0]), ['addresses'])
 })
 
 test('customer profile sync uses the verified Discord identity, not a browser-supplied ID', async t => {

@@ -1,4 +1,5 @@
 import { hasPermission, resolveAccess } from './access-control.js'
+import { saveTicketRating, staffProgressionRoute } from './staff-progression.js'
 import { trialProducts as trialCatalog } from '../shared/trial-products.mjs'
 
 export function validImageUrl(value) {
@@ -29,6 +30,8 @@ export async function expansionRoute(request, env, suffix, user, access, deps, h
     const parsed = await bodyJson(request, max)
     return parsed.error ? { response: reply({ error: parsed.error }, parsed.status) } : parsed
   }
+  const progression = await staffProgressionRoute(request, env, suffix, user, access, deps, helpers)
+  if (progression) return progression
   if (suffix === '/trial-products' && method === 'GET') {
     return reply({ items: trialCatalog })
   }
@@ -81,12 +84,8 @@ export async function expansionRoute(request, env, suffix, user, access, deps, h
     if (!Number.isInteger(score) || score < 1 || score > 5 || !validText(comment, 0, 2000)) {
       return reply({ error: 'Use a score from 1 to 5 and an optional comment up to 2000 characters' }, 400)
     }
-    const ticket = await db.prepare('SELECT owner_id, status FROM community_tickets WHERE id = ?').bind(match[1]).first()
-    if (!ticket || ticket.owner_id !== user.id) return reply({ error: 'Ticket not found' }, 404)
-    if (ticket.status !== 'closed') return reply({ error: 'Only closed tickets can be rated' }, 409)
-    const saved = await db.prepare("UPDATE community_tickets SET rating_score = ?, rating_comment = ? WHERE id = ? AND owner_id = ? AND status = 'closed'")
-      .bind(score, comment.trim(), match[1], user.id).run()
-    return saved.meta?.changes ? reply({ rating: { score, comment: comment.trim() } }) : reply({ error: 'Ticket is no longer closed' }, 409)
+    const saved = await saveTicketRating(db, match[1], user.id, score, comment.trim(), new Date().toISOString())
+    return reply(saved.status === 200 ? { rating: saved.rating } : { error: saved.error }, saved.status)
   }
   match = suffix.match(/^\/staff\/tickets\/([0-9a-f-]{36})\/(escalation|follow-up)$/i)
   if (match && method === 'PUT') {

@@ -4,7 +4,7 @@ import { staffKnowledge } from './staff-knowledge.js'
 import { handleStaffOperations } from './staff-operations.js'
 import { handleLoyalty } from './loyalty.js'
 import { handleProfiles } from './profiles.js'
-import { handleCoupons } from './coupon-rewards.js'
+import { handleCoupons, handleStaffCoupons } from './coupon-rewards.js'
 
 const productPattern = /^[A-Za-z0-9_.-]{1,64}$/
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -152,6 +152,7 @@ async function bulkGrant(request, env, user, access, send) {
 export async function handleProductTools(request, env, origin, path, deps) {
   const send = (payload, status = 200) => deps.respond(payload, status, origin)
   if (path === '/studio/coupons') return handleCoupons(request, env, origin, deps)
+  if (path === '/studio/staff/coupons') return handleStaffCoupons(request, env, origin, deps)
   if (path === '/studio/profiles' || path.startsWith('/studio/profiles/')) return handleProfiles(request, env, origin, path, deps)
   if (path === '/studio/loyalty' || path === '/studio/loyalty/subclients') return handleLoyalty(request, env, origin, path, deps)
   if (path === '/studio/staff/docs') return staffKnowledge(request, env, origin, deps)

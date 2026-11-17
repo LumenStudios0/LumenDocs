@@ -729,7 +729,7 @@ async function accountLicenseApi(request, env, origin, path) {
   let requestedAddresses
   if (path === '/account/license-ips' && request.method === 'PUT') {
     const body = await request.text()
-    if (body.length > 2000) return respond({ error: 'Request is too large' }, 413, origin)
+    if (body.length > 6000) return respond({ error: 'Request is too large' }, 413, origin)
 
     let payload
     try {
@@ -739,11 +739,11 @@ async function accountLicenseApi(request, env, origin, path) {
     }
     if (
       !Array.isArray(payload?.addresses) ||
-      payload.addresses.length > 3 ||
+      payload.addresses.length > 100 ||
       payload.addresses.some(address => !isValidIpAddress(address)) ||
       new Set(payload.addresses).size !== payload.addresses.length
     ) {
-      return respond({ error: 'Provide up to 3 unique, valid IPv4 or IPv6 addresses' }, 400, origin)
+      return respond({ error: 'Provide up to 100 unique, valid IPv4 or IPv6 addresses' }, 400, origin)
     }
     requestedAddresses = payload.addresses
   }

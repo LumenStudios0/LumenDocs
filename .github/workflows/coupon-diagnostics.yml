@@ -2,6 +2,11 @@ name: Coupon reward diagnostics
 
 on:
   workflow_dispatch:
+    inputs:
+      stream_logs:
+        description: "Also wait up to six minutes for sanitized scheduled-check errors"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -30,7 +35,7 @@ jobs:
           const db = databases.find(row => row.name === 'lumen-community')
           if (!db?.uuid) throw new Error('Community database not found')
           for (const sql of [
-            'SELECT name,status,checked_at FROM coupon_scan_state',
+            'SELECT name,status,error_code,checked_at FROM coupon_scan_state',
             'SELECT kind,state,COUNT(*) AS total FROM coupon_rewards GROUP BY kind,state',
           ]) {
             const result = await call(`${base}/${db.uuid}/query`, { method: 'POST', body: JSON.stringify({ sql }) })
@@ -38,13 +43,14 @@ jobs:
           }
           NODE
       - name: Capture safe scheduled-check diagnostics
+        if: inputs.stream_logs
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set +e
-          timeout 365s npx --yes wrangler@4.160.0 tail lumen-docs-assistant --format json 2>/dev/null \
-            | jq --unbuffered -r '.logs[]?.message | select(.[0] | test("^(Coupon review checks failed:|Loyalty coupon check failed:|Coupon creation could not be confirmed:|Coupon checks failed)$")) | map(select(type == "string")) | join(" ") | select(test("^[A-Za-z0-9 .:()_-]{1,200}$"))'
+          timeout --kill-after=5s 365s npx --yes wrangler@4.160.0 tail lumen-docs-assistant --format json 2>/dev/null \
+            | jq --unbuffered -r '.logs[]?.message | select(.[0] | test("^(Coupon review checks failed:|Loyalty coupon check failed:|Coupon creation could not be confirmed:|Coupon reconciliation failed:|Coupon usage checks failed:|Coupon checks failed)$")) | map(select(type == "string")) | join(" ") | select(test("^[A-Za-z0-9 .:,()_-]{1,200}$"))'
           result=${PIPESTATUS[0]}
           if [ "$result" != "0" ] && [ "$result" != "124" ]; then
             echo "::error::Worker diagnostics stream was unavailable."

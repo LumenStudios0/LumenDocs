@@ -10,7 +10,7 @@ description: Get a Lumen license, connect a purchase, and set up server IPs.
 1. Sign in to the website with the Discord account that should own the license.
 2. Open [My licenses](/account/licenses). Staff-granted licenses appear there without BuiltByBit sign-in. For a BuiltByBit purchase, link the same Discord account on BuiltByBit, then choose **Check Discord purchases** on the license page. If that check is unavailable, choose **Use BuiltByBit sign-in instead**.
 3. Copy your shared Lumen license key from My licenses. Add the same key to the license setting in each eligible plugin; the exact config setting is plugin-specific.
-4. Add your Minecraft server's public IPv4 or IPv6 address under **Manage server IPs**. Up to three unique addresses are allowed. A key with no allowed IP cannot validate.
+4. Add your Minecraft server's public IPv4 or IPv6 address under **Manage server IPs**. My licenses shows your current allowance, including any eligible loyalty benefit when enabled on the licensing service. A key with no allowed IP cannot validate.
 5. Restart the server and check the plugin startup log. If it reports a license problem, open a [License support request](/reports/) with the plugin name and sanitized error message.
 
 Keep the license key private. Never post it, a plugin token, passwords, or a full server config in a support request or public repository. If you claim a BuiltByBit purchase for the first time and receive a new shared key, replace any old keys in your plugin configs and add your server IPs again.

@@ -219,20 +219,20 @@ async function sendReply() {
       error.value = requestError instanceof Error ? requestError.message : 'Could not send reply.'
       checkAvailabilityError(requestError)
     }
-    async function saveRating() {
-      if (!selected.value || submitting.value || !Number.isInteger(Number(ratingScore.value)) || ratingScore.value < 1 || ratingScore.value > 5) return
-      const id = selected.value.id, captured = getDiscordSession()
-      if (!await confirm('Save your support rating for this closed ticket?', { title: 'Rate support', confirmText: 'Save rating' }) || captured !== getDiscordSession()) return
-      submitting.value = true; error.value = ''; notice.value = ''
-      try {
-        await communityRequest(`/tickets/${id}/rating`, { method: 'PUT', body: JSON.stringify({ score: Number(ratingScore.value), comment: ratingComment.value }) })
-        if (captured !== getDiscordSession()) return
-        await openTicket(id)
-        notice.value = error.value ? 'Rating saved, but ticket refresh failed.' : 'Your rating was saved.'
-      } catch (e) { if (captured === getDiscordSession()) error.value = e instanceof Error ? e.message : 'Could not save rating.' }
-      finally { submitting.value = false }
-    }
   }
+  finally { submitting.value = false }
+}
+async function saveRating() {
+  if (!selected.value || selected.value.status !== 'closed' || selected.value.rating || submitting.value || !Number.isInteger(Number(ratingScore.value)) || ratingScore.value < 1 || ratingScore.value > 5) return
+  const id = selected.value.id, captured = getDiscordSession()
+  if (!await confirm('Save your one-time support rating for this closed ticket? It cannot be changed.', { title: 'Rate support', confirmText: 'Save rating' }) || captured !== getDiscordSession()) return
+  submitting.value = true; error.value = ''; notice.value = ''
+  try {
+    await communityRequest(`/tickets/${id}/rating`, { method: 'PUT', body: JSON.stringify({ score: Number(ratingScore.value), comment: ratingComment.value }) })
+    if (captured !== getDiscordSession()) return
+    await openTicket(id)
+    notice.value = error.value ? 'Rating saved, but ticket refresh failed.' : 'Your rating was saved.'
+  } catch (e) { if (captured === getDiscordSession()) error.value = e instanceof Error ? e.message : 'Could not save rating.' }
   finally { submitting.value = false }
 }
 async function savePreferences() {
@@ -334,7 +334,8 @@ onUnmounted(() => { generation++; clearInterval(timer); window.removeEventListen
         <p v-if="!replies.length" class="website-note">Your request is with the support team. Replies will appear here and in your notification center.</p>
         <form v-if="selected.status !== 'closed'" @submit.prevent="sendReply"><label>Reply<RichEditor v-model="reply" required :rows="4" :disabled="submitting" /></label><button class="website-primary" type="submit" :disabled="submitting || !reply.trim()">Send reply</button></form>
         <p v-else class="website-note">This ticket is closed. Create a new ticket if you need further help.</p>
-        <form v-if="selected.status === 'closed'" class="website-panel" @submit.prevent="saveRating"><h3>Rate your support</h3><label>Score<select v-model.number="ratingScore"><option v-for="score in 5" :key="score" :value="score">{{ score }} / 5</option></select></label><label>Comment (optional)<textarea v-model="ratingComment" maxlength="1000" rows="3" /></label><button type="submit" :disabled="submitting">{{ selected.rating ? 'Update rating' : 'Save rating' }}</button></form>
+        <form v-if="selected.status === 'closed' && !selected.rating" class="website-panel" @submit.prevent="saveRating"><h3>Rate your support</h3><p class="website-note">Choose one rating from 1–5 stars. Your rating cannot be changed after it is saved.</p><label>Score<select v-model.number="ratingScore"><option v-for="score in 5" :key="score" :value="score">{{ score }} / 5</option></select></label><label>Comment (optional)<textarea v-model="ratingComment" maxlength="1000" rows="3" /></label><button type="submit" :disabled="submitting">Save rating</button></form>
+        <p v-else-if="selected.status === 'closed' && selected.rating" class="website-note">Your rating: {{ selected.rating.score }} / 5<span v-if="selected.rating.comment"> · {{ selected.rating.comment }}</span></p>
       </section>
       <template v-else>
         <div class="ticket-toolbar"><div><h3>Your conversations</h3><p class="website-note">{{ serviceReady ? `${total} private ${total === 1 ? 'ticket' : 'tickets'}` : 'Tickets have not loaded' }} · Linked automatically to your Discord account</p></div><button class="website-primary" type="button" :disabled="submitting" @click="showComposer = !showComposer">{{ showComposer ? 'Cancel new ticket' : '+ New ticket' }}</button></div>

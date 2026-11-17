@@ -4,6 +4,7 @@ import { runProductChecks } from './product-tools.js'
 import { runCouponChecks } from './coupon-rewards.js'
 import { activityCustomerName, estimatedWait, staffEditorEligibilitySql, ticketWaitEstimates } from './staff-operations.js'
 import { messageProfiles } from './profiles.js'
+import { ticketClosureStatements } from './staff-progression.js'
 
 const STATUS_VALUES = new Set(['operational', 'degraded', 'outage', 'maintenance'])
 const SERVICES = [
@@ -296,12 +297,13 @@ async function addReply(request, env, user, deps, id, isStaff) {
   const now = new Date().toISOString()
   const replyId = crypto.randomUUID()
   const statements = [env.COMMUNITY_DB.prepare(
-    `INSERT INTO community_replies (id, ticket_id, author_id, author_name, staff, body, created_at)
-     SELECT ?, ?, ?, ?, ?, ?, ?
+    `INSERT INTO community_replies (id, ticket_id, author_id, author_name, staff, body, created_at, assignee_id)
+     SELECT ?, ?, ?, ?, ?, ?, ?, ?
      WHERE EXISTS (SELECT 1 FROM community_tickets WHERE id=? AND status!='closed')
      AND (? = 0 OR NOT EXISTS (SELECT 1 FROM staff_ticket_editors e WHERE ticket_id=? AND member_id!=? AND expires_at>?
        AND ${staffEditorEligibilitySql(env)}))`,
   ).bind(replyId, id, user.id, user.globalName || user.username, isStaff ? 1 : 0, cleanText(parsed.value.body), now,
+    isStaff ? ticket.assignee_id : null,
     id, isStaff ? 1 : 0, id, user.id, now),
   env.COMMUNITY_DB.prepare('UPDATE community_tickets SET status = ?, updated_at = ? WHERE id = ? AND EXISTS (SELECT 1 FROM community_replies WHERE id=?)').bind(
     isStaff ? 'waiting' : 'open', now, id, replyId,
@@ -532,6 +534,7 @@ async function updateStaffTicket(request, env, deps, id, user) {
   const assignedName = assigneeId === user.id ? user.globalName || user.username
     : assigneeId === row.assignee_id ? row.assignee_name : assigneeId ? 'Studio staff' : null
   const now = new Date().toISOString()
+  const closingNow = row.status !== 'closed' && body.status === 'closed'
   const results = await env.COMMUNITY_DB.batch([env.COMMUNITY_DB.prepare(
     'UPDATE community_tickets SET status = ?, assignee_id = ?, assignee_name = ?, labels = ?, title = ?, updated_at = ?, follow_up_hours = ? WHERE id = ?',
   ).bind(body.status, assigneeId, assignedName, JSON.stringify([...new Set(labels.map(label => label.trim().toLowerCase()))]),
@@ -542,7 +545,11 @@ async function updateStaffTicket(request, env, deps, id, user) {
     env.COMMUNITY_DB.prepare(`INSERT INTO staff_presence(member_id,last_online,last_did,last_activity_at)
       SELECT ?,?,?,? WHERE changes()=1
       ON CONFLICT(member_id) DO UPDATE SET last_online=excluded.last_online,last_did=excluded.last_did,last_activity_at=excluded.last_activity_at`)
-      .bind(user.id, now, `${body.status === 'closed' ? 'Closed' : 'Updated'} ${activityCustomerName(row.owner_name)}'s ticket`, now)])
+      .bind(user.id, now, `${body.status === 'closed' ? 'Closed' : 'Updated'} ${activityCustomerName(row.owner_name)}'s ticket`, now),
+    ...ticketClosureStatements(env.COMMUNITY_DB, {
+      ticketId: id, staffId: user.id, now,
+      eligibleAtRequest: closingNow && row.assignee_id === user.id,
+    })])
   const result = results[0]
   return result.meta?.changes === 0 ? json(request, { error: 'Ticket not found' }, 404, deps.respond) : json(request, { ok: true }, 200, deps.respond)
 }
@@ -1027,6 +1034,7 @@ export async function handleCommunity(request, env, origin, path, deps) {
   if (privateResponse) return privateResponse
   if (staffPath) {
     const permission = suffix === '/staff/members' || suffix === '/staff/tickets' && request.method === 'GET' ? 'tickets.view'
+      : suffix === '/staff/progression' ? 'tickets.view'
       : /^\/staff\/tickets\/[^/]+\/alert$/.test(suffix) ? 'tickets.alerts'
         : /^\/staff\/tickets\/[0-9a-f-]{36}\/escalation$/i.test(suffix) ? 'tickets.escalate'
         : suffix.startsWith('/staff/tickets/') ? 'tickets.manage'

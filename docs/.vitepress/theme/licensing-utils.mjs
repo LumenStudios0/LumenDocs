@@ -85,10 +85,12 @@ export function normalizeIpAddress(address) {
   }
 }
 
-/** @param {string} value */
-export function parseIpAllowlist(value) {
+/** @param {string} value
+ * @param {number} limit
+ */
+export function parseIpAllowlist(value, limit = 3) {
   const entries = value.split(/[\n,]+/).map(entry => entry.trim()).filter(Boolean)
-  if (entries.length > 3) throw new Error('Use no more than three IP addresses.')
+  if (entries.length > limit) throw new Error(`Use no more than ${limit === 3 ? 'three' : limit} IP addresses.`)
   const addresses = entries.map(entry => {
     const address = normalizeIpAddress(entry)
     if (!address) throw new Error(`Not a valid IPv4 or IPv6 address: ${entry}`)

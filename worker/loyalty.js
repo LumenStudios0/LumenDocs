@@ -11,7 +11,7 @@ const productPattern = /^[A-Za-z0-9_.-]{1,64}$/
 
 export async function activeOwnership(env, id) {
   const result = await licensingRequest(env, `/customers/${encodeURIComponent(id)}`)
-  if (result.status === 404) return []
+  if (result.status === 404 && result.data?.detail === 'Customer account not found') return []
   const data = result.data
   if (!result.ok || data?.customerDiscordId !== id || !Array.isArray(data.products) ||
       typeof data.verificationRequired !== 'boolean' || typeof data.status !== 'string') throw new Error('Invalid customer access response')
