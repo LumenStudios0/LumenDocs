@@ -88,6 +88,7 @@ export default defineConfig({
             { text: 'My licenses', link: '/account/licenses' },
             { text: 'Products purchased', link: '/account/products' },
             { text: 'Lumen Loyalty', link: '/account/loyalty' },
+            { text: 'Lumen Points', link: '/account/points' },
             { text: 'Coupons', link: '/account/coupons' },
             { text: 'Member directory', link: '/members/' },
             { text: 'My profile', link: '/account/profile' },

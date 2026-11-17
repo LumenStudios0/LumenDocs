@@ -1,4 +1,5 @@
 import { MEMBER_PERMISSIONS, PERMISSIONS, ROLES } from '../shared/permissions.mjs'
+import { ensurePointsAccount } from './points-account.js'
 
 export const OWNER_DISCORD_ID = '1400375985211441242'
 const LEAD_DISCORD_ID = '1012053634911064114'
@@ -87,6 +88,7 @@ export async function rememberMember(user, env) {
      ON CONFLICT(discord_id) DO UPDATE SET username=excluded.username, display_name=excluded.display_name,
        last_seen_at=excluded.last_seen_at, registered_at=COALESCE(website_members.registered_at, excluded.registered_at)`,
   ).bind(user.id, user.username, user.globalName || user.username, now, now).run()
+  await ensurePointsAccount(env.COMMUNITY_DB, user.id)
 }
 
 export async function getStaffMembers(env) {
