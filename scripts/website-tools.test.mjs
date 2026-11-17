@@ -1,10 +1,60 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
+import { runInNewContext } from 'node:vm'
+import { parse, compileScript } from '@vue/compiler-sfc'
+import { transform } from 'esbuild'
 import { checkCompatibility, compareVersions, versionParts } from '../docs/.vitepress/theme/compatibility-utils.mjs'
 import { clearBookmarks, readBookmarks, toggleBookmark, validBookmarkPath } from '../docs/.vitepress/theme/doc-bookmarks.mjs'
 import { communityAvailabilityError, CommunityUnavailableError } from '../docs/.vitepress/theme/community-errors.mjs'
 import { clearStaffPreferences, readStaffPreferences, toggleStaffPreference, readStaffWidgets, setStaffWidget, clearStaffWidgets } from '../docs/.vitepress/theme/staff-preferences.mjs'
 import { mergeStaffDrafts } from '../docs/.vitepress/theme/staff-operation-drafts.mjs'
+
+test('notification bell exposes mark-all to the template, persists reads, and preserves unread state on failure', async () => {
+  const source = await readFile(new URL('../docs/.vitepress/theme/NotificationBell.vue', import.meta.url), 'utf8')
+  const script = compileScript(parse(source).descriptor, { id: 'notification-bell-test' })
+  const { code } = await transform(script.content, { loader: 'ts', format: 'cjs' })
+  let rejected = false, remoteUnread = 2, posts = 0, events = 0
+  const module = { exports: {} }
+  const modules = {
+    vue: { defineComponent: value => value, ref: value => ({ value }), computed: read => ({ get value() { return read() } }),
+      onMounted() {}, onUnmounted() {}, watch() {} },
+    vitepress: { useRoute: () => ({ path: '/account/' }), useRouter: () => ({ go() {} }), withBase: value => value },
+    './discord-session': { getDiscordSession: () => 'verified-test-session' },
+    './community-api': { communityDate: value => value, communityRequest: async (path, init) => {
+      if (init?.method === 'POST') {
+        assert.equal(path, '/notifications/read-all')
+        posts++
+        if (rejected) throw new Error('Read update was rejected.')
+        remoteUnread = 0
+        return { ok: true, marked: 2 }
+      }
+      return { unreadTotal: remoteUnread, items: [{ id: 'test-notification', read: remoteUnread === 0 }] }
+    } },
+  }
+  runInNewContext(code, { module, exports: module.exports, require: name => {
+    if (!(name in modules)) throw new Error(`Unexpected dependency: ${name}`)
+    return modules[name]
+  }, document: { hidden: false }, window: { dispatchEvent() { events++ } }, Event, Error })
+  const bell = module.exports.default.setup({ open: true }, { expose() {}, emit() {} })
+  assert.equal(typeof bell.markAllRead, 'function', 'The template must receive the click handler, not a nested function')
+  bell.unread.value = 2
+  bell.items.value = [{ id: 'test-notification', read: false }]
+  await bell.markAllRead()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(posts, 1)
+  assert.equal(events, 1)
+  assert.equal(bell.unread.value, 0)
+  assert.equal(bell.items.value[0].read, true)
+  rejected = true
+  bell.unread.value = 2
+  bell.items.value[0].read = false
+  await bell.markAllRead()
+  assert.equal(posts, 2)
+  assert.equal(bell.unread.value, 2)
+  assert.equal(bell.items.value[0].read, false)
+  assert.match(bell.error.value, /rejected/)
+})
 
 test('missing Worker routes are connection failures, not missing user tickets', () => {
   for (const path of ['/status', '/tickets', '/staff/tickets', '/issues', '/preferences']) {

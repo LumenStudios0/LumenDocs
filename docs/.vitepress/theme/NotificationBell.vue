@@ -57,23 +57,26 @@ async function openNotification(notification: Notification) {
       if (unread.value !== null) unread.value = Math.max(0, unread.value - 1)
       window.dispatchEvent(new Event('lumen-notifications-changed'))
     }
-    async function markAllRead() {
-      if (opening.value || loading.value || !unread.value) return
-      const token = getDiscordSession()
-      opening.value = true; error.value = ''
-      try {
-        await communityRequest('/notifications/read-all', { method: 'POST' })
-        if (!alive || token !== getDiscordSession()) return
-        window.dispatchEvent(new Event('lumen-notifications-changed'))
-      } catch (requestError) {
-        if (alive && token === getDiscordSession()) error.value = requestError instanceof Error ? requestError.message : 'Could not mark notifications read.'
-      } finally { opening.value = false; if (alive && !error.value) void refresh() }
-    }
     if (!alive || token !== getDiscordSession()) return
     emit('update:open', false)
     await router.go(withBase(notification.link))
   } catch (requestError) {
     if (alive && token === getDiscordSession()) error.value = requestError instanceof Error ? requestError.message : 'Could not open notification.'
+  } finally { opening.value = false; if (alive && !error.value) void refresh() }
+}
+async function markAllRead() {
+  if (opening.value || loading.value || !unread.value) return
+  const token = getDiscordSession()
+  opening.value = true
+  error.value = ''
+  try {
+    await communityRequest('/notifications/read-all', { method: 'POST' })
+    if (!alive || token !== getDiscordSession()) return
+    for (const notification of items.value) notification.read = true
+    unread.value = 0
+    window.dispatchEvent(new Event('lumen-notifications-changed'))
+  } catch (requestError) {
+    if (alive && token === getDiscordSession()) error.value = requestError instanceof Error ? requestError.message : 'Could not mark notifications read.'
   } finally { opening.value = false; if (alive && !error.value) void refresh() }
 }
 function outside(event: PointerEvent) {
