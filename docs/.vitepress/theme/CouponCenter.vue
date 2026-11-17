@@ -4,7 +4,7 @@ import { useRouter, withBase } from 'vitepress'
 import { getDiscordSession } from './discord-session'
 import { studioRequest } from './studio-api'
 
-interface Coupon { id: string; kind: 'loyalty' | 'review' | 'manual' | 'shop'; discount: number; state: 'issuing' | 'issued' | 'failed' | 'uncertain'; code: string | null; retryAt: string | null; createdAt: string; uses: number; resourceIds: string[] }
+interface Coupon { id: string; kind: 'loyalty' | 'review' | 'manual' | 'shop'; discount: number; state: 'issuing' | 'issued' | 'failed' | 'uncertain'; code: string | null; retryAt: string | null; createdAt: string; uses: number; allResources: boolean; resourceIds: string[] }
 interface Check { status: 'pending' | 'ok' | 'error'; code: string | null; checkedAt: string | null }
 interface Member { id: string; username: string; displayName: string }
 const props = defineProps<{ staff?: boolean }>()
@@ -120,7 +120,7 @@ onUnmounted(() => { generation++; memberGeneration++; window.removeEventListener
       <p v-if="!staff && !coupons.length">No coupons have been issued to this account yet. Eligibility is checked periodically.</p>
       <article v-for="coupon in (staff ? [] : coupons)" :key="coupon.id">
         <div><strong>{{ coupon.discount }}% {{ coupon.kind === 'shop' ? 'points-shop reward' : coupon.kind === 'review' ? 'review reward' : coupon.kind === 'manual' ? 'staff-granted coupon' : 'loyalty reward' }}</strong><p>{{ coupon.kind !== 'loyalty' ? 'One total use.' : 'Permanent coupon.' }} BuiltByBit checks availability and usage limits at checkout.</p><p v-if="coupon.state === 'issued'">{{ coupon.uses }} recorded use{{ coupon.uses === 1 ? '' : 's' }}. Usage updates periodically.</p></div>
-        <div v-if="coupon.state === 'issued' && coupon.code"><code>{{ coupon.code }}</code><p>Eligible BuiltByBit products: <a v-for="id in coupon.resourceIds" :key="id" :href="`https://builtbybit.com/resources/${id}/`" target="_blank" rel="noopener noreferrer">Product #{{ id }} </a></p></div>
+        <div v-if="coupon.state === 'issued' && coupon.code"><code>{{ coupon.code }}</code>        <p v-if="coupon.allResources">Eligible on all Lumen creator resources on BuiltByBit, including new releases.</p><p v-else>Eligible BuiltByBit products: <a v-for="id in coupon.resourceIds" :key="id" :href="`https://builtbybit.com/resources/${id}/`" target="_blank" rel="noopener noreferrer">Product #{{ id }} </a></p></div>
         <p v-else-if="coupon.state === 'failed' && coupon.retryAt" class="coupon-error">BuiltByBit declined this request. We will retry automatically; contact support if it continues.</p>
         <p v-else-if="coupon.state === 'failed'" class="coupon-error">BuiltByBit declined this request. Contact support.</p>
         <p v-else class="coupon-error">Coupon issuance is pending or could not be confirmed. If it does not resolve, contact support; do not request another code.</p>

@@ -88,7 +88,7 @@ test('coupon checks issue private single-use review and permanent loyalty reward
       issued.set(posts.length, body)
       return Response.json({ result: 'success', data: { coupon: {
         coupon_id: posts.length, label: `123-${body.label}`, discount: body.discount / 100, percent: true, active: true,
-        max_uses: body.max_uses || 0, max_per_user_uses: 0, expires_at: 0, all_content_types: [],
+        max_uses: body.max_uses || 0, max_per_user_uses: 0, expires_at: 0, all_content_types: body.all_content_types,
       } } })
     }
     if (url.hostname === 'api.builtbybit.com' && url.pathname.endsWith('/coupons/entries')) {
@@ -107,10 +107,11 @@ test('coupon checks issue private single-use review and permanent loyalty reward
   assert.equal(posts.length, 2)
   assert.equal(posts.find(post => post.discount === 10).max_uses, 1)
   assert.equal(posts.find(post => post.discount === 5).limited_uses, false)
-  assert.ok(posts.every(post => post.do_expiry === false && post.resources === '1001,1002'))
+  assert.ok(posts.every(post => post.do_expiry === false && post.resources === undefined && JSON.stringify(post.all_content_types) === '["resource"]'))
   const result = await (await call('/studio/coupons', 'GET', undefined, customer)).json()
   assert.deepEqual(result.coupons.map(item => item.kind).sort(), ['loyalty', 'review'])
   assert.ok(result.coupons.every(item => item.state === 'issued' && /^123-[A-F0-9]{14}$/.test(item.code)))
+  assert.ok(result.coupons.every(item => item.allResources && item.resourceIds.length === 0))
   assert.deepEqual((await (await call('/studio/coupons', 'GET', undefined, owner)).json()).coupons, [])
   assert.equal((await call('/studio/coupons', 'GET', undefined, '')).status, 401)
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM community_notifications WHERE recipient_id=? AND link='/account/coupons'").get(customer).n, 2)
@@ -268,7 +269,7 @@ test('Support can grant audited one-use coupons without granting licensing power
     assert.equal(body.limited_uses, true)
     assert.equal(body.discount, 50)
     return Response.json({ result: 'success', data: { coupon: { coupon_id: 1, label: `123-${body.label}`,
-      discount: .5, percent: true, active: true, all_content_types: [], expires_at: 0, max_uses: 1, max_per_user_uses: 0 } } })
+      discount: .5, percent: true, active: true, all_content_types: body.all_content_types, expires_at: 0, max_uses: 1, max_per_user_uses: 0 } } })
   }
   const body = { userId: customer, discount: 50, reason: 'Ticket resolution reward', requestId: crypto.randomUUID() }
   assert.equal((await call('/studio/staff/coupons', 'POST', body, customer)).status, 403)
@@ -366,7 +367,7 @@ test('Owner can grant customer coupons without farming XP while new Support stil
     const body = JSON.parse(options.body)
     assert.equal(body.discount, 1)
     return Response.json({ result: 'success', data: { coupon: { coupon_id: 1, label: `123-${body.label}`,
-      discount: .01, percent: true, active: true, all_content_types: [], expires_at: 0, max_uses: 1, max_per_user_uses: 0 } } })
+      discount: .01, percent: true, active: true, all_content_types: body.all_content_types, expires_at: 0, max_uses: 1, max_per_user_uses: 0 } } })
   }
   const access = await (await call('/studio/coupons')).json()
   assert.equal(access.staffLevel, 1)
@@ -404,7 +405,7 @@ test('review rewards tolerate omitted optional ban flags and verify missing auth
       posts++
       const body = JSON.parse(options.body)
       return Response.json({ result: 'success', data: { coupon: { coupon_id: posts, label: `123-${body.label}`,
-        discount: .1, percent: true, active: true, all_content_types: [], expires_at: 0, max_uses: 1, max_per_user_uses: 0 } } })
+        discount: .1, percent: true, active: true, all_content_types: body.all_content_types, expires_at: 0, max_uses: 1, max_per_user_uses: 0 } } })
     }
     if (url.pathname.endsWith('/coupons')) return Response.json({ result: 'success', data: { coupons: [{ coupon_id: 1, uses: 0 }, { coupon_id: 2, uses: 0 }] } })
     if (url.pathname.endsWith('/products')) return Response.json({ items: [], total: 0 })
@@ -480,6 +481,36 @@ test('uncertain coupons recover read-only with verified allowed products, reject
   assert.equal(result.coupons[0].state, 'issued')
   assert.equal(result.coupons[0].code, '123-ABCDEF12345678')
   assert.deepEqual(result.coupons[0].resourceIds, ['1001'])
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM community_notifications WHERE title='Your coupon is ready'").get().n, 1)
+})
+
+test('all-resource coupon reconciliation verifies provider scope without creating a replacement', async t => {
+  const { env, sqlite, customer, call } = await fixture(t)
+  env.BUILDBYBIT_API_AUTHORIZATION = 'private-test-token'; env.BUILDBYBIT_RESOURCE_IDS = '1001'
+  sqlite.prepare(`INSERT INTO coupon_rewards(reward_key,user_id,kind,discount,state,label_suffix,created_at,updated_at,all_resources)
+    VALUES ('review:new',?,'review',10,'uncertain','ABCDEF12345678','2026-01-01','2026-01-01',1)`).run(customer)
+  const previous = globalThis.fetch
+  t.after(() => { globalThis.fetch = previous })
+  let scope = ['resource', 'bundle']
+  globalThis.fetch = async (input, options = {}) => {
+    assert.notEqual(options.method, 'POST')
+    const url = new URL(input)
+    if (url.pathname.endsWith('/reviews')) return Response.json({ result: 'success', data: {
+      reviews: [], stats: { total: 0, page: 1, per_page: 100, max_page: 0 },
+    } })
+    if (url.pathname.endsWith('/coupons/entries')) throw new Error('All-resource coupons do not require entries')
+    return Response.json({ result: 'success', data: { coupons: [{ coupon_id: 1, label: '123-ABCDEF12345678',
+      discount: .1, percent: true, active: true, all_content_types: scope, expires_at: 0, max_uses: 1, max_per_user_uses: 0, uses: 0 }],
+      stats: { total: 1, page: 1, per_page: 100, max_page: 1 } } })
+  }
+  await runCouponChecks(env)
+  assert.equal(sqlite.prepare("SELECT state FROM coupon_rewards WHERE reward_key='review:new'").get().state, 'uncertain')
+  scope = ['resource']
+  await runCouponChecks(env)
+  const result = await (await call('/studio/coupons', 'GET', undefined, customer)).json()
+  assert.equal(result.coupons[0].state, 'issued')
+  assert.equal(result.coupons[0].allResources, true)
+  assert.deepEqual(result.coupons[0].resourceIds, [])
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM community_notifications WHERE title='Your coupon is ready'").get().n, 1)
 })
 

@@ -100,7 +100,8 @@ function confirmedCoupon(coupon, reward, label) {
   return marketplaceId(coupon?.coupon_id) && typeof coupon.label === 'string' &&
     new RegExp(`^[1-9]\\d*-${label}$`, 'i').test(coupon.label) &&
     coupon.percent === true && coupon.discount === reward.discount / 100 && coupon.active === true &&
-    Array.isArray(coupon.all_content_types) && coupon.all_content_types.length === 0 &&
+    Array.isArray(coupon.all_content_types) &&
+    (reward.all_resources ? coupon.all_content_types.length === 1 && coupon.all_content_types[0] === 'resource' : coupon.all_content_types.length === 0) &&
     (coupon.expires_at === null || coupon.expires_at === 0) &&
     (coupon.max_per_user_uses === null || coupon.max_per_user_uses === 0) &&
     (reward.kind !== 'loyalty' ? coupon.max_uses === 1 : coupon.max_uses === null || coupon.max_uses === 0)
@@ -108,7 +109,7 @@ function confirmedCoupon(coupon, reward, label) {
 
 async function reconcileCoupons(env, resources) {
   const pending = (await env.COMMUNITY_DB.prepare(
-    "SELECT reward_key,user_id,kind,discount,label_suffix FROM coupon_rewards WHERE state='uncertain' ORDER BY updated_at LIMIT 5",
+    "SELECT reward_key,user_id,kind,discount,label_suffix,all_resources FROM coupon_rewards WHERE state='uncertain' ORDER BY updated_at LIMIT 5",
   ).all()).results || []
   if (!pending.length) return
   const coupons = []
@@ -139,7 +140,7 @@ async function reconcileCoupons(env, resources) {
     }
     const coupon = matches[0]
     let scope
-    try { scope = await verifyScope(env, coupon.coupon_id, resources) } catch (error) {
+    try { scope = reward.all_resources ? [] : await verifyScope(env, coupon.coupon_id, resources) } catch (error) {
       verificationError = error
       await env.COMMUNITY_DB.prepare("UPDATE coupon_rewards SET updated_at=? WHERE reward_key=? AND state='uncertain'")
         .bind(new Date().toISOString(), reward.reward_key).run()
@@ -161,10 +162,10 @@ async function reconcileCoupons(env, resources) {
 
 async function issue(env, resources, reward) {
   const now = new Date().toISOString()
-  let label = suffix()
+  let label = suffix(), allResources = 1
   const reservation = env.COMMUNITY_DB.prepare(
-    `INSERT OR IGNORE INTO coupon_rewards(reward_key,user_id,kind,discount,state,label_suffix,created_at,updated_at,granted_by,grant_reason)
-     VALUES (?,?,?,?,'issuing',?,?,?,?,?)`,
+    `INSERT OR IGNORE INTO coupon_rewards(reward_key,user_id,kind,discount,state,label_suffix,created_at,updated_at,granted_by,grant_reason,all_resources)
+     VALUES (?,?,?,?,'issuing',?,?,?,?,?,1)`,
   ).bind(reward.key, reward.userId, reward.kind, reward.discount, label, now, now, reward.actor?.id || null, reward.reason || null)
   const reserved = reward.actor ? (await env.COMMUNITY_DB.batch([reservation, env.COMMUNITY_DB.prepare(
     `INSERT INTO website_access_audit(id,actor_id,actor_role,action,target,details,created_at)
@@ -178,15 +179,17 @@ async function issue(env, resources, reward) {
        WHERE reward_key=? AND user_id=? AND kind=? AND discount=? AND state='failed' AND retry_at IS NOT NULL AND retry_at<=?`,
     ).bind(now, reward.key, reward.userId, reward.kind, reward.discount, now).run()
     if (!retried.meta.changes) return
-    const row = await env.COMMUNITY_DB.prepare('SELECT label_suffix FROM coupon_rewards WHERE reward_key=?').bind(reward.key).first()
+    const row = await env.COMMUNITY_DB.prepare('SELECT label_suffix,all_resources FROM coupon_rewards WHERE reward_key=?').bind(reward.key).first()
     if (!row?.label_suffix) throw new Error('Coupon reservation is missing')
     label = row.label_suffix
+    allResources = row.all_resources
   }
   let state = 'uncertain', code = null, couponId = null, retryAt = null, scope = []
   try {
     const singleUse = reward.kind !== 'loyalty'
-    const body = { type: 'percent', discount: reward.discount, label, resources: resources.join(','),
-      do_expiry: false, limited_user_uses: false, all_content_types: [],
+    const body = { type: 'percent', discount: reward.discount, label,
+      ...(allResources ? {} : { resources: resources.join(',') }),
+      do_expiry: false, limited_user_uses: false, all_content_types: allResources ? ['resource'] : [],
       limited_uses: singleUse, ...(singleUse ? { max_uses: 1 } : {}) }
     const result = await marketplace(env, 'coupons', { method: 'POST', body: JSON.stringify(body) })
     if (!result.ok && [401, 403, 429].includes(result.status)) {
@@ -194,8 +197,8 @@ async function issue(env, resources, reward) {
     } else if (!result.ok && [400, 422].includes(result.status)) state = 'failed'
     else if (result.ok && result.data?.result === 'success') {
       const coupon = result.data?.data?.coupon
-      if (confirmedCoupon(coupon, reward, label)) {
-        scope = await verifyScope(env, coupon.coupon_id, resources)
+      if (confirmedCoupon(coupon, { ...reward, all_resources: allResources }, label)) {
+        scope = allResources ? [] : await verifyScope(env, coupon.coupon_id, resources)
         state = 'issued'; code = coupon.label; couponId = Number(coupon.coupon_id)
       }
     }
@@ -378,7 +381,7 @@ export async function handleCoupons(request, env, origin, deps) {
     const page = Number(rawPage), pageSize = 20
     const total = await env.COMMUNITY_DB.prepare('SELECT COUNT(*) AS n FROM coupon_rewards WHERE user_id=?').bind(user.id).first()
     const rows = (await env.COMMUNITY_DB.prepare(
-      'SELECT reward_key,kind,discount,state,code,retry_at,created_at,uses,scope_ids FROM coupon_rewards WHERE user_id=? ORDER BY created_at DESC,reward_key DESC LIMIT ? OFFSET ?',
+      'SELECT reward_key,kind,discount,state,code,retry_at,created_at,uses,scope_ids,all_resources FROM coupon_rewards WHERE user_id=? ORDER BY created_at DESC,reward_key DESC LIMIT ? OFFSET ?',
     ).bind(user.id, pageSize, (page - 1) * pageSize).all()).results || []
     const checks = (await env.COMMUNITY_DB.prepare(
       "SELECT name,status,error_code,checked_at FROM coupon_scan_state WHERE name IN ('loyalty','reviews','usage','reconciliation')",
@@ -388,7 +391,7 @@ export async function handleCoupons(request, env, origin, deps) {
     const canManageCoupons = access.rank >= 3 && hasPermission(access, 'coupons.grant') && hasPermission(access, 'dashboard.view')
     return send({ configured, staffLevel: progress?.level || null, canManageCoupons,
       canGrant: canManageCoupons && (access.rank >= 6 || progress.level >= 2),
-      coupons: rows.map(row => ({ id: row.reward_key, kind: row.reward_key.startsWith('shop:') ? 'shop' : row.kind, discount: row.discount, state: row.state, code: row.code, retryAt: row.retry_at, createdAt: row.created_at, uses: row.uses, resourceIds: JSON.parse(row.scope_ids) })), page, pageSize, total: total.n,
+      coupons: rows.map(row => ({ id: row.reward_key, kind: row.reward_key.startsWith('shop:') ? 'shop' : row.kind, discount: row.discount, state: row.state, code: row.code, retryAt: row.retry_at, createdAt: row.created_at, uses: row.uses, allResources: Boolean(row.all_resources), resourceIds: JSON.parse(row.scope_ids) })), page, pageSize, total: total.n,
       checks: Object.fromEntries(checks.map(row => [row.name, { status: row.status, code: row.error_code, checkedAt: row.checked_at }])) })
   } catch (error) {
     console.error('Coupon list failed:', error instanceof Error ? error.message : 'Unknown error')

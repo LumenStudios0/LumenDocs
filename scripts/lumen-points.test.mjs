@@ -280,7 +280,7 @@ test('350 LP buys a 20% coupon once; uncertain delivery reconciles and rejected 
       assert.equal(body.discount, 20)
       return Response.json({ result: 'success', data: { coupon: {
         coupon_id: 88, label: `88-${body.label}`, percent: true, discount: body.discount / 100, active: true,
-        all_content_types: [], expires_at: null, max_per_user_uses: null, max_uses: 1,
+        all_content_types: body.all_content_types, expires_at: null, max_per_user_uses: null, max_uses: 1,
       } } })
     }
     if (url.pathname.endsWith('/coupons/entries')) return Response.json({ result: 'success', data: {

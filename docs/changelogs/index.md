@@ -29,7 +29,8 @@ Customer-facing changes from November 14-17, covering the latest 88-hour roundup
 - Account IP allowances are **3 by default**, increasing to **4 / 5 / 7 / 10** by tier. Check your account for your current allowance.
 - Eligible tiers unlock shared plugin downloads and animated profile cosmetics. Sharing downloads does not transfer ownership or license access.
 - Coupons now have their own account section, separate from Loyalty. Eligible loyalty tiers and verified BuiltByBit reviews can earn coupons; support can also gift coupons.
-- Coupon cards show eligible products, and a private notification tells you when your coupon is used. Usage alerts do not identify the buyer.
+- New coupons work on all Lumen creator resources on BuiltByBit, including future releases. Older coupons show their verified eligible products; they may still be limited to those products.
+- A private notification tells you when your coupon is used. Usage alerts do not identify the buyer.
 
 #### Profiles and appearance
 
