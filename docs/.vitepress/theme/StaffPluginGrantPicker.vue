@@ -4,6 +4,7 @@ import { computed, ref } from 'vue'
 const props = defineProps<{
   options: { id: string; productId: string; name: string; reason: string }[]
   modelValue: string[]
+  ownedProductIds: string[]
   disabled: boolean
 }>()
 const emit = defineEmits<{ 'update:modelValue': [value: string[]] }>()
@@ -11,6 +12,7 @@ const search = ref('')
 const registered = computed(() => props.options
   .filter((option, index, options) => options.findIndex(item => item.productId === option.productId) === index))
 const available = computed(() => registered.value.filter(option => !option.reason))
+const missing = computed(() => available.value.filter(option => !props.ownedProductIds.includes(option.productId)))
 const filtered = computed(() => registered.value.filter(option => option.name.toLowerCase().includes(search.value.trim().toLowerCase())))
 const canSelectVisible = computed(() => filtered.value.some(option => !option.reason && !props.modelValue.includes(option.productId)))
 
@@ -26,6 +28,9 @@ function selectVisible() {
 }
 function clear() {
   if (!props.disabled) emit('update:modelValue', [])
+}
+function selectMissing() {
+  if (!props.disabled) emit('update:modelValue', missing.value.map(option => option.productId))
 }
 </script>
 
@@ -45,6 +50,8 @@ function clear() {
         <button type="button" :disabled="disabled || !modelValue.length" @click="clear">Clear</button>
       </div>
     </div>
+    <button class="grant-picker-missing" type="button" :disabled="disabled || !missing.length" @click="selectMissing">Only give missing plugins <span>{{ missing.length }}</span></button>
+    <p v-if="!missing.length && available.length" class="grant-picker-hint" role="status">This customer already has active access to every available plugin.</p>
     <fieldset class="grant-picker-list" :disabled="disabled">
       <legend class="grant-picker-sr-only">Plugins to grant</legend>
       <label v-for="option in filtered" :key="option.productId" class="grant-picker-option" :class="{ 'is-selected': modelValue.includes(option.productId), 'is-unavailable': disabled || !!option.reason }">
@@ -71,6 +78,8 @@ function clear() {
 .grant-picker-tools { justify-content: space-between; flex-wrap: wrap; margin: 12px 0; color: var(--vp-c-text-2); font-size: .7rem; }
 .grant-picker .grant-picker-tools button { padding: 4px 7px; border: 0; background: transparent; color: var(--vp-c-brand-1); font: inherit; font-weight: 600; cursor: pointer; }
 .grant-picker button:disabled { opacity: .45; cursor: not-allowed; }
+.grant-picker .grant-picker-missing { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; margin-bottom: 12px; padding: 11px 12px; border: 1px solid var(--lumen-card-border); border-radius: 9px; background: var(--vp-c-brand-soft); color: var(--vp-c-brand-1); font: inherit; font-size: .75rem; font-weight: 650; cursor: pointer; }
+.grant-picker-missing span { padding: 2px 7px; border-radius: 5px; background: var(--vp-c-bg); font-size: .68rem; font-variant-numeric: tabular-nums; }
 .grant-picker-list { display: grid; align-content: start; gap: 7px; min-width: 0; max-height: 340px; margin: 0; padding: 3px; overflow-y: auto; overscroll-behavior: contain; border: 0; scrollbar-width: thin; scrollbar-color: var(--vp-c-divider) transparent; }
 .grant-picker-option { display: flex; align-items: center; gap: 12px; min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--vp-c-divider); border-radius: 11px; background: var(--vp-c-bg); cursor: pointer; transition: background .16s, border-color .16s; }
 .grant-picker-option:hover:not(.is-unavailable), .grant-picker-option.is-selected { border-color: var(--vp-c-brand-1); background: var(--vp-c-brand-soft); }

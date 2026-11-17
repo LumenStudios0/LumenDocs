@@ -135,6 +135,8 @@ const grantOptions = computed(() => testMode.value
   ? products.value.filter(product => product.active).map(product => ({ id: product.productId, name: product.name, productId: product.productId, reason: '' }))
   : documentedGrantOptions(pluginData.plugins, products.value))
 const bulkGrantOptions = computed(() => testMode.value ? grantOptions.value : registryGrantOptions(products.value))
+const ownedGrantProductIds = computed(() => sourceLicenses.value
+  .filter(license => effectiveLicenseStatus(license, clock.value) === 'active').map(license => license.productId))
 const filteredCustomers = computed(() => customers.value.filter(customer =>
   hasConnectedAccount(customer) && (customerFilter.value === 'all' ||
   (customerFilter.value === 'restricted' && (customer.banned || customer.onHold)) ||
@@ -865,7 +867,7 @@ onUnmounted(() => {
         <section v-if="profileArea === 'licenses' && can('licenses.grant') && can('plugins.view')" class="staff-panel staff-bulk-grant">
           <p class="staff-eyebrow">BULK GIVE / THIS CUSTOMER</p><h2>Build their plugin collection.</h2>
           <p class="staff-note">Give any number of plugins to {{ user.globalName || user.username || user.discordId }}. Newly registered products appear here automatically; refresh to load registry changes.</p>
-          <StaffPluginGrantPicker v-model="selectedGrantProducts" :options="bulkGrantOptions" :disabled="busy || user.deleted" />
+          <StaffPluginGrantPicker v-model="selectedGrantProducts" :options="bulkGrantOptions" :owned-product-ids="ownedGrantProductIds" :disabled="busy || user.deleted" />
           <div class="staff-grant-summary">
             <div><small>ACCESS DURATION</small><strong>{{ grantExpiresAt ? formatDate(grantExpiresAt) : 'Lifetime access' }}</strong><span>{{ grantExpiresAt ? 'Uses the expiry set in Grant a license.' : 'Set an expiry in Grant a license for temporary access.' }}</span></div>
             <button type="button" class="staff-primary" :disabled="busy || user.deleted || !selectedGrantProducts.length" @click="customerLicenseBatch('grant')">{{ submitting ? 'Processing...' : `Review & bulk give${selectedGrantProducts.length ? ` (${selectedGrantProducts.length})` : ''}` }}</button>

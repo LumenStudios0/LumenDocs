@@ -23,7 +23,7 @@ test('bulk grant picker selects the full registry without a cap and includes new
   const options = Array.from({ length: 125 }, (_, index) => ({ id: `plugin-${index}`, productId: `product-${index}`, name: `Plugin ${index}`, reason: '' }))
   const props = reactive({
     options: [...options, { ...options[0], id: 'duplicate' }, { id: 'blocked', productId: 'blocked', name: 'Unavailable', reason: 'Not registered' }],
-    modelValue: [], disabled: false,
+    modelValue: [], ownedProductIds: [], disabled: false,
   })
   const ui = component.setup(props, { expose() {}, emit(_event, value) { props.modelValue = value } })
   assert.equal(ui.available.value.length, 125)
@@ -52,6 +52,25 @@ test('bulk grant picker selects the full registry without a cap and includes new
   props.disabled = false
   ui.clear()
   ui.toggle('blocked')
+  assert.deepEqual(props.modelValue, [])
+  props.ownedProductIds = ['product-0', 'product-124', 'blocked']
+  ui.search.value = 'Plugin 124'
+  props.modelValue = ['product-0', 'product-124']
+  ui.selectMissing()
+  assert.equal(props.modelValue.length, 124)
+  assert.equal(props.modelValue.includes('product-0'), false)
+  assert.equal(props.modelValue.includes('product-124'), false)
+  assert.equal(props.modelValue.includes('blocked'), false)
+  assert.equal(props.modelValue.includes('new'), true)
+  props.disabled = true
+  ui.clear()
+  props.ownedProductIds = []
+  ui.selectMissing()
+  assert.equal(props.modelValue.length, 124)
+  props.disabled = false
+  props.ownedProductIds = ui.available.value.map(option => option.productId)
+  assert.equal(ui.missing.value.length, 0)
+  ui.selectMissing()
   assert.deepEqual(props.modelValue, [])
 })
 
