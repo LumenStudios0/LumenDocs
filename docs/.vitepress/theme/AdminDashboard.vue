@@ -20,6 +20,7 @@ interface AdminLicense {
   status: string
   expiresAt: string | null
   allowedIps: string[]
+  maxAllowedIps?: number | null
   serverId: string | null
   lastValidatedAt: string | null
   lastValidatedServerId: string | null
@@ -895,7 +896,7 @@ onUnmounted(() => {
       <div class="staff-results"><span>{{ filteredLicenses.length }} / {{ sourceLicenses.length }} licenses shown</span><button type="button" @click="resetLicenseFilters">Clear filters</button></div>
       <div v-if="filteredLicenses.length" class="staff-table-scroll" tabindex="0" aria-label="License inventory table">
         <table class="staff-table"><thead><tr><th v-if="user && can('licenses.revoke')">Select</th><th>Product / license</th><th>Customer</th><th>Status</th><th>Expiry</th><th>IPs</th><th>Last validation</th><th><span class="staff-sr-only">Actions</span></th></tr></thead><tbody>
-          <tr v-for="license in filteredLicenses" :key="license.licenseId" :class="{ 'staff-selected': selectedLicenseId === license.licenseId }"><td v-if="user && can('licenses.revoke')"><input v-model="selectedLicenseIds" type="checkbox" :value="license.licenseId" :aria-label="`Select ${productName(license.productId)} license ${license.licenseId}`" :disabled="busy || user.deleted || license.status === 'revoked' || (!selectedLicenseIds.includes(license.licenseId) && selectedLicenseIds.length >= 10)"></td><td><strong>{{ productName(license.productId) }}</strong><small>{{ license.licenseId }}</small></td><td><strong>{{ user?.globalName || user?.username || license.customerDiscordId }}</strong><small v-if="user?.username">@{{ user.username }}</small></td><td><span class="staff-badge" :data-status="effectiveLicenseStatus(license, clock)">{{ effectiveLicenseStatus(license, clock) }}</span></td><td>{{ formatDate(license.expiresAt, 'Lifetime') }}</td><td>{{ license.allowedIps.length }} / 3</td><td>{{ formatDate(license.lastValidatedAt) }}</td><td><button type="button" :disabled="busy" @click="inspectLicense(license)">{{ user ? 'Manage →' : 'Open customer →' }}</button></td></tr>
+          <tr v-for="license in filteredLicenses" :key="license.licenseId" :class="{ 'staff-selected': selectedLicenseId === license.licenseId }"><td v-if="user && can('licenses.revoke')"><input v-model="selectedLicenseIds" type="checkbox" :value="license.licenseId" :aria-label="`Select ${productName(license.productId)} license ${license.licenseId}`" :disabled="busy || user.deleted || license.status === 'revoked' || (!selectedLicenseIds.includes(license.licenseId) && selectedLicenseIds.length >= 10)"></td><td><strong>{{ productName(license.productId) }}</strong><small>{{ license.licenseId }}</small></td><td><strong>{{ user?.globalName || user?.username || license.customerDiscordId }}</strong><small v-if="user?.username">@{{ user.username }}</small></td><td><span class="staff-badge" :data-status="effectiveLicenseStatus(license, clock)">{{ effectiveLicenseStatus(license, clock) }}</span></td><td>{{ formatDate(license.expiresAt, 'Lifetime') }}</td><td>{{ license.allowedIps.length }} / {{ license.maxAllowedIps === null ? 'Unlimited' : license.maxAllowedIps ?? '—' }}</td><td>{{ formatDate(license.lastValidatedAt) }}</td><td><button type="button" :disabled="busy" @click="inspectLicense(license)">{{ user ? 'Manage →' : 'Open customer →' }}</button></td></tr>
         </tbody></table>
       </div>
       <p v-else class="staff-empty">No licenses match these filters.</p>
@@ -924,10 +925,10 @@ onUnmounted(() => {
         <label class="staff-grow">Set expiration · local time<input v-model="editExpiresAt" type="datetime-local" required :disabled="busy || user?.deleted"><small>Choose a future date. This does not issue a new key. Updating a suspended license also reactivates it.</small></label>
         <button class="staff-primary" type="submit" :disabled="busy || user?.deleted || !editExpiresAt">Review &amp; save expiration</button>
       </form>
-      <h3>Allowed IPs <span class="staff-badge">{{ selectedLicense.allowedIps.length }} / 3</span></h3>
+      <h3>Allowed IPs <span class="staff-badge">{{ selectedLicense.allowedIps.length }} / {{ selectedLicense.maxAllowedIps === null ? 'Unlimited' : selectedLicense.maxAllowedIps ?? '—' }}</span></h3>
       <div class="staff-ip-list"><div v-for="address in selectedLicense.allowedIps" :key="address"><code>{{ address }}</code><button v-if="can('licenses.ips')" type="button" :disabled="busy || user?.deleted || selectedLicense.status === 'revoked'" @click="removeIp(address)">Remove</button></div></div>
       <p v-if="!selectedLicense.allowedIps.length" class="staff-note">No allowed IPs. This license cannot validate.</p>
-      <form v-if="can('licenses.ips') && selectedLicense.allowedIps.length < 3 && selectedLicense.status !== 'revoked'" class="staff-inline-form" @submit.prevent="addIp"><label class="staff-grow">New allowed IP<input v-model="ipAddress" maxlength="45" placeholder="Public IPv4 or IPv6" :disabled="busy || user?.deleted"></label><button class="staff-primary" type="submit" :disabled="busy || user?.deleted || !ipAddress.trim()">Add allowed IP</button></form>
+      <form v-if="can('licenses.ips') && (selectedLicense.maxAllowedIps == null || selectedLicense.allowedIps.length < selectedLicense.maxAllowedIps) && selectedLicense.status !== 'revoked'" class="staff-inline-form" @submit.prevent="addIp"><label class="staff-grow">New allowed IP<input v-model="ipAddress" maxlength="45" placeholder="Public IPv4 or IPv6" :disabled="busy || user?.deleted"></label><button class="staff-primary" type="submit" :disabled="busy || user?.deleted || !ipAddress.trim()">Add allowed IP</button></form>
     </section>
 
     <section v-if="loaded && can('audit.view') && (user || view === 'audit')" class="staff-panel">

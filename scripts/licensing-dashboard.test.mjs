@@ -6,6 +6,7 @@ import {
 } from '../docs/.vitepress/theme/licensing-utils.mjs'
 import { createAdminTestStore, clearAdminTestData, TEST_OWNER_ID } from '../docs/.vitepress/theme/admin-test-store.mjs'
 import { runLicenseBatch } from '../docs/.vitepress/theme/license-batch.mjs'
+import { readFile } from 'node:fs/promises'
 
 const now = Date.parse('2026-01-01T00:00:00Z')
 const license = { status: 'active', expiresAt: null, allowedIps: [], lastValidatedAt: null }
@@ -88,9 +89,58 @@ test('allowlist parsing canonicalizes IPv6 and rejects duplicates and unsafe inp
   assert.throws(() => parseIpAllowlist('1.1.1.1,2.2.2.2,3.3.3.3,4.4.4.4'), /three/)
   assert.equal(parseIpAllowlist('1.1.1.1,2.2.2.2,3.3.3.3,4.4.4.4', 10).length, 4)
   assert.throws(() => parseIpAllowlist('1.1.1.1,2.2.2.2,3.3.3.3,4.4.4.4', 3), /three/)
+  assert.equal(parseIpAllowlist(Array.from({ length: 150 }, (_, i) => `2001:db8::${(i + 1).toString(16)}`).join('\n'), Infinity).length, 150)
   for (const invalid of ['256.1.1.1', '01.1.1.1', 'host.example', '[::1]', '::1/path', 'fe80::1%eth0', '']) {
     assert.equal(normalizeIpAddress(invalid), null)
   }
+})
+
+test('customer IP editor accepts unlimited and tier allowances but rejects invalid limits', async t => {
+  const { parse, compileScript } = await import('@vue/compiler-sfc')
+  const { transformWithEsbuild } = await import('vite')
+  const original = globalThis.licenseUiRequest
+  t.after(() => {
+    if (original === undefined) delete globalThis.licenseUiRequest
+    else globalThis.licenseUiRequest = original
+  })
+  let result = { addresses: ['192.0.2.1'], maxAddresses: null }
+  globalThis.licenseUiRequest = async (_path, options = {}) => {
+    if (options.body) result.addresses = JSON.parse(options.body).addresses
+    return result
+  }
+  const source = (await readFile(new URL('../docs/.vitepress/theme/AccountLicenseIps.vue', import.meta.url), 'utf8'))
+    .replace("import { computed, onMounted, onUnmounted, ref } from 'vue'", "import { computed, ref } from 'vue'\nconst onMounted = () => {}; const onUnmounted = () => {}")
+    .replace("import { accountRequest, LicenseApiError } from './licensing-api'", 'const accountRequest = globalThis.licenseUiRequest; class LicenseApiError extends Error {}')
+    .replace("import { visibleServiceError, licenseServiceNotice } from './service-errors'", "const visibleServiceError = async message => message; const licenseServiceNotice = 'Unavailable'")
+    .replace("import { getDiscordSession } from './discord-session'", "const getDiscordSession = () => 'verified-session'")
+    .replace("import { useSiteDialog } from './site-dialog'", 'const useSiteDialog = () => ({ confirm: async () => true })')
+    .replace("'./licensing-utils.mjs'", JSON.stringify(new URL('../docs/.vitepress/theme/licensing-utils.mjs', import.meta.url).href))
+    .replace("window.dispatchEvent(new CustomEvent('lumen-license-ips-updated', { detail: { addresses: result.addresses, maxAddresses: result.maxAddresses } }))", '')
+  const compiled = compileScript(parse(source).descriptor, { id: 'license-ip-editor' }).content
+    .replaceAll("from 'vue'", `from '${import.meta.resolve('vue')}'`)
+  const { code } = await transformWithEsbuild(compiled, 'AccountLicenseIps.ts', { loader: 'ts' })
+  const component = (await import('data:text/javascript;base64,' + Buffer.from(code).toString('base64'))).default
+  const ui = component.setup({}, { expose() {} })
+  await ui.loadAddresses()
+  assert.equal(ui.loaded.value, true)
+  assert.equal(ui.maxAddresses.value, null)
+  const addresses = Array.from({ length: 150 }, (_, i) => `2001:db8::${(i + 1).toString(16)}`)
+  await ui.saveAddresses(addresses)
+  assert.deepEqual(ui.addresses.value, addresses)
+  result = { addresses: ['192.0.2.1'], maxAddresses: 10 }
+  await ui.loadAddresses()
+  ui.draft.value = Array.from({ length: 11 }, (_, i) => `192.0.2.${i + 1}`).join('\n')
+  assert.match(ui.draftResult.value.error, /10 IP addresses/)
+  ui.draft.value = '192.0.2.1\n192.0.2.2\n192.0.2.3\n192.0.2.4'
+  assert.equal(ui.draftResult.value.error, '')
+  const errorLog = console.error
+  console.error = () => {}
+  try {
+    result = { addresses: [], maxAddresses: 0 }
+    await ui.loadAddresses()
+    assert.equal(ui.loaded.value, false)
+    assert.match(ui.notice.value, /invalid IP allowlist/)
+  } finally { console.error = errorLog }
 })
 
 test('audit inspection recursively redacts credentials without altering the source', () => {

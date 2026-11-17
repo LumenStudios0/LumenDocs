@@ -611,7 +611,7 @@ test('account IP endpoint validates addresses and reports an unconnected license
       method: 'PUT',
       origin,
       authorization: `Bearer ${token}`,
-      body: { addresses: Array.from({ length: 101 }, (_, i) => `192.0.2.${i}`) },
+      body: { addresses: ['not-an-ip'] },
     }),
     env(),
   )
@@ -672,7 +672,7 @@ test('account IP endpoint proxies reads and updates for the signed-in Discord ac
   assert.deepEqual(JSON.parse(requests[1].options.body), { addresses: ['203.0.113.9'] })
 })
 
-test('account IP endpoint forwards expanded lists and leaves the limit to licensing', async t => {
+test('account IP endpoint forwards large unlimited lists and leaves configured limits to licensing', async t => {
   const token = await createSessionToken(t)
   const actualFetch = globalThis.fetch
   t.after(() => { globalThis.fetch = actualFetch })
@@ -680,18 +680,15 @@ test('account IP endpoint forwards expanded lists and leaves the limit to licens
   globalThis.fetch = async (url, options) => {
     const body = JSON.parse(options.body)
     seen.push(body)
-    return body.addresses.length <= 10
-      ? Response.json({ addresses: body.addresses, maxAddresses: 10 })
-      : Response.json({ detail: 'Too many addresses' }, { status: 422 })
+    return Response.json({ addresses: body.addresses, maxAddresses: null })
   }
   const config = env({ LICENSE_API_URL: 'https://licenses.example', LICENSE_ADMIN_API_TOKEN: 'server-only-secret' })
   const call = count => worker.fetch(request('/account/license-ips', {
     method: 'PUT', origin, authorization: `Bearer ${token}`,
-    body: { addresses: Array.from({ length: count }, (_, i) => `192.0.2.${i + 1}`), tier: 'elite' },
+    body: { addresses: Array.from({ length: count }, (_, i) => `2001:db8::${(i + 1).toString(16)}`), tier: 'elite' },
   }), config)
-  assert.equal((await call(10)).status, 200)
-  assert.equal((await call(11)).status, 422)
-  assert.equal(seen[0].addresses.length, 10)
+  assert.equal((await call(150)).status, 200)
+  assert.equal(seen[0].addresses.length, 150)
   assert.deepEqual(Object.keys(seen[0]), ['addresses'])
 })
 

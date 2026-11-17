@@ -1,9 +1,9 @@
 import { licensingRequest } from './product-tools.js'
 
 const tiers = [
-  { id: 'spark', name: 'Spark', count: 1, ips: 4, subclients: 1, discount: 0 },
-  { id: 'radiance', name: 'Radiance', count: 3, ips: 5, subclients: 2, discount: 5 },
-  { id: 'nova', name: 'Nova', count: 7, ips: 7, subclients: 3, discount: 10 },
+  { id: 'spark', name: 'Spark', count: 3, ips: 4, subclients: 1, discount: 0 },
+  { id: 'radiance', name: 'Radiance', count: 6, ips: 5, subclients: 2, discount: 5 },
+  { id: 'nova', name: 'Nova', count: 9, ips: 7, subclients: 3, discount: 10 },
   { id: 'elite', name: 'Lumen Elite', count: null, ips: 10, subclients: 5, discount: 15 },
 ]
 const idPattern = /^\d{5,22}$/

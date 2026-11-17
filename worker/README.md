@@ -123,7 +123,7 @@ To connect the dashboard after the licensing API is available over HTTPS:
    Enter the HTTPS API base URL and the same administrator token used by the licensing API.
 3. If adding other staff, set `ADMIN_DISCORD_IDS` in `wrangler.toml` to comma-separated Discord account IDs. The two built-in owner accounts are always authorized.
 4. Deploy the Worker with `npx wrangler deploy`, then push the site changes so GitHub Pages builds the `/admin/` dashboard. The Pages workflow embeds the deployed Worker `/chat` endpoint at build time.
-5. Apply the licensing backend changes and run its tests before using account controls. To remove an entitlement, revoke its license; eligible revoked records can optionally be deleted after the VPS update above. Each license supports at most three numeric IPv4/IPv6 addresses.
+5. Apply the licensing backend changes and run its tests before using account controls. To remove an entitlement, revoke its license; eligible revoked records can optionally be deleted after the VPS update above. Apply the loyalty IP updater below for a default account-wide limit of 3 and tier allowances of 4/5/7/10.
 
 If the dashboard says `LICENSE_SERVICE_UNAVAILABLE`, one or both Worker settings are missing. If both are present but calls time out, check that `/healthz` is reachable from the public internet over HTTPS and that ports 80 and 443 are open on the VPS. GitHub Pages deployment alone does not configure the Worker secrets or deploy the licensing backend.
 
@@ -163,7 +163,7 @@ This uses the [official V2 schema](https://github.com/BuiltByBit/api-openapi-spe
 - `GET /account/servers` — connected servers for the signed-in Discord account.
 - `GET /account/license-key` — retrieve the customer's shared key.
 - `GET /account/license-ips` — retrieve the shared key's allowed IP addresses.
-- `PUT /account/license-ips` — replace its allowlist with at most three unique IPv4/IPv6 addresses.
+- `PUT /account/license-ips` — replace its account-wide allowlist with unique numeric IPv4/IPv6 addresses. The licensing service enforces the effective allowance; the Worker does not trust browser-supplied tiers. Requests are bounded to 1,000,000 bytes independently of slot entitlement.
 
 Customer routes require a valid `Authorization: Bearer <session>` header and are rate limited by account. The Worker derives the customer ID from the signed Discord session; browser-supplied IDs are never used. The administrator credential stays server-side, and customer IP changes are audited by the licensing API.
 
@@ -215,16 +215,16 @@ Migration `0024_coupon_scope.sql` stores each coupon's verified eligible BuiltBy
 
 Ticket progression uses migration `0021_staff_progression.sql`. Closing an assigned customer's ticket after at least six public replies sent by that assignee while assigned earns 100 XP once. Reopening, reassignment, self-tickets and internal notes cannot multiply awards. The ticket owner may submit one 1-5-star rating after closure; an eligible closure additionally earns 20 XP per star, once. All closed tickets can be rated, even when no XP is due. Level is `floor(total XP / 100) + 1`, with no level-99 cap. The private staff leaderboard uses Monday-based UTC weeks, UTC calendar months or all-time XP; the latest 50 team awards identify the receiving staff member, while personal progression is shown separately. Ratings and awards are stored atomically with the relevant ticket operation.
 
-Tier IP allowances require upgrading the VPS API as well as deploying the Worker. The effective allowance is the greater of the configured platform limit and Spark 4 / Radiance 5 / Nova 7 / Elite 10 addresses. The API calculates tiers from canonical active product ownership, not browser input. The original backend does not apply these perks. On the VPS:
+Tier IP allowances require upgrading the VPS API as well as deploying the Worker. The effective allowance is the greater of the configured platform allowance (3 when unset) and Spark 4 / Radiance 5 / Nova 7 / Elite 10 addresses. Spark requires 3 active linked products, Radiance 6, Nova 9, and Elite all products in a nonempty active linked registry. The API calculates tiers from canonical active, unexpired entitlements, never browser input. Active staff grants and trials count too. Inactive or unverified accounts receive no tier bonus. This policy supersedes the archive's unlimited default: after applying it, `/admin ip-limit-remove` removes the manual override but restores the 3-slot base plus tier bonus, not unlimited IPs. The updater also corrects the native admin portal and bot policy messages when present. On the VPS:
 
 ```bash
 cd /opt/lumen-license
 curl -fsSL https://raw.githubusercontent.com/LumenStudios0/LumenDocs/main/scripts/upgrade-loyalty-ip-allowance.py -o /tmp/lumen-loyalty-ips.py
 python3 /tmp/lumen-loyalty-ips.py backend
-docker compose up -d --build --no-deps api
+docker compose up -d --build --no-deps api bot
 ```
 
-The updater validates both source layouts before writing, preserves backups, and is idempotent. It changes no database schema or platform limit. Existing addresses survive a downgrade, but additions enforce the current allowance. Until upgraded, the website continues displaying the backend's actual allowance rather than pretending extra slots are active.
+The updater validates both source layouts before writing, preserves backups, and is idempotent. It changes no database schema or saved platform setting. Existing addresses survive a downgrade, but additions enforce the current allowance. Customer, admin, per-license and native web IP operations use the same policy; serialized licenses also expose `maxAllowedIps` for staff. Until upgraded, the website continues displaying the backend's actual allowance rather than pretending extra slots are active.
 
 Staff license inspection uses `GET /admin/licenses/{uuid}/key`, gated by current `licenses.keys` permission and staff rank. Support and above receive this permission by default; Jr Support and customer roles cannot receive it. Migration `0013_staff_license_keys.sql` adds it to older saved staff policies only when dashboard and customer viewing are already enabled. The Worker verifies the selected license and customer/product association, then retrieves the shared account key through the existing administrator `GET /users/{discordId}/license-key` endpoint. It never rotates plugin tokens or creates replacement keys. Key-free `license.key_viewed` audit persistence must succeed before returning the uncached key. Restricted accounts and missing/hash-only keys return explicit errors. Staff-issued account recovery requires the existing `upgrade-staff-license-access.py` VPS updater; old per-license hashes cannot be decrypted.
 

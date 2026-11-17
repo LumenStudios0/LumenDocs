@@ -18,6 +18,32 @@ function respond(data, status, origin) {
   return new Response(JSON.stringify(data), { status, headers })
 }
 
+async function readRequestTextBounded(request, maxBytes) {
+  const contentLength = Number(request.headers.get('Content-Length'))
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) return null
+  const reader = request.body?.getReader()
+  if (!reader) return ''
+  const chunks = []
+  let total = 0
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    total += value.byteLength
+    if (total > maxBytes) {
+      await reader.cancel()
+      return null
+    }
+    chunks.push(value)
+  }
+  const bytes = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return new TextDecoder().decode(bytes)
+}
+
 function licenseServiceUnavailable(origin) {
   return respond({
     error: 'The licensing backend is not configured on this Worker. Set the LICENSE_API_URL Worker setting and LICENSE_ADMIN_API_TOKEN secret, and make sure the backend is reachable over HTTPS.',
@@ -728,8 +754,8 @@ async function accountLicenseApi(request, env, origin, path) {
 
   let requestedAddresses
   if (path === '/account/license-ips' && request.method === 'PUT') {
-    const body = await request.text()
-    if (body.length > 6000) return respond({ error: 'Request is too large' }, 413, origin)
+    const body = await readRequestTextBounded(request, 1000000)
+    if (body === null) return respond({ error: 'Request is too large' }, 413, origin)
 
     let payload
     try {
@@ -739,11 +765,10 @@ async function accountLicenseApi(request, env, origin, path) {
     }
     if (
       !Array.isArray(payload?.addresses) ||
-      payload.addresses.length > 100 ||
       payload.addresses.some(address => !isValidIpAddress(address)) ||
       new Set(payload.addresses).size !== payload.addresses.length
     ) {
-      return respond({ error: 'Provide up to 100 unique, valid IPv4 or IPv6 addresses' }, 400, origin)
+      return respond({ error: 'Provide unique, valid IPv4 or IPv6 addresses' }, 400, origin)
     }
     requestedAddresses = payload.addresses
   }

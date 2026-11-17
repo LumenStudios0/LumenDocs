@@ -20,9 +20,13 @@ const draft = ref('')
 let generation = 0
 let lastToken = ''
 const draftResult = computed(() => {
-  try { return { addresses: parseIpAllowlist(draft.value, maxAddresses.value ?? 3), error: '' } }
+  try { return { addresses: parseIpAllowlist(draft.value, maxAddresses.value ?? Number.POSITIVE_INFINITY), error: '' } }
   catch (error) { return { addresses: null, error: error instanceof Error ? error.message : 'Invalid allowlist.' } }
 })
+
+function validMaxAddresses(value: unknown): value is number | null {
+  return value === null || (typeof value === 'number' && Number.isSafeInteger(value) && value >= 1)
+}
 
 async function loadAddresses() {
   const requestId = ++generation
@@ -36,9 +40,9 @@ async function loadAddresses() {
   noticeIsError.value = false
   try {
     lastToken = getDiscordSession()
-    const result = await accountRequest<{ addresses: string[]; maxAddresses: number }>('/account/license-ips')
+    const result = await accountRequest<{ addresses: string[]; maxAddresses: number | null }>('/account/license-ips')
     if (requestId !== generation) return
-    if (!Array.isArray(result.addresses) || !result.addresses.every(address => typeof address === 'string') || !Number.isInteger(result.maxAddresses) || result.maxAddresses < 1 || result.maxAddresses > 100) throw new Error('The license service returned an invalid IP allowlist.')
+    if (!Array.isArray(result.addresses) || !result.addresses.every(address => typeof address === 'string') || !validMaxAddresses(result.maxAddresses)) throw new Error('The license service returned an invalid IP allowlist.')
     addresses.value = result.addresses
     maxAddresses.value = result.maxAddresses
     loaded.value = true
@@ -82,12 +86,12 @@ async function saveAddresses(next: string[]) {
   notice.value = ''
   noticeIsError.value = false
   try {
-    const nextAddresses = parseIpAllowlist(next.join('\n'), maxAddresses.value ?? 3)
-    const result = await accountRequest<{ addresses: string[]; maxAddresses: number }>('/account/license-ips', {
+    const nextAddresses = parseIpAllowlist(next.join('\n'), maxAddresses.value ?? Number.POSITIVE_INFINITY)
+    const result = await accountRequest<{ addresses: string[]; maxAddresses: number | null }>('/account/license-ips', {
       method: 'PUT', body: JSON.stringify({ addresses: nextAddresses }),
     })
     if (requestId !== generation) return
-    if (!Array.isArray(result.addresses) || !result.addresses.every(address => typeof address === 'string') || !Number.isInteger(result.maxAddresses) || result.maxAddresses < 1 || result.maxAddresses > 100) throw new Error('The license service returned an invalid saved allowlist. Refresh before making another change.')
+    if (!Array.isArray(result.addresses) || !result.addresses.every(address => typeof address === 'string') || !validMaxAddresses(result.maxAddresses)) throw new Error('The license service returned an invalid saved allowlist. Refresh before making another change.')
     addresses.value = result.addresses
     maxAddresses.value = result.maxAddresses
     editing.value = false
@@ -124,24 +128,24 @@ onUnmounted(() => {
 
 <template>
   <section class="license-ip-card" aria-labelledby="license-ip-title" :aria-busy="loading || saving">
-    <header><div><p class="ip-eyebrow">NETWORK ACCESS / SHARED LICENSE</p><h2 id="license-ip-title">Allowed server IPs</h2></div><span class="ip-count">{{ loaded ? addresses.length : '—' }} / {{ maxAddresses ?? '—' }}</span></header>
+    <header><div><p class="ip-eyebrow">NETWORK ACCESS / SHARED LICENSE</p><h2 id="license-ip-title">Allowed server IPs</h2></div><span class="ip-count">{{ loaded ? addresses.length : '—' }} / {{ loaded ? (maxAddresses ?? 'Unlimited') : '—' }}</span></header>
     <p class="ip-note">Use your server's public IP, not its domain or port. IPv4 and IPv6 are supported. These rules apply to every eligible plugin on your shared key.</p>
     <p v-if="loading" class="ip-note" role="status">Loading saved addresses…</p>
     <div v-else-if="loaded && !editing" class="ip-slots">
-      <article v-for="slot in Math.max(maxAddresses ?? 0, addresses.length)" :key="slot" :class="{ 'is-unused': !addresses[slot - 1] }">
-        <span>{{ String(slot).padStart(2, '0') }}</span>
-        <div><strong>{{ addresses[slot - 1] || 'Available slot' }}</strong><small>{{ addresses[slot - 1] ? (addresses[slot - 1].includes(':') ? 'IPv6 · Allowed' : 'IPv4 · Allowed') : 'Add a public server IP' }}</small></div>
-        <button v-if="addresses[slot - 1]" type="button" :disabled="saving" :aria-label="`Remove ${addresses[slot - 1]}`" @click="saveAddresses(addresses.filter((_, index) => index !== slot - 1))">Remove</button>
+      <article v-for="(address, index) in addresses" :key="address">
+        <span>{{ String(index + 1).padStart(2, '0') }}</span>
+        <div><strong>{{ address }}</strong><small>{{ address.includes(':') ? 'IPv6 · Allowed' : 'IPv4 · Allowed' }}</small></div>
+        <button type="button" :disabled="saving" :aria-label="`Remove ${address}`" @click="saveAddresses(addresses.filter((_, current) => current !== index))">Remove</button>
       </article>
     </div>
-    <form v-if="loaded && !editing && addresses.length < (maxAddresses ?? 0)" class="ip-add" @submit.prevent="addAddress">
+    <form v-if="loaded && !editing && (maxAddresses === null || addresses.length < maxAddresses)" class="ip-add" @submit.prevent="addAddress">
       <label for="license-ip-input">New public IP address</label>
       <div><input id="license-ip-input" v-model="newAddress" maxlength="45" autocomplete="off" placeholder="203.0.113.10 or 2001:db8::1" :disabled="saving"><button type="submit" :disabled="saving || !newAddress.trim()">{{ saving ? 'Saving…' : 'Allow IP address' }}</button></div>
     </form>
     <form v-if="editing" class="ip-bulk" @submit.prevent="draftResult.addresses && saveAddresses(draftResult.addresses)">
       <label for="license-ip-bulk">Replace the complete allowlist</label>
       <textarea id="license-ip-bulk" v-model="draft" rows="4" :disabled="saving" placeholder="One IP per line, or separated by commas" aria-describedby="ip-bulk-preview" />
-      <p id="ip-bulk-preview" :class="{ 'ip-error': draftResult.error }">{{ draftResult.error || `${draftResult.addresses?.length} / ${maxAddresses} valid addresses. Saving replaces all existing entries.` }}</p>
+      <p id="ip-bulk-preview" :class="{ 'ip-error': draftResult.error }">{{ draftResult.error || `${draftResult.addresses?.length} / ${maxAddresses ?? 'Unlimited'} valid addresses. Saving replaces all existing entries.` }}</p>
       <div class="ip-actions"><button type="submit" :disabled="saving || !!draftResult.error">{{ saving ? 'Saving…' : 'Save complete allowlist' }}</button><button type="button" :disabled="saving" @click="editing = false">Cancel</button></div>
     </form>
     <div class="ip-actions">
@@ -150,7 +154,7 @@ onUnmounted(() => {
     </div>
     <p v-if="notice" class="ip-notice" :class="{ 'ip-error': noticeIsError }" :role="noticeIsError ? 'alert' : 'status'">{{ notice }}</p>
     <p v-if="loaded && !addresses.length" class="ip-warning">No IPs are allowed. Your key cannot validate until you add an address.</p>
-    <p v-if="loaded && addresses.length > (maxAddresses ?? 0)" class="ip-warning">Your allowance has decreased. Use bulk edit to reduce your allowlist to the current limit; existing addresses remain until you change them.</p>
+    <p v-if="loaded && maxAddresses !== null && addresses.length > maxAddresses" class="ip-warning">Your allowance has decreased. Use bulk edit to reduce your allowlist to the current limit; existing addresses remain until you change them.</p>
   </section>
 </template>
 
@@ -163,7 +167,6 @@ onUnmounted(() => {
 .ip-note, .ip-bulk p { color: var(--vp-c-text-2); font-size: .8rem; line-height: 1.7; }
 .ip-slots { display: grid; gap: 8px; margin: 20px 0; }
 .ip-slots article { display: flex; align-items: center; gap: 14px; padding: 15px; border: 1px solid var(--vp-c-divider); border-radius: 12px; background: var(--vp-c-bg); }
-.ip-slots .is-unused { border-style: dashed; background: transparent; }
 .ip-slots article > span { color: var(--vp-c-brand-1); font: .75rem var(--vp-font-family-mono); }
 .ip-slots article > div { display: grid; flex: 1; min-width: 0; gap: 2px; }
 .ip-slots strong { overflow-wrap: anywhere; font: .85rem var(--vp-font-family-mono); }

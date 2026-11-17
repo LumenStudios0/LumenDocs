@@ -2,7 +2,7 @@
 """Upgrade the archive-based licensing API's canonical IP allowance.
 
 Run: python3 scripts/upgrade-loyalty-ip-allowance.py /opt/lumen-license/backend
-Then rebuild and restart the API container with docker compose up -d --build api.
+Then rebuild and restart API and bot with docker compose up -d --build api bot.
 """
 
 import argparse
@@ -12,7 +12,8 @@ import shutil
 
 ANCHOR = "def _license_json(item: License, db: Session) -> dict:\n"
 HELPER = '''def _loyalty_account_ip_limit(db: Session, customer_discord_id: str) -> int:
-    base = get_max_account_ips(db)
+    configured = get_max_account_ips(db)
+    base = configured if configured is not None else 3
     account = db.get(CustomerAccount, customer_discord_id)
     if not account or account.status != "active" or account.verification_required:
         return base
@@ -32,7 +33,7 @@ HELPER = '''def _loyalty_account_ip_limit(db: Session, customer_discord_id: str)
         )
     ).all()) & registry
     count = len(owned)
-    tier_limit = 10 if count == len(registry) else 7 if count >= 7 else 5 if count >= 3 else 4 if count >= 1 else 0
+    tier_limit = 10 if count == len(registry) else 7 if count >= 9 else 5 if count >= 6 else 4 if count >= 3 else 3
     return max(base, tier_limit)
 
 
@@ -44,9 +45,30 @@ REPLACEMENTS = (
     ('            "maxAddresses": get_max_account_ips(db),', '            "maxAddresses": _loyalty_account_ip_limit(db, discord_id),'),
     ('        key_data = get_customer_license_key(discord_id, db)\n        max_allowed_ips = get_max_account_ips(db)\n',
      '        key_data = get_customer_license_key(discord_id, db)\n        max_allowed_ips = _loyalty_account_ip_limit(db, discord_id)\n'),
+    ('        "allowedIps": _customer_ips(item.customer_discord_id, db),',
+     '        "allowedIps": _customer_ips(item.customer_discord_id, db),\n        "maxAllowedIps": _loyalty_account_ip_limit(db, item.customer_discord_id),'),
 )
 WEB_OLD = "        max_allowed_ips = get_max_account_ips(db)\n"
 WEB_NEW = '        from licensing_backend.api import _loyalty_account_ip_limit\n\n        max_allowed_ips = _loyalty_account_ip_limit(db, account.customer_discord_id)\n'
+
+TEXT_REPLACEMENTS = {
+    "licensing_bot/main.py": (
+        ("Allowed IP slots are now unlimited.", "Accounts now use 3 IP slots by default, increased by their loyalty tier."),
+        ("IP addresses. Existing IPs and licenses were not changed.", "IP addresses as a base allowance; higher loyalty allowances still apply. Existing IPs and licenses were not changed."),
+    ),
+    "licensing_backend/static/admin.js": (
+        ("Remove limit for unlimited IPs.", "Remove limit to restore the default 3 slots plus loyalty benefits."),
+        ("No IP limit is set. Accounts can have unlimited allowed IP addresses.", "No manual override. Accounts use 3 IP slots plus loyalty benefits."),
+        ("IP limit removed. IP slots are now unlimited.", "Manual override removed. Default and loyalty allowances apply."),
+        ("Maximum of ${maxAllowedIps} IP addresses per account.", "Base allowance of ${maxAllowedIps} IP addresses; higher loyalty allowances apply."),
+        ("Maximum of ${ipLimit.maxAllowedIps} IP addresses per account.", "Base allowance of ${ipLimit.maxAllowedIps} IP addresses; higher loyalty allowances apply."),
+    ),
+    "licensing_backend/templates/admin.html": (
+        ("Maximum allowed server IPs per customer account", "Base server IP allowance (higher loyalty allowances apply)"),
+        ('placeholder="Unlimited"', 'placeholder="3 plus loyalty benefits"'),
+        ("No site-wide IP cap is set by default.", "Default allowance: 3 IPs; Spark 4, Radiance 5, Nova 7, Elite 10."),
+    ),
+}
 
 
 def upgrade(backend):
@@ -55,36 +77,54 @@ def upgrade(backend):
     source = path.read_text()
     web_source = web_path.read_text()
     if source.count(HELPER) == 1:
-        if all(source.count(new) == 1 for _, new in REPLACEMENTS) and source.count(
+        if not (all(source.count(new) == 1 for _, new in REPLACEMENTS) and source.count(
             "            max_allowed_ips = _loyalty_account_ip_limit(db, account.customer_discord_id)\n"
-        ) == 1 and web_source.count(WEB_NEW) == 1 and web_source.count(WEB_OLD) == 0:
-            return 0
-        raise ValueError("Incomplete loyalty IP update; no files changed.")
-    if source.count(ANCHOR) != 1 or any(source.count(old) != (2 if index == 1 else 1)
-                                         for index, (old, _) in enumerate(REPLACEMENTS)) or web_source.count(WEB_OLD) != 1:
-        raise ValueError("Unsupported API layout; no files changed.")
-    updated = source.replace(ANCHOR, HELPER + ANCHOR, 1)
-    for index, (old, new) in enumerate(REPLACEMENTS):
-        updated = updated.replace(old, new, 1)
-        if index == 1:
-            updated = updated.replace(old, "            max_allowed_ips = _loyalty_account_ip_limit(db, account.customer_discord_id)\n", 1)
+        ) == 1 and web_source.count(WEB_NEW) == 1 and web_source.count(WEB_OLD) == 0):
+            raise ValueError("Incomplete loyalty IP update; no files changed.")
+        updated, web_updated = source, web_source
+    else:
+        if source.count(ANCHOR) != 1 or any(source.count(old) != (2 if index == 1 else 1)
+                                             for index, (old, _) in enumerate(REPLACEMENTS)) or web_source.count(WEB_OLD) != 1:
+            raise ValueError("Unsupported API layout; no files changed.")
+        updated = source.replace(ANCHOR, HELPER + ANCHOR, 1)
+        for index, (old, new) in enumerate(REPLACEMENTS):
+            updated = updated.replace(old, new, 1)
+            if index == 1:
+                updated = updated.replace(old, "            max_allowed_ips = _loyalty_account_ip_limit(db, account.customer_discord_id)\n", 1)
+        web_updated = web_source.replace(WEB_OLD, WEB_NEW, 1)
     compile(updated, str(path), "exec")
-    web_updated = web_source.replace(WEB_OLD, WEB_NEW, 1)
     compile(web_updated, str(web_path), "exec")
-    backup = path.with_name("api.py.before-loyalty-ip-allowance.bak")
-    web_backup = web_path.with_name("customer_web.py.before-loyalty-ip-allowance.bak")
-    if backup.exists() or web_backup.exists():
+    updates = [(path, updated)] if updated != source else []
+    if web_updated != web_source:
+        updates.append((web_path, web_updated))
+    for relative, replacements in TEXT_REPLACEMENTS.items():
+        target = backend / relative
+        if not target.exists():
+            continue
+        original = target.read_text()
+        changed = original
+        for old, new in replacements:
+            if old in changed:
+                changed = changed.replace(old, new)
+            elif new not in changed:
+                raise ValueError(f"Unsupported {target}; no files changed.")
+        if changed != original:
+            if relative.endswith(".py"):
+                compile(changed, str(target), "exec")
+            updates.append((target, changed))
+    backups = [(target, target.with_name(target.name + ".before-loyalty-ip-allowance.bak")) for target, _ in updates]
+    if any(backup.exists() for _, backup in backups):
         raise ValueError("Loyalty IP backup already exists; no files changed.")
-    shutil.copy2(path, backup)
-    shutil.copy2(web_path, web_backup)
+    for target, backup in backups:
+        shutil.copy2(target, backup)
     try:
-        path.write_text(updated)
-        web_path.write_text(web_updated)
+        for target, changed in updates:
+            target.write_text(changed)
     except OSError:
-        shutil.copy2(backup, path)
-        shutil.copy2(web_backup, web_path)
+        for target, backup in backups:
+            shutil.copy2(backup, target)
         raise
-    return 2
+    return len(updates)
 
 
 if __name__ == "__main__":
@@ -95,4 +135,4 @@ if __name__ == "__main__":
         count = upgrade(args.backend)
     except (OSError, ValueError, SyntaxError) as error:
         parser.exit(1, f"Loyalty IP update failed: {error}\n")
-    print(f"Updated {count} files. Run docker compose up -d --build api from /opt/lumen-license; backups: api.py.before-loyalty-ip-allowance.bak and customer_web.py.before-loyalty-ip-allowance.bak.")
+    print(f"Updated {count} files. Run docker compose up -d --build api bot from /opt/lumen-license; backups end in .before-loyalty-ip-allowance.bak.")

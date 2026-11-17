@@ -100,7 +100,7 @@ test('coupon checks issue private single-use review and permanent loyalty reward
     if (url.pathname.endsWith('/products')) return Response.json({ items: Array.from({ length: 10 }, (_, i) =>
       ({ productId: `p${i}`, name: `Plugin ${i}`, active: true, plugins: [`p${i}`] })), total: 10 })
     return Response.json({ customerDiscordId: customer, status: 'active', verificationRequired: false,
-      products: Array.from({ length: 3 }, (_, i) => ({ productId: `p${i}`, productActive: true, status: 'active', expiresAt: null })) })
+      products: Array.from({ length: 6 }, (_, i) => ({ productId: `p${i}`, productActive: true, status: 'active', expiresAt: null })) })
   }
   await Promise.all([runCouponChecks(env), runCouponChecks(env)])
   await runCouponChecks(env)
@@ -634,7 +634,7 @@ test('loyalty counts distinct active registry entitlements and fails closed on i
   const { call, customer } = await fixture(t)
   const originalFetch = globalThis.fetch
   t.after(() => { globalThis.fetch = originalFetch })
-  const products = Array.from({ length: 8 }, (_, index) => ({ productId: `p${index}`, name: `Plugin ${index}`, active: true, plugins: ['p'] }))
+  const products = Array.from({ length: 12 }, (_, index) => ({ productId: `p${index}`, name: `Plugin ${index}`, active: true, plugins: ['p'] }))
   let ownedCount = 1, badRegistry = false
   globalThis.fetch = async input => {
     const url = new URL(input)
@@ -644,7 +644,7 @@ test('loyalty counts distinct active registry entitlements and fails closed on i
         { productId: 'p0', productActive: true, status: 'active', expiresAt: null },
         { productId: 'unknown', productActive: true, status: 'active', expiresAt: null }] })
   }
-  for (const [count, tier] of [[1, 'spark'], [3, 'radiance'], [7, 'nova'], [8, 'elite']]) {
+  for (const [count, tier] of [[3, 'spark'], [6, 'radiance'], [9, 'nova'], [12, 'elite']]) {
     ownedCount = count
     const response = await call('/studio/loyalty', 'GET', undefined, customer)
     assert.equal(response.status, 200)
@@ -703,7 +703,7 @@ test('badge selection unlocks lower tiers and staff ranks and filters downgrades
   const { call, sqlite, customer, owner, env } = await fixture(t)
   const originalFetch = globalThis.fetch
   t.after(() => { globalThis.fetch = originalFetch })
-  let count = 7
+  let count = 9
   const products = Array.from({ length: 10 }, (_, i) => ({ productId: `p${i}`, name: `Plugin ${i}`, active: true, plugins: [`p${i}`] }))
   globalThis.fetch = async input => {
     const url = new URL(input)
@@ -714,12 +714,12 @@ test('badge selection unlocks lower tiers and staff ranks and filters downgrades
   const initial = (await (await call('/studio/profiles/me', 'GET', undefined, customer)).json()).profile
   assert.deepEqual(initial.availableBadges.map(b => b.id), ['spark', 'radiance', 'nova'])
   assert.deepEqual(initial.badges.map(b => b.id), ['nova'])
-  for (const [owned, unlocked] of [[1, ['spark']], [3, ['spark', 'radiance']], [10, ['spark', 'radiance', 'nova', 'elite']]]) {
+  for (const [owned, unlocked] of [[3, ['spark']], [6, ['spark', 'radiance']], [10, ['spark', 'radiance', 'nova', 'elite']]]) {
     count = owned
     const profile = (await (await call('/studio/profiles/me', 'GET', undefined, customer)).json()).profile
     assert.deepEqual(profile.availableBadges.map(b => b.id), unlocked)
   }
-  count = 7
+  count = 9
   await call('/studio/profiles/me', 'GET', undefined, customer)
   const body = { displayName: 'Builder', bio: '', pronouns: '', status: '', accent: '#123456', banner: '#654321',
     website: '', showcase: '', favoritePlugin: '', public: true, revision: 0, badgeIds: ['spark', 'radiance', 'nova'] }
@@ -730,7 +730,7 @@ test('badge selection unlocks lower tiers and staff ranks and filters downgrades
   assert.equal((await call('/studio/profiles/me', 'PUT', { ...body, badgeIds: eliteIds }, eliteId)).status, 200)
   assert.deepEqual((await messageProfiles(env.COMMUNITY_DB, [eliteId], env)).get(eliteId).badges.map(b => b.id),
     ['spark', 'radiance', 'nova', 'elite'])
-  count = 7
+  count = 9
   for (const id of ['elite', 'staff', 'developer', 'studio_lead', 'owner', 'fake']) {
     assert.equal((await call('/studio/profiles/me', 'PUT', { ...body, badgeIds: [id] }, customer)).status, 403)
   }
@@ -743,7 +743,7 @@ test('badge selection unlocks lower tiers and staff ranks and filters downgrades
   assert.deepEqual(publicProfile.badges.map(b => b.id), body.badgeIds)
   assert.equal(publicProfile.availableBadges, undefined)
   assert.deepEqual((await messageProfiles(env.COMMUNITY_DB, [customer], env)).get(customer).badges.map(b => b.id), body.badgeIds)
-  count = 1
+  count = 3
   await call('/studio/profiles/me', 'GET', undefined, customer)
   assert.deepEqual((await messageProfiles(env.COMMUNITY_DB, [customer], env)).get(customer).badges.map(b => b.id), ['spark'])
   sqlite.prepare('UPDATE member_profiles SET tier_checked_at=? WHERE user_id=?').run('2000-01-01', customer)
@@ -828,7 +828,7 @@ test('profile cosmetics enforce Spark and Radiance unlocks, persist presets and 
   assert.equal((await save({ frame: 'amethyst' })).status,403)
   assert.equal((await save({ decoration: 'stars' })).status,403)
   assert.equal((await save({ background: 'made-up' })).status,400)
-  count = 1
+  count = 3
   const spark = (await (await call('/studio/profiles/me','GET',undefined,customer)).json()).profile
   assert.deepEqual(spark.cosmeticAccess,{ backgrounds:true,frames:true,decorations:false })
   const animated = backgrounds.filter(p => p.animated)
@@ -844,7 +844,7 @@ test('profile cosmetics enforce Spark and Radiance unlocks, persist presets and 
     assert.equal((await save({ frame:frame.id })).status,200); revision++
   }
   assert.equal((await save({ decoration:'stars' })).status,403)
-  count=3
+  count=6
   await call('/studio/profiles/me','GET',undefined,customer)
   for (const decoration of decorations) {
     assert.equal((await save({ decoration:decoration.id })).status,200); revision++
@@ -855,7 +855,7 @@ test('profile cosmetics enforce Spark and Radiance unlocks, persist presets and 
   let publicProfile=(await (await call('/studio/profiles/'+customer,'GET',undefined,'')).json()).profile
   assert.deepEqual(publicProfile.appearance,{background:'none',frame:'none',decoration:'none',badgeSize:'medium',badgeIconOnly:false})
   assert.equal((await save()).status,200); revision++
-  count=3
+  count=6
   await call('/studio/profiles/me','GET',undefined,customer)
   publicProfile=(await (await call('/studio/profiles/'+customer,'GET',undefined,'')).json()).profile
   assert.deepEqual(publicProfile.appearance,{...appearance,badgeSize:'medium',badgeIconOnly:false})
@@ -867,11 +867,11 @@ test('custom profile colors require Spark, persist across old clients and disapp
   const previousFetch = globalThis.fetch
   t.after(() => { globalThis.fetch = previousFetch })
   let owned = false
+  const products = Array.from({ length: 4 }, (_, i) => ({ productId: `p${i}`, name: `Plugin ${i}`, active: true, plugins: [`p${i}`] }))
   globalThis.fetch = async input => new URL(input).pathname.endsWith('/products')
-    ? Response.json({ items: [{ productId: 'p1', name: 'Plugin', active: true, plugins: ['p1'] },
-      { productId: 'p2', name: 'Plugin 2', active: true, plugins: ['p2'] }], total: 2 })
+    ? Response.json({ items: products, total: products.length })
     : Response.json({ customerDiscordId: customer, status: 'active', verificationRequired: false,
-      products: owned ? [{ productId: 'p1', productActive: true, status: 'active', expiresAt: null }] : [] })
+      products: owned ? products.slice(0, 3).map(product => ({ productId: product.productId, productActive: true, status: 'active', expiresAt: null })) : [] })
   const base = { displayName: 'Builder', bio: '', pronouns: '', status: '', accent: '#123456', banner: '#654321',
     website: '', showcase: '', favoritePlugin: '', public: true, revision: 0 }
   const colors = { surface: '#221133', text: '#ffffff', links: '#ffcc99' }
@@ -992,7 +992,7 @@ test('sub-clients receive only explicitly shared downloads while owner eligibili
   const another = await seedDownload(sqlite, 'p1')
   const originalFetch = globalThis.fetch
   t.after(() => { globalThis.fetch = originalFetch })
-  let count = 3, ownerStatus = 'active'
+  let count = 6, ownerStatus = 'active'
   const products = Array.from({ length: 8 }, (_, index) => ({ productId: `p${index}`, name: `Plugin ${index}`, active: true, plugins: ['p'] }))
   globalThis.fetch = async input => {
     const url = new URL(input)
@@ -1010,7 +1010,7 @@ test('sub-clients receive only explicitly shared downloads while owner eligibili
   assert.equal((await share('remove', 'p0', member, other)).status, 404)
   assert.equal((await call('/studio/downloads/' + artifact.id, 'HEAD', undefined, member)).status, 200)
   assert.equal((await call('/studio/downloads/' + another.id, 'HEAD', undefined, member)).status, 404)
-  count = 1
+  count = 3
   assert.equal((await call('/studio/downloads/' + artifact.id, 'HEAD', undefined, member)).status, 200)
   assert.equal((await call('/studio/downloads/' + artifact.id, 'HEAD', undefined, other)).status, 403)
   ownerStatus = 'banned'

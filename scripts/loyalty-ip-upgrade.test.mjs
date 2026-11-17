@@ -16,11 +16,19 @@ api += "def first():\\n    if True:\\n" + updater.REPLACEMENTS[1][0]
 api += "def second():\\n    if True:\\n" + updater.REPLACEMENTS[1][0]
 api += "def third():\\n    return {\\n" + updater.REPLACEMENTS[2][0] + "\\n    }\\n"
 api += "def fourth():\\n" + updater.REPLACEMENTS[3][0]
+api += "def fifth():\\n    return {\\n" + updater.REPLACEMENTS[4][0] + "\\n    }\\n"
 web = "def web():\\n" + updater.WEB_OLD
 files = {"backend/licensing_backend/api.py": api, "backend/licensing_backend/customer_web.py": web}
+for relative, replacements in updater.TEXT_REPLACEMENTS.items():
+    files["backend/" + relative] = "\\n".join(
+        "label" + str(index) + " = " + repr(old) if relative.endswith(".py") else old
+        for index, (old, _) in enumerate(replacements)
+    )
 
 class Path:
     def __init__(self, value): self.value = value
+    @property
+    def name(self): return self.value.rsplit("/", 1)[-1]
     def __truediv__(self, value): return Path(self.value + "/" + value)
     def with_name(self, name): return Path(self.value.rsplit("/", 1)[0] + "/" + name)
     def read_text(self): return files[self.value]
@@ -30,7 +38,7 @@ class Path:
 def copy(src, dst): files[dst.value] = files[src.value]
 
 with patch.object(updater.shutil, "copy2", copy):
-    assert updater.upgrade(Path("backend")) == 2
+    assert updater.upgrade(Path("backend")) == 5
     assert updater.upgrade(Path("backend")) == 0
     assert files["backend/licensing_backend/api.py.before-loyalty-ip-allowance.bak"] == api
     assert files["backend/licensing_backend/customer_web.py.before-loyalty-ip-allowance.bak"] == web

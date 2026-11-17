@@ -14,10 +14,10 @@ interface Status {
   subclients: { productId: string; memberId: string; createdAt: string }[]
 }
 const cards = [
-  { id: 'spark', name: 'Spark', need: '1 product', ips: 4, clients: 1, extra: 'Customer-exclusive giveaways' },
-  { id: 'radiance', name: 'Radiance', need: '3 products', ips: 5, clients: 2, extra: '5% off plugins and feature voting' },
-  { id: 'nova', name: 'Nova', need: '7 products', ips: 7, clients: 3, extra: '10% off plugins and priority support' },
-  { id: 'elite', name: 'Lumen Elite', need: 'Every product', ips: 10, clients: 5, extra: '15% off plugins and early access to new plugins' },
+  { id: 'spark', name: 'Spark', need: '3 plugins', ips: 4, clients: 1, extra: 'Customer-exclusive giveaways' },
+  { id: 'radiance', name: 'Radiance', need: '6 plugins', ips: 5, clients: 2, extra: '5% off plugins and feature voting' },
+  { id: 'nova', name: 'Nova', need: '9 plugins', ips: 7, clients: 3, extra: '10% off plugins and priority support' },
+  { id: 'elite', name: 'Lumen Elite', need: 'All plugins', ips: 10, clients: 5, extra: '15% off plugins and early access to new plugins' },
 ]
 const status = ref<Status | null>(null)
 const loading = ref(false)
@@ -78,7 +78,7 @@ onUnmounted(() => { generation++; window.removeEventListener('lumen-discord-user
     <p v-if="notice" role="status">{{ notice }}</p>
     <section aria-labelledby="loyalty-tiers"><h2 id="loyalty-tiers">Explore the tiers</h2><p>Elite requires all currently active, linked products in the licensing registry. Expired, revoked or inactive access does not count. Active staff grants and trials count too.</p>
       <div class="loyalty-grid"><article v-for="card in cards" :key="card.name" :class="{ current: status?.tier?.name === card.name }"><span>{{ card.need }}</span><h3><LoyaltyBadge :tier="card" /></h3><ul><li>{{ card.name }} profile badge<span v-if="card.id==='spark'">, 15 profile backgrounds and 12 avatar frames</span><span v-if="card.id==='radiance'"> and 12 avatar decorations</span></li><li>{{ card.ips }} server IP slots</li><li>{{ card.clients }} sub-client{{ card.clients === 1 ? '' : 's' }} per plugin</li><li>{{ card.extra }}</li></ul></article></div>
-      <p class="loyalty-note">IP limits depend on your current eligible tier and the licensing service configuration; My licenses shows your effective limit. If your tier drops, existing IPs remain until changed. <strong>Planned:</strong> giveaways, voting, priority support and early access.</p>
+      <p class="loyalty-note">Standard accounts have 3 server IP slots. Spark, Radiance, Nova and Elite increase this to 4, 5, 7 and 10 after the licensing server update. <a href="/account/licenses#manage-server-ips">My licenses</a> shows your actual enforced limit; a higher staff-configured allowance is preserved. If your tier drops, existing IPs remain until changed. <strong>Planned:</strong> giveaways, voting, priority support and early access.</p>
     </section>
     <section class="loyalty-manage" aria-labelledby="loyalty-clients"><h2 id="loyalty-clients">Sub-clients by plugin</h2>
       <p>Add someone by their Discord user ID after they sign in here. They can download the selected plugin from their own account while your access and tier remain eligible. This does not share your license key, add IP slots, or give them ownership or server validation.</p>
