@@ -86,7 +86,9 @@ async function verifyScope(env, couponId, resources) {
       found.add(id)
     }
     if (page >= stats.max_page) {
-      if (seen !== total || found.size !== resources.length) throw new Error('Incomplete coupon scope')
+      if (seen !== total || found.size !== resources.length) {
+        throw new Error(`Incomplete coupon scope: received ${seen} of ${total} entries; matched ${found.size} of ${resources.length} resources`)
+      }
       return
     }
     if (entries.length !== stats.per_page) throw new Error('Incomplete coupon scope')
@@ -126,12 +128,22 @@ async function reconcileCoupons(env, resources) {
   }
   if (!complete || new Set(coupons.map(coupon => marketplaceId(coupon?.coupon_id))).size !== coupons.length ||
       coupons.some(coupon => !marketplaceId(coupon?.coupon_id))) throw new Error('Incomplete coupon reconciliation')
+  let verificationError
   for (const reward of pending) {
     const matches = coupons.filter(coupon => typeof coupon.label === 'string' &&
       new RegExp(`^[1-9]\\d*-${reward.label_suffix}$`, 'i').test(coupon.label))
-    if (matches.length !== 1 || !confirmedCoupon(matches[0], reward, reward.label_suffix)) continue
+    if (matches.length !== 1 || !confirmedCoupon(matches[0], reward, reward.label_suffix)) {
+      await env.COMMUNITY_DB.prepare("UPDATE coupon_rewards SET updated_at=? WHERE reward_key=? AND state='uncertain'")
+        .bind(new Date().toISOString(), reward.reward_key).run()
+      continue
+    }
     const coupon = matches[0]
-    await verifyScope(env, coupon.coupon_id, resources)
+    try { await verifyScope(env, coupon.coupon_id, resources) } catch (error) {
+      verificationError = error
+      await env.COMMUNITY_DB.prepare("UPDATE coupon_rewards SET updated_at=? WHERE reward_key=? AND state='uncertain'")
+        .bind(new Date().toISOString(), reward.reward_key).run()
+      continue
+    }
     const now = new Date().toISOString()
     await env.COMMUNITY_DB.batch([
       env.COMMUNITY_DB.prepare(
@@ -143,6 +155,7 @@ async function reconcileCoupons(env, resources) {
       ).bind(crypto.randomUUID(), reward.user_id, now),
     ])
   }
+  if (verificationError) throw verificationError
 }
 
 async function issue(env, resources, reward) {
@@ -364,8 +377,9 @@ export async function handleCoupons(request, env, origin, deps) {
     ).all()).results || []
     const access = await resolveAccess(user.id, env)
     const progress = hasPermission(access, 'dashboard.view') ? await staffProgress(env, user.id) : null
-    return send({ configured, staffLevel: progress?.level || null,
-      canGrant: access.rank >= 3 && hasPermission(access, 'coupons.grant') && hasPermission(access, 'dashboard.view') && progress.level >= 2,
+    const canManageCoupons = access.rank >= 3 && hasPermission(access, 'coupons.grant') && hasPermission(access, 'dashboard.view')
+    return send({ configured, staffLevel: progress?.level || null, canManageCoupons,
+      canGrant: canManageCoupons && (access.rank >= 6 || progress.level >= 2),
       coupons: rows.map(row => ({ id: row.reward_key, kind: row.kind, discount: row.discount, state: row.state, code: row.code, retryAt: row.retry_at, createdAt: row.created_at, uses: row.uses })), page, pageSize, total: total.n,
       checks: Object.fromEntries(checks.map(row => [row.name, { status: row.status, code: row.error_code, checkedAt: row.checked_at }])) })
   } catch (error) {
@@ -429,7 +443,7 @@ export async function handleStaffCoupons(request, env, origin, deps) {
       if (access.rank < 3 || !hasPermission(access, 'dashboard.view') || !hasPermission(access, 'coupons.grant')) {
         return send({ error: 'Support rank or above with coupon-grant permission is required.' }, 403)
       }
-      if ((await staffProgress(env, user.id)).level < 2) return send({ error: 'Reach staff level 2 (100 XP) before granting coupons.' }, 403)
+      if (access.rank < 6 && (await staffProgress(env, user.id)).level < 2) return send({ error: 'Reach staff level 2 (100 XP) before granting coupons.' }, 403)
       if (request.method !== 'POST') return send({ error: 'Method not allowed.' }, 405)
       if (!(await env.ADMIN_WRITE_LIMITER.limit({ key: `coupon-grant:${user.id}` })).success) return send({ error: 'Please wait before granting another coupon.' }, 429)
       const raw = await request.text()

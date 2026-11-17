@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useRouter, withBase } from 'vitepress'
 import { getDiscordSession } from './discord-session'
 import { studioRequest } from './studio-api'
 
 interface Coupon { id: string; kind: 'loyalty' | 'review' | 'manual'; discount: number; state: 'issuing' | 'issued' | 'failed' | 'uncertain'; code: string | null; retryAt: string | null; createdAt: string; uses: number }
 interface Check { status: 'pending' | 'ok' | 'error'; code: string | null; checkedAt: string | null }
+const props = defineProps<{ staff?: boolean }>()
+const router = useRouter()
 const coupons = ref<Coupon[]>([])
 const checks = ref<Record<string, Check>>({})
 const signedIn = ref(false)
@@ -14,6 +17,7 @@ const configured = ref(false)
 const page = ref(1)
 const total = ref(0)
 const canGrant = ref(false)
+const canManageCoupons = ref(false)
 const staffLevel = ref<number | null>(null)
 const granting = ref(false)
 const grantMessage = ref('')
@@ -24,7 +28,8 @@ const reason = ref('')
 let requestId = ''
 let grantPayload = ''
 const checkNames: Record<string, string> = { reviews: 'Review rewards', loyalty: 'Loyalty rewards', usage: 'Coupon-use notifications', reconciliation: 'Pending coupon verification' }
-const checkErrors = computed(() => Object.entries(checks.value).filter(([, check]) => check.status === 'error'))
+const checkErrors = computed(() => Object.entries(checks.value).filter(([name, check]) => check.status === 'error' &&
+  (name !== 'reconciliation' || props.staff || coupons.value.some(coupon => coupon.state === 'uncertain' || coupon.state === 'issuing'))))
 function checkMessage(check: Check) {
   if (check.code === 'BBB_ACCESS') return 'BuiltByBit denied API access. Staff must enable the required creator API permissions.'
   if (check.code === 'BBB_RATE_LIMIT') return 'BuiltByBit is rate limiting checks. They will retry automatically.'
@@ -37,20 +42,20 @@ let token = ''
 async function load(target = 1) {
   const request = ++generation
   token = getDiscordSession()
-  signedIn.value = !!token; coupons.value = []; checks.value = {}; error.value = ''; loading.value = false; configured.value = false; canGrant.value = false; staffLevel.value = null
+  signedIn.value = !!token; coupons.value = []; checks.value = {}; error.value = ''; loading.value = false; configured.value = false; canGrant.value = false; canManageCoupons.value = false; staffLevel.value = null
   if (!token) return
   loading.value = true
   try {
-    const data = await studioRequest<{ configured: boolean; canGrant: boolean; staffLevel: number | null; coupons: Coupon[]; checks: Record<string, Check>; total: number; page: number }>('/coupons?page=' + target)
+    const data = await studioRequest<{ configured: boolean; canGrant: boolean; canManageCoupons: boolean; staffLevel: number | null; coupons: Coupon[]; checks: Record<string, Check>; total: number; page: number }>('/coupons?page=' + target)
     if (request !== generation || token !== getDiscordSession()) return
     if (typeof data.configured !== 'boolean' || !Array.isArray(data.coupons) || !data.checks || !Number.isSafeInteger(data.total) || !Number.isSafeInteger(data.page)) throw new Error('Invalid coupon response.')
-    configured.value = data.configured; canGrant.value = data.canGrant; staffLevel.value = data.staffLevel; coupons.value = data.coupons; checks.value = data.checks; total.value = data.total; page.value = data.page
+    configured.value = data.configured; canGrant.value = data.canGrant; canManageCoupons.value = data.canManageCoupons; staffLevel.value = data.staffLevel; coupons.value = data.coupons; checks.value = data.checks; total.value = data.total; page.value = data.page
   } catch (value) {
     if (request === generation) error.value = value instanceof Error ? value.message : 'Coupons could not be loaded.'
   } finally { if (request === generation) loading.value = false }
 }
 async function grant() {
-  if (granting.value) return
+  if (granting.value || !canGrant.value) return
   const session = getDiscordSession()
   const payload = JSON.stringify({ userId: recipient.value.trim(), discount: discount.value, reason: reason.value.trim() })
   if (payload !== grantPayload || !requestId) { grantPayload = payload; requestId = crypto.randomUUID() }
@@ -68,13 +73,17 @@ function changed() {
     void load()
   }
 }
-onMounted(() => { void load(); window.addEventListener('lumen-discord-user', changed); window.addEventListener('storage', changed) })
+onMounted(() => {
+  if (!props.staff && window.location.hash === '#staff-grants') void router.go(withBase('/admin/coupons'))
+  else void load()
+  window.addEventListener('lumen-discord-user', changed); window.addEventListener('storage', changed)
+})
 onUnmounted(() => { generation++; window.removeEventListener('lumen-discord-user', changed); window.removeEventListener('storage', changed) })
 </script>
 
 <template>
   <main class="coupons">
-    <header><p>LUMEN STUDIOS / REWARDS</p><h1>Your coupons.</h1><p>Your private BuiltByBit coupon codes appear here when issued.</p><button type="button" :disabled="loading" @click="load(page)">Refresh</button></header>
+    <header><p>LUMEN STUDIOS / {{ staff ? 'STAFF TOOLS' : 'REWARDS' }}</p><h1>{{ staff ? 'Grant coupons.' : 'Your coupons.' }}</h1><p>{{ staff ? 'Grant a registered member a private, single-use BuiltByBit coupon.' : 'Your private BuiltByBit coupon codes appear here when issued.' }}</p><button type="button" :disabled="loading" @click="load(page)">Refresh</button></header>
     <p v-if="!signedIn">Sign in with Discord to view your coupons.</p>
     <p v-if="error" class="coupon-error" role="alert">{{ error }}</p>
     <p v-if="loading" role="status">Loading coupons…</p>
@@ -82,34 +91,41 @@ onUnmounted(() => { generation++; window.removeEventListener('lumen-discord-user
       <p v-if="!configured" class="coupon-error" role="alert">Coupon integration is not configured. Staff must configure BuiltByBit creator authorization and resource IDs.</p>
       <p v-for="[name, check] in checkErrors" :key="name" class="coupon-error" role="alert">{{ checkNames[name] || name }}: {{ checkMessage(check) }}</p>
       <p v-if="!checks.reviews || !checks.loyalty">Reward checks are still starting. Refresh later.</p>
-      <p v-if="!coupons.length">No coupons have been issued to this account yet. Eligibility is checked periodically.</p>
-      <article v-for="coupon in coupons" :key="coupon.id">
+      <p v-if="!staff && !coupons.length">No coupons have been issued to this account yet. Eligibility is checked periodically.</p>
+      <article v-for="coupon in (staff ? [] : coupons)" :key="coupon.id">
         <div><strong>{{ coupon.discount }}% {{ coupon.kind === 'review' ? 'review reward' : coupon.kind === 'manual' ? 'staff-granted coupon' : 'loyalty reward' }}</strong><p>{{ coupon.kind !== 'loyalty' ? 'One total use.' : 'Permanent coupon.' }} BuiltByBit checks availability and usage limits at checkout.</p><p v-if="coupon.state === 'issued'">{{ coupon.uses }} recorded use{{ coupon.uses === 1 ? '' : 's' }}. Usage updates periodically.</p></div>
         <code v-if="coupon.state === 'issued' && coupon.code">{{ coupon.code }}</code>
         <p v-else-if="coupon.state === 'failed' && coupon.retryAt" class="coupon-error">BuiltByBit declined this request. We will retry automatically; contact support if it continues.</p>
         <p v-else-if="coupon.state === 'failed'" class="coupon-error">BuiltByBit declined this request. Contact support.</p>
         <p v-else class="coupon-error">Coupon issuance is pending or could not be confirmed. If it does not resolve, contact support; do not request another code.</p>
       </article>
-      <nav v-if="total > 20" aria-label="Coupon pages"><button type="button" :disabled="page <= 1" @click="load(page - 1)">Previous</button> Page {{ page }} / {{ Math.ceil(total / 20) }} <button type="button" :disabled="page * 20 >= total" @click="load(page + 1)">Next</button></nav>
+      <nav v-if="!staff && total > 20" aria-label="Coupon pages"><button type="button" :disabled="page <= 1" @click="load(page - 1)">Previous</button> Page {{ page }} / {{ Math.ceil(total / 20) }} <button type="button" :disabled="page * 20 >= total" @click="load(page + 1)">Next</button></nav>
     </template>
-    <p v-if="staffLevel === 1">Staff coupon grants unlock at level 2 (100 XP), for Support rank and above.</p>
-    <section v-if="canGrant" id="staff-grants">
-      <h2>Staff coupon grants</h2><p>Level 2+ staff at Support rank and above can grant one-use coupons to registered members. Every grant and its reason is logged. Self-grants are blocked.</p>
-      <form @submit.prevent="grant">
+    <section v-if="staff && signedIn && !loading && !error" id="staff-grants">
+      <h2>Staff coupon grants</h2>
+      <p v-if="!canManageCoupons" class="coupon-error" role="alert">Support rank or above with coupon-grant permission is required.</p>
+      <template v-else>
+      <p>Support staff require level 2 (100 XP). Studio Lead and Owner can grant at any XP level. Every grant and its reason is logged; self-grants are blocked.</p>
+      <p v-if="!canGrant" role="status">Your current staff level is {{ staffLevel }}. Reach level 2 to enable this form.</p>
+      <form @submit.prevent="grant"><fieldset :disabled="!canGrant || granting">
         <label>Member Discord ID<input v-model="recipient" required inputmode="numeric" pattern="[0-9]{5,22}" :disabled="granting"></label>
         <label>Discount<select v-model.number="discount" :disabled="granting"><option :value="5">5%</option><option :value="10">10%</option><option :value="15">15%</option></select></label>
         <label>Reason<textarea v-model="reason" required minlength="5" maxlength="300" :disabled="granting" /></label>
         <button type="submit" :disabled="granting">{{ granting ? 'Granting…' : 'Grant coupon' }}</button>
-      </form>
+      </fieldset></form>
       <p v-if="grantMessage" role="status">{{ grantMessage }}</p><p v-if="grantError" class="coupon-error" role="alert">{{ grantError }}</p>
+      </template>
     </section>
-    <section><h2>Loyalty coupon policy</h2><p>If found sharing this code with other users, your benefits and coupon will be taken away. All discount uses are logged.</p><p>BuiltByBit tracks coupon usage counts; this site does not verify who redeems a code. Codes are not locked to a BuiltByBit account. Do not share them. If your tier changes, older codes may remain valid until staff deactivate them on BuiltByBit.</p></section>
-    <p>Review rewards require a website account and a BuiltByBit account linked to the same Discord account. Rewards are independent of star rating. Each review can earn one single-use code.</p>
-    <a href="/account/loyalty">Explore Lumen Loyalty →</a>
+    <template v-if="!staff">
+      <section><h2>Loyalty coupon policy</h2><p>If found sharing this code with other users, your benefits and coupon will be taken away. All discount uses are logged.</p><p>BuiltByBit tracks coupon usage counts; this site does not verify who redeems a code. Codes are not locked to a BuiltByBit account. Do not share them. If your tier changes, older codes may remain valid until staff deactivate them on BuiltByBit.</p></section>
+      <p>Review rewards require a website account and a BuiltByBit account linked to the same Discord account. Rewards are independent of star rating. Each review can earn one single-use code.</p>
+      <a href="/account/loyalty">Explore Lumen Loyalty →</a>
+    </template>
+    <a v-else href="/admin/">Return to Staff Dashboard →</a>
   </main>
 </template>
 
 <style scoped>
 .coupons{max-width:850px;margin:auto;padding:32px clamp(16px,3vw,32px) 64px}.coupons header,.coupons section,.coupons article{padding:24px;margin-bottom:16px;border:1px solid #9a6bf344;border-radius:16px;background:var(--vp-c-bg-soft)}.coupons header{background:radial-gradient(ellipse at 90% 0,#7b3ff22a,transparent 58%),var(--vp-c-bg-soft)}.coupons header>p:first-child{color:var(--vp-c-brand-1);font-size:.7rem;letter-spacing:.14em}.coupons h1{font-size:clamp(2rem,5vw,3rem)}.coupons h2{border:0}.coupons p{color:var(--vp-c-text-2);line-height:1.6}.coupons article{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}.coupons code{padding:10px;border:1px solid var(--vp-c-brand-1);border-radius:8px;overflow-wrap:anywhere;user-select:all}.coupons button{padding:8px 14px;border:1px solid #9a6bf366;border-radius:8px;background:var(--vp-c-brand-soft)}.coupon-error{padding:12px;border:1px solid #d96176;border-radius:8px}
-.coupons form,.coupons label{display:grid;gap:8px}.coupons form{gap:16px}.coupons input,.coupons textarea,.coupons select{padding:10px;border:1px solid var(--vp-c-divider);border-radius:8px;background:var(--vp-c-bg);color:var(--vp-c-text-1)}
+.coupons form,.coupons fieldset,.coupons label{display:grid;gap:8px}.coupons form,.coupons fieldset{gap:16px}.coupons fieldset{border:0;padding:0;min-width:0}.coupons input,.coupons textarea,.coupons select{padding:10px;border:1px solid var(--vp-c-divider);border-radius:8px;background:var(--vp-c-bg);color:var(--vp-c-text-1)}
 </style>

@@ -235,7 +235,7 @@ function selectLinkedArea(resetDefault = false) {
     websiteOperations.value = false; settingsArea.value = ''; user.value = null; selectedLicenseId.value = ''; clearKey()
     if (availableViews.value.length) view.value = availableViews.value[0].id
     else if (communityAccess.value) websiteOperations.value = true
-  } else if (area === 'tickets' && communityAccess.value) { websiteOperations.value = true; settingsArea.value = ''; clearKey() }
+  } else if ((area === 'tickets' || area === 'staff-leaderboard') && communityAccess.value) { websiteOperations.value = true; settingsArea.value = ''; clearKey() }
   else if ((area === 'roles' || area === 'settings') && can(area === 'roles' ? 'roles.assign' : 'settings.view')) {
     settingsArea.value = area; websiteOperations.value = false; clearKey()
   } else if ((area === 'products' || area === 'audit' || area === 'licenses') && availableViews.value.some(tab => tab.id === area)) {
@@ -243,7 +243,7 @@ function selectLinkedArea(resetDefault = false) {
   }
 }
 function linkedAreaChanged() {
-  if (submitting.value || !['', 'tickets', 'roles', 'settings', 'products', 'audit', 'licenses'].includes(window.location.hash.slice(1))) return
+  if (submitting.value || !['', 'tickets', 'staff-leaderboard', 'roles', 'settings', 'products', 'audit', 'licenses'].includes(window.location.hash.slice(1))) return
   selectLinkedArea(true)
   if (!websiteOperations.value && !settingsArea.value && can('dashboard.view') && availableViews.value.length) void loadView()
 }

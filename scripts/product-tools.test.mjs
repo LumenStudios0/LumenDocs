@@ -294,6 +294,30 @@ test('Support can grant audited one-use coupons without granting licensing power
   assert.equal(posts, 2, 'An unconfirmed grant must not trigger another creation after refresh')
 })
 
+test('Owner can grant customer coupons without farming XP while new Support still needs level 2', async t => {
+  const { env, customer, sqlite, call } = await fixture(t)
+  env.BUILDBYBIT_API_AUTHORIZATION = 'private-test-token'; env.BUILDBYBIT_RESOURCE_IDS = '1001'
+  sqlite.prepare('INSERT INTO website_members(discord_id,registered_at) VALUES (?,?)').run(customer, '2026-01-01')
+  const previous = globalThis.fetch
+  t.after(() => { globalThis.fetch = previous })
+  globalThis.fetch = async (input, options = {}) => {
+    if (new URL(input).pathname.endsWith('/coupons/entries')) return Response.json({ result: 'success', data: {
+      entries: [{ coupon_id: 1, content_type: 'resource', content_id: 1001 }],
+      stats: { total: 1, page: 1, per_page: 100, max_page: 1 },
+    } })
+    const body = JSON.parse(options.body)
+    return Response.json({ result: 'success', data: { coupon: { coupon_id: 1, label: `123-${body.label}`,
+      discount: .1, percent: true, active: true, all_content_types: [], expires_at: 0, max_uses: 1, max_per_user_uses: 0 } } })
+  }
+  const access = await (await call('/studio/coupons')).json()
+  assert.equal(access.staffLevel, 1)
+  assert.equal(access.canManageCoupons, true)
+  assert.equal(access.canGrant, true)
+  assert.equal((await call('/studio/staff/coupons', 'POST', {
+    userId: customer, discount: 10, reason: 'Owner ticket reward', requestId: crypto.randomUUID(),
+  })).status, 200)
+})
+
 test('review rewards tolerate omitted optional ban flags and verify missing authors through purchase identities', async t => {
   const { env, customer, sqlite, call } = await fixture(t)
   env.BUILDBYBIT_API_AUTHORIZATION = 'private-test-token'; env.BUILDBYBIT_RESOURCE_IDS = '1001'
