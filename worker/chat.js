@@ -6,6 +6,7 @@ import { staffAssistant } from './staff-assistant.js'
 import { activityCustomerName, staffActivityStatement } from './staff-operations.js'
 import { staffLicenseKey } from './staff-license-key.js'
 import { backfillMemberPoints } from './lumen-points.js'
+import { reconcileShopCoupons } from './points-shop.js'
 
 const jsonHeaders = {
   'Content-Type': 'application/json; charset=utf-8',
@@ -1358,6 +1359,7 @@ export default {
     context.waitUntil(Promise.all([
       runCommunityChecks(env).catch(() => undefined),
       backfillMemberPoints(env).catch(error => console.error('Lumen Points backfill failed:', error instanceof Error ? error.message : 'Unknown error')),
+      reconcileShopCoupons(env).catch(error => console.error('Points shop reconciliation failed:', error instanceof Error ? error.message : 'Unknown error')),
     ]))
   },
 }

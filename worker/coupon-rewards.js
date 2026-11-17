@@ -208,13 +208,18 @@ async function issue(env, resources, reward) {
   if (state === 'issued') statements.push(env.COMMUNITY_DB.prepare(
     `INSERT INTO community_notifications(id,recipient_id,title,body,kind,audience,link,created_at)
      VALUES (?,?,'Your coupon is ready',?,'license','user','/account/coupons',?)`,
-  ).bind(crypto.randomUUID(), reward.userId, `Your ${reward.kind === 'manual' ? 'staff-granted' : reward.kind} coupon is ready in your account.`, new Date().toISOString()))
+  ).bind(crypto.randomUUID(), reward.userId, `Your ${reward.key.startsWith('shop:') ? 'points-shop' : reward.kind === 'manual' ? 'staff-granted' : reward.kind} coupon is ready in your account.`, new Date().toISOString()))
   if (reward.actor) statements.push(env.COMMUNITY_DB.prepare(
     `INSERT INTO website_access_audit(id,actor_id,actor_role,action,target,details,created_at)
      VALUES (?,?,?,'coupon.grant.result',?,?,?)`,
   ).bind(crypto.randomUUID(), reward.actor.id, reward.actor.role, reward.userId,
     JSON.stringify({ rewardKey: reward.key, discount: reward.discount, state }), new Date().toISOString()))
   await env.COMMUNITY_DB.batch(statements)
+}
+
+export async function issuePointsCoupon(env, order) {
+  await issue(env, config(env), { key: `shop:${order.id}`, userId: order.user_id, kind: 'manual',
+    discount: order.product_id === 'coupon_5' ? 5 : 10, reason: 'Redeemed in the Lumen Points shop' })
 }
 
 async function reviews(env, resources) {
@@ -381,7 +386,7 @@ export async function handleCoupons(request, env, origin, deps) {
     const canManageCoupons = access.rank >= 3 && hasPermission(access, 'coupons.grant') && hasPermission(access, 'dashboard.view')
     return send({ configured, staffLevel: progress?.level || null, canManageCoupons,
       canGrant: canManageCoupons && (access.rank >= 6 || progress.level >= 2),
-      coupons: rows.map(row => ({ id: row.reward_key, kind: row.kind, discount: row.discount, state: row.state, code: row.code, retryAt: row.retry_at, createdAt: row.created_at, uses: row.uses, resourceIds: JSON.parse(row.scope_ids) })), page, pageSize, total: total.n,
+      coupons: rows.map(row => ({ id: row.reward_key, kind: row.reward_key.startsWith('shop:') ? 'shop' : row.kind, discount: row.discount, state: row.state, code: row.code, retryAt: row.retry_at, createdAt: row.created_at, uses: row.uses, resourceIds: JSON.parse(row.scope_ids) })), page, pageSize, total: total.n,
       checks: Object.fromEntries(checks.map(row => [row.name, { status: row.status, code: row.error_code, checkedAt: row.checked_at }])) })
   } catch (error) {
     console.error('Coupon list failed:', error instanceof Error ? error.message : 'Unknown error')

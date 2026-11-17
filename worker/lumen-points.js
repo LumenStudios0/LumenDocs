@@ -1,4 +1,4 @@
-import { ensurePointsAccount } from './points-account.js'
+import { ensurePointsAccount, pointsBalance } from './points-account.js'
 import { loyaltyStatus } from './loyalty.js'
 
 export const pointMilestones = [
@@ -139,8 +139,11 @@ async function savePurchases(env, userId, snapshot) {
 
 async function saveMilestones(env, userId) {
   const status = await loyaltyStatus(env, userId)
+  const free = (await env.COMMUNITY_DB.prepare(`SELECT json_extract(details,'$.productId') AS product_id
+    FROM lumen_points_orders WHERE user_id=? AND product_id='free_product' AND state!='refunded'`).bind(userId).all()).results || []
+  const count = status.products.filter(product => !free.some(row => row.product_id === product.productId)).length
   const now = new Date().toISOString()
-  const statements = pointMilestones.filter(tier => tier.count === null ? status.tier?.id === 'elite' : status.count >= tier.count)
+  const statements = pointMilestones.filter(tier => tier.count === null ? status.total > 0 && count === status.total : count >= tier.count)
     .map(tier => env.COMMUNITY_DB.prepare(`INSERT INTO lumen_points_rewards(reward_key,user_id,kind,points_units,label,earned_at,updated_at)
       VALUES (?,?,'tier',?,?,?,?) ON CONFLICT(reward_key) DO NOTHING`)
       .bind(`tier:${userId}:${tier.id}`, userId, tier.points * 100, `${tier.name} milestone`, now, now))
@@ -242,14 +245,16 @@ export async function redeemPointReferral(db, userId, code) {
 
 async function pointsSummary(db, userId) {
   const account = await db.prepare('SELECT referral_code,purchase_checked_at,tier_checked_at FROM lumen_points_accounts WHERE user_id=?').bind(userId).first()
-  const balance = await db.prepare('SELECT COALESCE(SUM(points_units),0) AS units FROM lumen_points_rewards WHERE user_id=?').bind(userId).first()
+  const balance = await pointsBalance(db, userId)
   const count = await db.prepare("SELECT COUNT(*) AS n FROM lumen_points_rewards WHERE user_id=? AND kind='referral' AND points_units>0").bind(userId).first()
   const redeemed = await db.prepare('SELECT redeemed_at FROM lumen_points_referrals WHERE buyer_user_id=?').bind(userId).first()
   const eligible = await db.prepare(`SELECT COALESCE(SUM(points_units),0) AS units,MIN(purchased_at) AS oldest
     FROM lumen_points_purchases WHERE user_id=? AND points_units>0 AND purchased_at>=? AND purchased_at<=?`)
     .bind(userId, new Date(Date.now() - 86400000).toISOString(), new Date().toISOString()).first()
   const rewards = (await db.prepare("SELECT reward_key,points_units FROM lumen_points_rewards WHERE user_id=? AND kind='tier'").bind(userId).all()).results || []
-  const history = (await db.prepare('SELECT id,delta_units AS units,label,created_at AS createdAt FROM lumen_points_history WHERE user_id=? ORDER BY id DESC LIMIT 50').bind(userId).all()).results || []
+  const history = (await db.prepare(`SELECT id,delta_units AS units,label,created_at AS createdAt FROM lumen_points_history WHERE user_id=?
+    UNION ALL SELECT 'shop:'||id,delta_units,label,created_at FROM lumen_points_shop_events WHERE user_id=?
+    ORDER BY createdAt DESC,id DESC LIMIT 50`).bind(userId, userId).all()).results || []
   const totals = (await db.prepare(`SELECT kind,SUM(points_units) AS units,COUNT(*) AS n FROM lumen_points_rewards
     WHERE user_id=? AND points_units>0 GROUP BY kind`).bind(userId).all()).results || []
   const periods = {}
@@ -266,7 +271,7 @@ async function pointsSummary(db, userId) {
     }
   }
   return {
-    balance: balance.units / 100, referralCode: account.referral_code, successfulReferrals: count.n,
+    balance, referralCode: account.referral_code, successfulReferrals: count.n,
     redeemedAt: redeemed?.redeemed_at || null, eligibleReferralPoints: eligible.units / 200,
     referralExpiresAt: eligible.oldest ? new Date(Date.parse(eligible.oldest) + 86400000).toISOString() : null,
     purchaseCheckedAt: account.purchase_checked_at, tierCheckedAt: account.tier_checked_at,

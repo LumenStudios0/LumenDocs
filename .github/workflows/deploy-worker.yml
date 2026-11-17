@@ -215,9 +215,9 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           const base = 'https://lumen-docs-assistant.lumennetwork0.workers.dev'
-          for (const path of ['/studio/downloads', '/studio/downloads/00000000-0000-0000-0000-000000000000', '/studio/coupons', '/studio/staff/coupons', '/community/staff/progression', '/studio/points', '/studio/points/sync', '/studio/points/referral']) {
+          for (const path of ['/studio/downloads', '/studio/downloads/00000000-0000-0000-0000-000000000000', '/studio/coupons', '/studio/staff/coupons', '/community/staff/progression', '/studio/points', '/studio/points/sync', '/studio/points/referral', '/studio/points/shop', '/studio/points/shop/redeem', '/studio/points/shop/fulfill']) {
             const response = await fetch(base + path, {
-              method: path.startsWith('/studio/points/') ? 'POST' : 'GET',
+              method: ['/studio/points/sync', '/studio/points/referral', '/studio/points/shop/redeem', '/studio/points/shop/fulfill'].includes(path) ? 'POST' : 'GET',
               headers: { Origin: 'https://lumenstudio.fyi' },
               signal: AbortSignal.timeout(10000),
             })
@@ -233,7 +233,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           npx --yes wrangler@4.160.0 d1 execute lumen-community --remote --json \
-            --command "SELECT (SELECT COUNT(*) FROM lumen_points_accounts) AS wallets, (SELECT COUNT(DISTINCT referral_code) FROM lumen_points_accounts) AS unique_codes, (SELECT COUNT(*) FROM lumen_points_accounts WHERE length(referral_code)!=15 OR referral_code NOT GLOB 'LP-*') AS invalid_codes, (SELECT COUNT(*) FROM lumen_points_rewards WHERE points_units<0) AS invalid_rewards, (SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name IN ('lumen_points_awarded','lumen_points_adjusted')) AS ledger_triggers" \
+            --command "SELECT (SELECT COUNT(*) FROM lumen_points_accounts) AS wallets, (SELECT COUNT(DISTINCT referral_code) FROM lumen_points_accounts) AS unique_codes, (SELECT COUNT(*) FROM lumen_points_accounts WHERE length(referral_code)!=15 OR referral_code NOT GLOB 'LP-*') AS invalid_codes, (SELECT COUNT(*) FROM lumen_points_rewards WHERE points_units<0) AS invalid_rewards, (SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name IN ('lumen_points_awarded','lumen_points_adjusted')) AS ledger_triggers, (SELECT COUNT(*) FROM sqlite_master WHERE name IN ('lumen_points_orders','lumen_points_shop_entitlements','lumen_points_shop_events','lumen_points_balances','lumen_points_shop_spent','lumen_points_shop_refunded')) AS shop_objects, (SELECT COUNT(*) FROM lumen_points_balances) AS shop_wallets" \
             > "$RUNNER_TEMP/lumen-points-storage.json"
           node --input-type=module <<'NODE'
           import { readFile } from 'node:fs/promises'
@@ -242,10 +242,11 @@ jobs:
           const result = JSON.parse(await readFile(`${process.env.RUNNER_TEMP}/lumen-points-storage.json`, 'utf8'))
           const data = result[0]?.results?.[0]
           if (!data || data.wallets !== data.unique_codes || data.invalid_codes !== 0 ||
-              data.invalid_rewards !== 0 || data.ledger_triggers !== 2) {
+              data.invalid_rewards !== 0 || data.ledger_triggers !== 2 || data.shop_objects !== 6 || data.shop_wallets !== data.wallets) {
             throw new Error('Lumen Points wallets, referral uniqueness or ledger triggers did not verify.')
           }
           console.log(`Lumen Points storage verified: ${data.wallets} wallets with unique referral codes and both audit-history triggers.`)
+          console.log(`Points shop verified: orders, entitlements, spending/refund history and ${data.shop_wallets} spendable wallets.`)
           const deadline = Date.now() + 660000
           const sql = `SELECT
             (SELECT COUNT(*) FROM lumen_points_accounts WHERE purchase_checked_at IS NULL) AS pending,

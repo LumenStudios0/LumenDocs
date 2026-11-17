@@ -1,0 +1,14 @@
+export const shopProducts = [
+  { id: 'coupon_5', name: '5% off your next purchase', price: 100, category: 'discounts', delivery: 'coupon', art: 'coupon', color: '#b892ff', description: 'One use across eligible Lumen products on BuiltByBit. Your code appears in Coupons.' },
+  { id: 'coupon_10', name: '10% off your next purchase', price: 160, category: 'discounts', delivery: 'coupon', art: 'coupon', color: '#f5acff', description: 'A bigger saving for your next eligible BuiltByBit purchase. Single-use coupon.' },
+  { id: 'free_product', name: 'Free product', price: 1500, category: 'plugins', delivery: 'staff', art: 'gift', color: '#78eac8', description: 'Choose a plugin you do not own. All staff are notified to arrange your license. This reward earns no points or point milestones.' },
+  { id: 'ip_slot', name: '+1 IP slot', price: 750, category: 'plugins', delivery: 'staff', art: 'server', color: '#83c9ff', description: 'One extra account IP slot, applied by staff to your licensing account. Pending until staff confirm delivery.' },
+  { id: 'badge_starlit', name: 'Starlit badge', price: 250, category: 'cosmetics', delivery: 'instant', art: 'badge', color: '#ffe09c', description: 'A permanent, shimmering star badge for your member profile. Not a staff rank.' },
+  { id: 'badge_endwalker', name: 'Endwalker badge', price: 350, category: 'cosmetics', delivery: 'instant', art: 'badge', color: '#b99bff', description: 'A permanent portal-crystal badge with a wandering violet glow.' },
+  { id: 'badge_lumenheart', name: 'Lumen Heart badge', price: 500, category: 'cosmetics', delivery: 'instant', art: 'badge', color: '#ff9fc6', description: 'A permanent animated heart badge for members who love Lumen.' },
+  { id: 'effect_aurora', name: 'Aurora Veil', price: 300, category: 'cosmetics', delivery: 'instant', art: 'effect', color: '#83efd5', description: 'Flowing purple and mint light across your profile. Permanent unlock, no loyalty tier required.' },
+  { id: 'effect_orbit', name: 'Celestial Orbit', price: 600, category: 'cosmetics', delivery: 'instant', art: 'effect', color: '#c7acff', description: 'A glowing orbital constellation around your profile. Permanent unlock, no loyalty tier required.' },
+  { id: 'commission', name: 'Small custom plugin request', price: 4500, category: 'plugins', delivery: 'staff', art: 'code', color: '#ffbd8a', description: 'Request a small custom plugin, such as shards or an auction system. Staff review scope with you; this does not cover unlimited or large commissions.' },
+]
+export const shopBadges = shopProducts.filter(product => product.art === 'badge').map(product => ({ id: product.id, name: product.name.replace(' badge', '') }))
+export const shopEffects = shopProducts.filter(product => product.art === 'effect').map(product => ({ id: product.id, name: product.name }))

@@ -32,7 +32,7 @@ function createD1() {
   const migrations = Promise.all(['0001_community.sql', '0002_ticket_routing.sql', '0003_community_forum.sql', '0004_website_access.sql', '0005_member_registration.sql', '0006_community_expansion.sql', '0007_product_tools.sql', '0010_trial_duration.sql', '0011_staff_docs_permissions.sql', '0012_staff_operations.sql', '0013_staff_license_keys.sql', '0014_loyalty_subclients.sql', '0015_member_profiles.sql', '0016_public_member_profiles.sql', '0017_profile_badges.sql', '0018_profile_customization.sql', '0019_support_roles.sql', '0020_coupon_rewards.sql', '0021_staff_progression.sql', '0023_coupon_operations.sql', '0024_coupon_scope.sql', '0025_coupon_discount_range.sql'].map(
     name => readFile(new URL(`../worker/migrations/community/${name}`, import.meta.url), 'utf8'),
   ))
-  const pointsMigrations = Promise.all(['0027_lumen_points.sql', '0028_lumen_points_backfill.sql'].map(
+  const pointsMigrations = Promise.all(['0027_lumen_points.sql', '0028_lumen_points_backfill.sql', '0029_lumen_points_shop.sql'].map(
     name => readFile(new URL(`../worker/migrations/community/${name}`, import.meta.url), 'utf8'),
   ))
   const database = {

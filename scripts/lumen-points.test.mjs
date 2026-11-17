@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { handleProductTools } from '../worker/product-tools.js'
 import { backfillMemberPoints, redeemPointReferral, syncPointEarnings, usdCents } from '../worker/lumen-points.js'
 import { rememberMember } from '../worker/access-control.js'
+import { reconcileShopCoupons } from '../worker/points-shop.js'
 
 const member = '123456789012345678'
 const referrer = '223456789012345678'
@@ -113,6 +114,161 @@ test('USD conversion preserves fractional points without trusting formatted or l
   assert.equal(usdCents({ value: 0.1, currency: 'USD' }), 10)
   for (const value of [-1, NaN, Infinity, '1.999', '1e3', null]) assert.throws(() => usdCents({ value, currency: 'USD' }))
   assert.throws(() => usdCents({ value: 12, currency: 'EUR' }), /non-USD/)
+})
+
+async function shopFixture(t, points = 5000) {
+  const fixture = await setup(t)
+  await fixture.call()
+  fixture.sqlite.prepare(`INSERT INTO lumen_points_rewards VALUES (?,?,'tier',?,'Test earnings',?,?)`)
+    .run('test:shop', member, points * 100, new Date().toISOString(), new Date().toISOString())
+  return fixture
+}
+
+test('shop prices are server controlled, cosmetics are permanent and purchase/history balances include spending', async t => {
+  const { call, sqlite } = await shopFixture(t, 600)
+  const requestId = crypto.randomUUID()
+  const body = { requestId, productId: 'badge_starlit', price: 1, userId: stranger }
+  const first = await (await call('/studio/points/shop/redeem', 'POST', body)).json()
+  assert.equal(first.balance, 350)
+  assert.deepEqual(first.owned, ['badge_starlit'])
+  assert.equal(first.orders[0].price, 250)
+  const duplicate = await (await call('/studio/points/shop/redeem', 'POST', body)).json()
+  assert.equal(duplicate.balance, 350)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_orders').get().n, 1)
+  assert.equal((await call('/studio/points/shop/redeem', 'POST', { ...body, requestId: crypto.randomUUID() })).status, 409)
+  const wallet = await (await call()).json()
+  assert.equal(wallet.balance, 350)
+  assert.ok(wallet.history.some(entry => entry.points === -250 && entry.label === 'Shop: Starlit badge'))
+})
+
+test('atomic spending prevents concurrent overspending and rolls back if fulfillment cannot be recorded', async t => {
+  const { call, db, sqlite } = await shopFixture(t, 300)
+  const results = await Promise.all(['badge_starlit', 'effect_aurora'].map(productId =>
+    call('/studio/points/shop/redeem', 'POST', { requestId: crypto.randomUUID(), productId })))
+  assert.equal(results.filter(result => result.status === 200).length, 1)
+  assert.equal(results.filter(result => result.status === 409).length, 1)
+  assert.ok((await (await call()).json()).balance >= 0)
+  sqlite.prepare("UPDATE lumen_points_rewards SET points_units=500000 WHERE reward_key='test:shop'").run()
+  db.failBatch = true
+  assert.equal((await call('/studio/points/shop/redeem', 'POST', { requestId: crypto.randomUUID(), productId: 'effect_orbit' })).status, 503)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_orders').get().n, 1)
+})
+
+test('free products notify all staff atomically, never earn purchase points or advance point milestones, and can be refunded once', async t => {
+  const { call, env, sqlite, data, clearCache } = await shopFixture(t)
+  await rememberMember({ id: stranger, username: 'helper' }, env)
+  sqlite.prepare("UPDATE website_members SET role_id='support_team' WHERE discord_id=?").run(stranger)
+  const requestId = crypto.randomUUID()
+  const order = await (await call('/studio/points/shop/redeem', 'POST', { requestId, productId: 'free_product', pluginId: 'p2' })).json()
+  assert.equal(order.balance, 3500)
+  assert.equal(order.orders[0].state, 'pending')
+  const recipients = sqlite.prepare("SELECT recipient_id FROM community_notifications WHERE id LIKE 'shop:%'").all().map(row => row.recipient_id)
+  for (const id of ['1400375985211441242', '1012053634911064114', stranger]) assert.ok(recipients.includes(id))
+  data.ownership = ['p0', 'p1', 'p2']
+  data.purchases = []
+  clearCache()
+  const checked = await (await call('/studio/points/sync', 'POST', {})).json()
+  assert.equal(checked.purchasePoints, 0)
+  assert.equal(checked.milestones.find(tier => tier.id === 'spark').awarded, false)
+  const refund = { orderId: requestId, state: 'refunded', note: 'Canceled before any license was granted.' }
+  assert.equal((await call('/studio/points/shop/fulfill', 'POST', refund)).status, 403)
+  assert.equal((await call('/studio/points/shop/fulfill', 'POST', refund, '1400375985211441242')).status, 200)
+  assert.equal((await (await call()).json()).balance, 5000)
+  assert.equal((await call('/studio/points/shop/fulfill', 'POST', refund, '1400375985211441242')).status, 409)
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM lumen_points_shop_events WHERE delta_units>0").get().n, 1)
+})
+
+test('shop rejects unauthenticated, forged, already-owned and incomplete requests without spending points', async t => {
+  const { call, data, sqlite } = await shopFixture(t)
+  assert.equal((await call('/studio/points/shop', 'GET', undefined, '')).status, 401)
+  for (const body of [
+    { requestId: crypto.randomUUID(), productId: 'not_real' },
+    { requestId: 'bad', productId: 'coupon_5' },
+    { requestId: crypto.randomUUID(), productId: 'commission', description: 'short' },
+    { requestId: crypto.randomUUID(), productId: 'free_product', pluginId: 'unknown' },
+  ]) assert.ok((await call('/studio/points/shop/redeem', 'POST', body)).status >= 400)
+  data.ownership = ['p0']
+  assert.equal((await call('/studio/points/shop/redeem', 'POST', { requestId: crypto.randomUUID(), productId: 'free_product', pluginId: 'p0' })).status, 400)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_orders').get().n, 0)
+})
+
+test('shop coupons issue once, uncertain creation stays charged and known rejections refund points', async t => {
+  const { call, env, sqlite } = await shopFixture(t)
+  const previous = globalThis.fetch
+  let mode = 'issued', creates = 0
+  globalThis.fetch = async (input, options) => {
+    const url = new URL(input)
+    if (url.pathname.endsWith('/coupons') && options?.method === 'POST') {
+      creates++
+      if (mode === 'failed') return Response.json({ result: 'error' }, { status: 403 })
+      if (mode === 'uncertain') throw Error('Connection interrupted after submit')
+      const body = JSON.parse(options.body)
+      return Response.json({ result: 'success', data: { coupon: {
+        coupon_id: 88, label: `88-${body.label}`, percent: true, discount: body.discount / 100, active: true,
+        all_content_types: [], expires_at: null, max_per_user_uses: null, max_uses: 1,
+      } } })
+    }
+    if (url.pathname.endsWith('/coupons/entries')) return Response.json({ result: 'success', data: {
+      entries: [{ coupon_id: 88, content_type: 'resource', content_id: 1001 }],
+      stats: { total: 1, page: 1, per_page: 100, max_page: 1 },
+    } })
+    return previous(input, options)
+  }
+  const body = { requestId: crypto.randomUUID(), productId: 'coupon_5' }
+  const issued = await (await call('/studio/points/shop/redeem', 'POST', body)).json()
+  assert.equal(issued.balance, 4900)
+  assert.equal(issued.orders[0].state, 'fulfilled')
+  await call('/studio/points/shop/redeem', 'POST', body)
+  assert.equal(creates, 1)
+  mode = 'failed'
+  const failed = await (await call('/studio/points/shop/redeem', 'POST', { requestId: crypto.randomUUID(), productId: 'coupon_10' })).json()
+  assert.equal(failed.balance, 4900)
+  assert.ok(failed.orders.some(order => order.state === 'refunded'))
+  mode = 'uncertain'
+  const pendingId = crypto.randomUUID()
+  const pending = await (await call('/studio/points/shop/redeem', 'POST', { requestId: pendingId, productId: 'coupon_10' })).json()
+  assert.equal(pending.balance, 4740)
+  assert.equal(sqlite.prepare('SELECT state FROM lumen_points_orders WHERE id=?').get(pendingId).state, 'review')
+  sqlite.prepare("UPDATE coupon_rewards SET state='issued' WHERE reward_key=?").run(`shop:${pendingId}`)
+  await reconcileShopCoupons(env)
+  assert.equal(sqlite.prepare('SELECT state FROM lumen_points_orders WHERE id=?').get(pendingId).state, 'fulfilled')
+})
+
+test('purchased badges and effects can be equipped without a loyalty tier and unowned cosmetics are rejected', async t => {
+  const { call } = await shopFixture(t)
+  let profile = (await (await call('/studio/profiles/me')).json()).profile
+  const body = () => ({
+    displayName: profile.displayName, bio: '', pronouns: '', status: '', accent: profile.accent, banner: profile.banner,
+    website: '', showcase: '', favoritePlugin: '', public: true, revision: profile.revision,
+    badgeIds: ['badge_starlit'], appearance: { background: 'none', frame: 'none', decoration: 'none', effect: 'effect_aurora' },
+  })
+  assert.equal((await call('/studio/profiles/me', 'PUT', body())).status, 403)
+  for (const productId of ['badge_starlit', 'effect_aurora']) {
+    assert.equal((await call('/studio/points/shop/redeem', 'POST', { requestId: crypto.randomUUID(), productId })).status, 200)
+  }
+  profile = (await (await call('/studio/profiles/me')).json()).profile
+  assert.equal(profile.tier, null)
+  assert.ok(profile.availableBadges.some(badge => badge.id === 'badge_starlit'))
+  assert.equal((await call('/studio/profiles/me', 'PUT', body())).status, 200)
+  const published = (await (await call(`/studio/profiles/${member}`)).json()).profile
+  assert.equal(published.appearance.effect, 'effect_aurora')
+  assert.deepEqual(published.badges, [{ id: 'badge_starlit', name: 'Starlit' }])
+})
+
+test('coupon crashes before reservation refund safely, but potentially created coupons remain under review', async t => {
+  const { call, env, sqlite } = await shopFixture(t, 500)
+  const now = new Date(Date.now() - 20 * 60000).toISOString()
+  const unissued = crypto.randomUUID(), uncertain = crypto.randomUUID()
+  for (const [id, productId, units] of [[unissued, 'coupon_5', 10000], [uncertain, 'coupon_10', 16000]]) {
+    sqlite.prepare(`INSERT INTO lumen_points_orders VALUES (?,?,?,'Coupon',?,'processing','{}','',NULL,?,?)`).run(id, member, productId, units, now, now)
+  }
+  sqlite.prepare(`INSERT INTO coupon_rewards(reward_key,user_id,kind,discount,state,label_suffix,created_at,updated_at)
+    VALUES (?,?,'manual',10,'issuing','KNOWNRESERVATION',?,?)`).run(`shop:${uncertain}`, member, now, now)
+  await reconcileShopCoupons(env)
+  assert.equal(sqlite.prepare('SELECT state FROM lumen_points_orders WHERE id=?').get(unissued).state, 'refunded')
+  assert.equal(sqlite.prepare('SELECT state FROM lumen_points_orders WHERE id=?').get(uncertain).state, 'review')
+  assert.equal(sqlite.prepare('SELECT state FROM coupon_rewards WHERE reward_key=?').get(`shop:${uncertain}`).state, 'uncertain')
+  assert.equal((await (await call()).json()).balance, 340)
 })
 
 test('background backfill credits every registered buyer without a page visit and never duplicates rewards', async t => {
@@ -429,5 +585,62 @@ test('points page sends only referral codes and ignores stale cross-account resp
   globalThis.pointsUiSession = ''
   await ui.load()
   assert.equal(ui.status.value, null)
+  assert.equal(ui.signedIn.value, false)
+})
+
+test('shop UI confirms spending, reuses failed request IDs and discards cross-account responses', async t => {
+  const { parse, compileScript } = await import('@vue/compiler-sfc')
+  const { transformWithEsbuild } = await import('vite')
+  const saved = new Map()
+  const globals = ['shopUiSession', 'shopUiRequest', 'sessionStorage']
+  const previous = globals.map(key => globalThis[key])
+  t.after(() => globals.forEach((key, index) => {
+    if (previous[index] === undefined) delete globalThis[key]
+    else globalThis[key] = previous[index]
+  }))
+  globalThis.sessionStorage = { getItem: key => saved.get(key) || null, setItem: (key, value) => saved.set(key, value), removeItem: key => saved.delete(key) }
+  globalThis.shopUiSession = 'first-member'
+  const product = { id: 'coupon_5', price: 100, name: '5% off', delivery: 'coupon' }
+  const summary = { userId: member, balance: 500, products: [product], owned: [], orders: [], choices: [], queue: [] }
+  const calls = []
+  let fail = true
+  globalThis.shopUiRequest = async (path, options) => {
+    if (options?.method === 'POST') {
+      calls.push(JSON.parse(options.body))
+      if (fail) { fail = false; throw Error('Connection interrupted') }
+      return { ...summary, balance: 400, orders: [{ id: calls.at(-1).requestId, state: 'fulfilled' }] }
+    }
+    return summary
+  }
+  const source = (await readFile(new URL('../docs/.vitepress/theme/PointsShop.vue', import.meta.url), 'utf8'))
+    .replace("import { computed, onMounted, onUnmounted, ref } from 'vue'", "import { computed, ref } from 'vue'\nconst onMounted=()=>{};const onUnmounted=()=>{}")
+    .replace("import { getDiscordSession } from './discord-session'", 'const getDiscordSession=()=>globalThis.shopUiSession')
+    .replace("import { studioRequest } from './studio-api'", 'const studioRequest=(...args)=>globalThis.shopUiRequest(...args)')
+    .replace("import { useSiteDialog } from './site-dialog'", 'const useSiteDialog=()=>({confirm:async()=>true})')
+    .replace("import LoyaltyBadge from './LoyaltyBadge.vue'", 'const LoyaltyBadge={}')
+    .replace("import ProfileEffect from './ProfileEffect.vue'", 'const ProfileEffect={}')
+  const compiled = compileScript(parse(source).descriptor, { id: 'points-shop-ui' }).content
+    .replaceAll("from 'vue'", `from '${import.meta.resolve('vue')}'`)
+  const { code } = await transformWithEsbuild(compiled, 'PointsShop.ts', { loader: 'ts' })
+  const component = (await import('data:text/javascript;base64,' + Buffer.from(code).toString('base64'))).default
+  const ui = component.setup({}, { expose() {} })
+  await ui.load()
+  await ui.buy(product)
+  assert.match(ui.error.value, /Connection interrupted/)
+  assert.equal(saved.size, 1)
+  await ui.buy(product)
+  assert.equal(calls[0].requestId, calls[1].requestId)
+  assert.deepEqual(Object.keys(calls[0]).sort(), ['productId', 'requestId'])
+  assert.equal(ui.shop.value.balance, 400)
+  assert.equal(saved.size, 0)
+  let finish
+  globalThis.shopUiRequest = () => new Promise(resolve => { finish = resolve })
+  const request = ui.load()
+  globalThis.shopUiSession = 'second-member'
+  finish({ ...summary, balance: 9999 })
+  await request
+  assert.equal(ui.shop.value, null)
+  globalThis.shopUiSession = ''
+  await ui.load()
   assert.equal(ui.signedIn.value, false)
 })

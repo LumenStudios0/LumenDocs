@@ -853,12 +853,12 @@ test('profile cosmetics enforce Spark and Radiance unlocks, persist presets and 
   assert.equal((await save()).status,200); revision++
   sqlite.prepare('UPDATE member_profiles SET tier_checked_at=? WHERE user_id=?').run('2000-01-01',customer)
   let publicProfile=(await (await call('/studio/profiles/'+customer,'GET',undefined,'')).json()).profile
-  assert.deepEqual(publicProfile.appearance,{background:'none',frame:'none',decoration:'none',badgeSize:'medium',badgeIconOnly:false})
+  assert.deepEqual(publicProfile.appearance,{background:'none',frame:'none',decoration:'none',effect:'none',badgeSize:'medium',badgeIconOnly:false})
   assert.equal((await save()).status,200); revision++
   count=6
   await call('/studio/profiles/me','GET',undefined,customer)
   publicProfile=(await (await call('/studio/profiles/'+customer,'GET',undefined,'')).json()).profile
-  assert.deepEqual(publicProfile.appearance,{...appearance,badgeSize:'medium',badgeIconOnly:false})
+  assert.deepEqual(publicProfile.appearance,{...appearance,effect:'none',badgeSize:'medium',badgeIconOnly:false})
   assert.equal((await messageProfiles(env.COMMUNITY_DB,[customer],env)).get(customer).appearance,undefined)
 })
 

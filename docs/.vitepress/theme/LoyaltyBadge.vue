@@ -84,6 +84,15 @@ defineProps<{ tier: { id: string; name: string }; compact?: boolean; size?: 'sma
         <path class="badge-ink owner-sigil" d="M16 6L25 16L16 26L7 16Z" />
         <path class="owner-star" d="M16 10L18 14L22 16L18 18L16 22L14 18L10 16L14 14Z" />
       </g>
+      <g v-else-if="tier.id==='badge_starlit'">
+        <circle class="radiance-orbit" cx="16" cy="16" r="13" /><path class="badge-facet nova-core" d="M16 3L20 12L30 16L20 20L16 29L12 20L2 16L12 12Z" /><path class="badge-ink" d="M16 3L20 12L30 16L20 20L16 29L12 20L2 16L12 12Z" />
+      </g>
+      <g v-else-if="tier.id==='badge_endwalker'">
+        <ellipse class="nova-orbit" cx="16" cy="16" rx="13" ry="7" transform="rotate(-45 16 16)" /><path class="badge-facet" d="M16 2L25 12L20 26L12 30L7 16Z" /><path class="badge-ink" d="M16 2L25 12L20 26L12 30L7 16ZM16 2L14 17L20 26M7 16L14 17L25 12" />
+      </g>
+      <g v-else-if="tier.id==='badge_lumenheart'">
+        <path class="badge-facet radiance-core" d="M16 28L4 16C-4 5 10 0 16 9C22 0 36 5 28 16Z" /><path class="badge-ink" d="M16 28L4 16C-4 5 10 0 16 9C22 0 36 5 28 16Z" /><path class="spark-flicker" d="M4 23V29M1 26H7M27 1V7M24 4H30" />
+      </g>
       <g v-else-if="tier.id==='introduced'">
         <path class="badge-facet" d="M5 4H27V25H12L5 30Z" /><path class="badge-ink" d="M5 4H27V25H12L5 30Z" /><path class="staff-check" d="M10 10H22M10 15H22M10 20H17" />
       </g>
@@ -105,6 +114,9 @@ defineProps<{ tier: { id: string; name: string }; compact?: boolean; size?: 'sma
 </template>
 
 <style scoped>
+[data-tier=badge_starlit]{--badge-color:#ffe09c;--badge-secondary:#ffbe72;--badge-bg:#382934}
+[data-tier=badge_endwalker]{--badge-color:#c4a0ff;--badge-secondary:#88aaff;--badge-bg:#251c42}
+[data-tier=badge_lumenheart]{--badge-color:#ff9fc6;--badge-secondary:#e4b7ff;--badge-bg:#3a1c35}
 .loyalty-badge {
   --badge-color: #ffd798;
   --badge-secondary: #caa3ff;

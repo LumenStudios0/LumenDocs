@@ -17,7 +17,7 @@ interface Summary {
   referralPoints: number
   milestones: { id: string; name: string; count: number | null; points: number; awarded: boolean }[]
   periods: Record<Period, { purchasePoints: number; referralPoints: number; referrals: number }>
-  history: { id: number; label: string; points: number; createdAt: string }[]
+  history: { id: number | string; label: string; points: number; createdAt: string }[]
   checks?: Record<string, { ok: boolean; error?: string }>
 }
 const status = ref<Summary | null>(null)
@@ -103,6 +103,7 @@ onUnmounted(() => { generation++; window.removeEventListener('lumen-discord-user
         <strong aria-live="polite">{{ status ? formatPoints(status.balance) : '—' }}<small>LP</small></strong>
         <div><span class="points-dot" aria-hidden="true"></span> $1 USD spent = 10 points</div>
         <button type="button" :disabled="!signedIn || busy || loading" @click="update('sync')">{{ busy ? 'Verifying earnings...' : 'Check earnings' }}</button>
+        <a class="points-shop-link" href="/account/points/shop">Open the points shop <span aria-hidden="true">&#8594;</span></a>
       </div>
       <button class="points-effects" type="button" :aria-pressed="motionPaused" @click="motionPaused = !motionPaused">{{ motionPaused ? 'Resume effects' : 'Pause effects' }}</button>
     </header>
@@ -150,7 +151,7 @@ onUnmounted(() => { generation++; window.removeEventListener('lumen-discord-user
         <div class="points-milestones">
           <article v-for="milestone in status.milestones" :key="milestone.id" class="points-card" :class="{ 'is-awarded': milestone.awarded }"><span class="points-step">{{ milestone.awarded ? 'AWARDED' : 'MILESTONE' }}</span><h3>{{ milestone.name }}</h3><strong>+{{ milestone.points }} <small>LP</small></strong><p>{{ milestone.count ? `${milestone.count} active eligible products` : 'Own every active eligible product' }}</p><span class="points-pill">{{ milestone.awarded ? 'Bonus secured' : 'Not yet earned' }}</span></article>
         </div>
-        <p class="points-fine">Each milestone pays once per account, never daily, weekly, or monthly. Eligibility follows Lumen Loyalty, where active trials and staff grants currently count. Purchase points require actual paid purchases.</p>
+        <p class="points-fine">Each milestone pays once per account, never daily, weekly, or monthly. Eligibility follows Lumen Loyalty, where active trials and staff grants currently count. Free products from the points shop do not advance point milestones. Purchase points require actual paid purchases.</p>
       </section>
       <section aria-labelledby="points-history-title">
         <div class="points-section-heading"><div><p class="points-eyebrow">EVERY POINT ACCOUNTED FOR</p><h2 id="points-history-title">Your recent activity</h2></div><span class="points-fine">Latest 50 changes</span></div>
@@ -158,11 +159,12 @@ onUnmounted(() => { generation++; window.removeEventListener('lumen-discord-user
         <p v-else class="points-empty">Your story starts here. Check earnings after your next purchase or referral.</p>
       </section>
     </template>
-    <footer class="points-footer"><strong>Real purchases. Real rewards.</strong><p>Purchase checks use verified BuiltByBit buyer identities and final USD amounts. Link the same Discord account on BuiltByBit. Free licenses, trials, and staff grants do not earn purchase points. Invalidated or missing purchases and their referral bonuses are adjusted on verification. Points are not cash; spending/redemption rewards are not available yet.</p><p v-if="status?.purchaseCheckedAt">Purchases last verified {{ date(status.purchaseCheckedAt) }}. Checks are cached for one minute.</p></footer>
+    <footer class="points-footer"><strong>Real purchases. Real rewards.</strong><p>Purchase checks use verified BuiltByBit buyer identities and final USD amounts. Link the same Discord account on BuiltByBit. Free licenses, trials, and staff grants do not earn purchase points. Invalidated or missing purchases and their referral bonuses are adjusted on verification. Spend points in the shop; points have no cash value.</p><p v-if="status?.purchaseCheckedAt">Purchases last verified {{ date(status.purchaseCheckedAt) }}. Checks are cached for one minute.</p></footer>
   </div>
 </template>
 
 <style scoped>
+.points-shop-link{display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding:11px 14px;border:1px solid #bc8eff70;border-radius:9px;background:linear-gradient(100deg,#7441ac80,#9f5fc433);color:#f1ddff;font-size:12px;font-weight:700;text-decoration:none}.points-shop-link:hover{background:#985ee84d}
 .points { --points-accent: #bb94ff; max-width: 1160px; margin: auto; padding: 28px clamp(12px, 3vw, 32px) 60px; color: var(--vp-c-text-1); }
 .points-hero { position: relative; isolation: isolate; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); align-items: center; gap: 30px; padding: clamp(24px, 4vw, 42px) clamp(20px, 4vw, 38px) 60px; border: 1px solid #6c459d70; border-radius: 24px; background: #100d1b; color: #f7efff; }
 .points-aurora { position: absolute; z-index: -1; inset: -50%; pointer-events: none; background: conic-gradient(from 25deg, transparent, #9b42ee25, transparent 40%, #6046e718, transparent 75%); animation: points-orbit 36s linear infinite; }

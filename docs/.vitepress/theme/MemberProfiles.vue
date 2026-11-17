@@ -4,6 +4,7 @@ import { studioRequest, studioUrl } from './studio-api'
 import { getDiscordSession } from './discord-session'
 import LoyaltyBadge from './LoyaltyBadge.vue'
 import ProfileBackdrop from './ProfileBackdrop.vue'
+import ProfileEffect from './ProfileEffect.vue'
 import ProfileAvatar from './ProfileAvatar.vue'
 import ServerShowcases from './ServerShowcases.vue'
 import type { ServerShowcase } from './profile-types'
@@ -12,7 +13,7 @@ import { PROFILE_STAFF_BADGES } from '../../../shared/permissions.mjs'
 const props = defineProps<{ editOwn?: boolean }>()
 interface ProfileColors { surface: string; text: string; links: string }
 type BadgeSize = 'small' | 'medium' | 'large'
-interface ProfileAppearance { background: string; frame: string; decoration: string; colors?: ProfileColors | null; badgeSize?: BadgeSize; badgeIconOnly?: boolean }
+interface ProfileAppearance { background: string; frame: string; decoration: string; effect?: string; colors?: ProfileColors | null; badgeSize?: BadgeSize; badgeIconOnly?: boolean }
 interface Profile {
   id: string; username: string; displayName: string; avatarUrl: string; bio: string; pronouns: string; status: string;
   accent: string; banner: string; website: string; showcase: string; favoritePlugin: string;
@@ -22,6 +23,7 @@ interface Profile {
   savedAppearance?: ProfileAppearance;
   badgeRole?: { name: string; rank: number };
   cosmeticAccess?: { backgrounds: boolean; frames: boolean; decorations: boolean };
+  shopEffects?: { id: string; name: string }[];
   achievements?: { id: string; name: string; description: string; earned: boolean }[]
 }
 const search = ref('')
@@ -38,13 +40,14 @@ const total = ref(0)
 const bannerImage = ref<string | null | undefined>(undefined)
 const processingBanner = ref(false)
 const draft = reactive({ displayName: '', bio: '', pronouns: '', status: '', accent: '#9f72ff', banner: '#38205c', website: '', showcase: '', favoritePlugin: '', public: true, revision: 0, badgeIds: new Array<string>(),
-  appearance: { background: 'none', frame: 'none', decoration: 'none', colors: null as ProfileColors | null, badgeSize: 'medium' as BadgeSize, badgeIconOnly: false }, servers: new Array<ServerShowcase>() })
+  appearance: { background: 'none', frame: 'none', decoration: 'none', effect: 'none', colors: null as ProfileColors | null, badgeSize: 'medium' as BadgeSize, badgeIconOnly: false }, servers: new Array<ServerShowcase>() })
 const lockedStaffBadges = computed(() => PROFILE_STAFF_BADGES.filter(badge => !(own.value?.availableBadges || []).some(available => available.id === badge.id)))
 const preview = computed(() => editing.value && own.value
   ? { ...own.value, ...draft, appearance: {
     background: own.value.cosmeticAccess?.backgrounds ? draft.appearance.background : 'none',
     frame: own.value.cosmeticAccess?.frames ? draft.appearance.frame : 'none',
     decoration: own.value.cosmeticAccess?.decorations ? draft.appearance.decoration : 'none',
+    effect: own.value.shopEffects?.some(effect => effect.id === draft.appearance.effect) ? draft.appearance.effect : 'none',
     colors: own.value.cosmeticAccess?.backgrounds ? draft.appearance.colors : null,
     badgeSize: draft.appearance.badgeSize,
     badgeIconOnly: draft.appearance.badgeIconOnly,
@@ -63,7 +66,7 @@ function fill(profile: Profile) {
   draft.revision = profile.revision ?? 0
   draft.badgeIds = (profile.badges ?? (profile.tier ? [profile.tier] : [])).map(badge => badge.id)
   const appearance = profile.savedAppearance || profile.appearance || { background: 'none', frame: 'none', decoration: 'none' }
-  draft.appearance = { ...appearance, colors: appearance.colors ? { ...appearance.colors } : null,
+  draft.appearance = { ...appearance, effect: appearance.effect || 'none', colors: appearance.colors ? { ...appearance.colors } : null,
     badgeSize: appearance.badgeSize || 'medium', badgeIconOnly: appearance.badgeIconOnly ?? false }
   draft.servers = (profile.servers || []).map(server => ({ ...server, screenshots: server.screenshots.map(image => ({ ...image })) }))
   bannerImage.value = undefined
@@ -170,7 +173,7 @@ async function init() {
   generation++; selected.value = null; own.value = null; editing.value = false; notice.value = ''; error.value = ''
   bannerImage.value = undefined
   Object.assign(draft, { displayName: '', bio: '', pronouns: '', status: '', accent: '#9f72ff', banner: '#38205c', website: '', showcase: '', favoritePlugin: '', public: true, revision: 0, badgeIds: [],
-    appearance: { background: 'none', frame: 'none', decoration: 'none', colors: null, badgeSize: 'medium', badgeIconOnly: false }, servers: [] })
+    appearance: { background: 'none', frame: 'none', decoration: 'none', effect: 'none', colors: null, badgeSize: 'medium', badgeIconOnly: false }, servers: [] })
   if (!props.editOwn) await directory()
   if (request !== initialization) return
   await mine()
@@ -196,6 +199,7 @@ onUnmounted(() => { generation++; initialization++; window.removeEventListener('
             '--vp-c-text-2': preview.appearance.colors.text, '--vp-c-brand-1': preview.appearance.colors.links,
             '--vp-c-divider': preview.accent } : {}) }">
           <ProfileBackdrop :preset="preview.appearance?.background || 'none'" />
+          <ProfileEffect :effect="preview.appearance?.effect || 'none'" />
           <div class="member-banner" :class="{ 'has-image': bannerSource }"><img v-if="bannerSource" :src="bannerSource" alt="Profile banner"><span v-if="editing && !bannerSource">LIVE PREVIEW</span></div>
           <div class="member-profile-body"><ProfileAvatar class="member-avatar-display" :name="preview.displayName" :url="preview.avatarUrl" :frame="preview.appearance?.frame || 'none'" :decoration="preview.appearance?.decoration || 'none'" />
             <h2>{{ preview.displayName }}</h2><p class="member-handle">@{{ preview.username }} <span v-if="preview.pronouns">· {{ preview.pronouns }}</span></p>
@@ -214,6 +218,8 @@ onUnmounted(() => { generation++; initialization++; window.removeEventListener('
           <label>About me <small>{{ draft.bio.length }} / 600</small><textarea v-model="draft.bio" maxlength="600" rows="5" placeholder="Tell the community about yourself. No private information or credentials." /></label>
           <details class="profile-section profile-cosmetics">
             <summary>Appearance <small>Banner, colors, backgrounds and avatar</small></summary>
+            <label>Points-shop profile effect<select v-model="draft.appearance.effect"><option value="none">No shop effect</option><option v-for="effect in own.shopEffects || []" :key="effect.id" :value="effect.id">{{ effect.name }}</option></select></label>
+            <p><a href="/account/points/shop">Unlock permanent badges and profile effects in the points shop.</a> Purchased effects do not require a loyalty tier.</p>
             <p>Backgrounds and frames need Spark; decorations need Radiance.</p>
             <label>Upload banner image<input type="file" accept="image/png,image/jpeg,image/webp" @change="uploadBanner"></label>
             <p>PNG, JPEG or WebP up to 8 MiB. The full image is fitted into a 1200 x 400 static WebP. Save to upload.</p>

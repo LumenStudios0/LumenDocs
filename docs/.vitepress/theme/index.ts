@@ -8,6 +8,7 @@ import AccountConnectedServers from './AccountConnectedServers.vue'
 import AccountDashboard from './AccountDashboard.vue'
 import LoyaltyCenter from './LoyaltyCenter.vue'
 import LumenPoints from './LumenPoints.vue'
+import PointsShop from './PointsShop.vue'
 import CouponCenter from './CouponCenter.vue'
 import StaffProgression from './StaffProgression.vue'
 import MemberProfiles from './MemberProfiles.vue'
@@ -42,6 +43,7 @@ export default {
     app.component('AccountDashboard', AccountDashboard)
     app.component('LoyaltyCenter', LoyaltyCenter)
     app.component('LumenPoints', LumenPoints)
+    app.component('PointsShop', PointsShop)
     app.component('CouponCenter', CouponCenter)
     app.component('StaffProgression', StaffProgression)
     app.component('MemberProfiles', MemberProfiles)

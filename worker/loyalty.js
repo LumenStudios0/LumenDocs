@@ -26,7 +26,7 @@ export async function activeOwnership(env, id) {
   return [...ids]
 }
 
-async function activeRegistry(env) {
+export async function activeRegistry(env) {
   const products = new Map()
   let total
   for (let page = 1; page <= 100; page++) {

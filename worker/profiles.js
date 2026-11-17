@@ -2,10 +2,12 @@ import { loyaltyStatus } from './loyalty.js'
 import { memberRole } from './access-control.js'
 import { PROFILE_STAFF_BADGES, ROLES } from '../shared/permissions.mjs'
 import { backgrounds, frames, decorations, achievements } from '../shared/profile-cosmetics.mjs'
+import { shopBadges, shopEffects } from '../shared/points-shop.mjs'
 
 const ids = /^\d{5,22}$/
 const tierNames = { spark: 'Spark', radiance: 'Radiance', nova: 'Nova', elite: 'Lumen Elite' }
 const profileSelect = `SELECT p.*, m.role_id,
+  (SELECT json_group_array(e.product_id) FROM lumen_points_shop_entitlements e WHERE e.user_id=p.user_id) AS shop_items,
   EXISTS(SELECT 1 FROM community_threads t WHERE t.author_id=p.user_id AND t.hidden=0) AS has_thread,
   EXISTS(SELECT 1 FROM community_thread_posts r JOIN community_threads t ON t.id=r.thread_id
     WHERE r.author_id=p.user_id AND r.hidden=0 AND t.hidden=0) AS has_reply
@@ -24,12 +26,14 @@ function view(row, env, owner = false) {
   const tierEntries = Object.entries(tierNames)
   const tierIndex = role.id === 'owner' ? tierEntries.length - 1 : tierEntries.findIndex(([id]) => id === tier?.id)
   const savedAppearance = JSON.parse(row.appearance)
+  const shopItems = JSON.parse(row.shop_items || '[]')
   const servers = JSON.parse(row.servers)
   const cosmeticAccess = { backgrounds: tierIndex >= 0, frames: tierIndex >= 0, decorations: tierIndex >= 1 }
   const appearance = {
     background: cosmeticAccess.backgrounds ? savedAppearance.background : 'none',
     frame: cosmeticAccess.frames ? savedAppearance.frame : 'none',
     decoration: cosmeticAccess.decorations ? savedAppearance.decoration : 'none',
+    effect: shopItems.includes(savedAppearance.effect) ? savedAppearance.effect : 'none',
     ...(savedAppearance.colors ? { colors: cosmeticAccess.backgrounds ? savedAppearance.colors : null } : {}),
     badgeSize: savedAppearance.badgeSize || 'medium',
     badgeIconOnly: savedAppearance.badgeIconOnly ?? false,
@@ -46,6 +50,7 @@ function view(row, env, owner = false) {
     ...tierEntries.slice(0, tierIndex + 1).map(([id, name]) => ({ id, name })),
     ...PROFILE_STAFF_BADGES.filter(badge => badge.rank <= role.rank).map(({ id, name }) => ({ id, name })),
     ...earned.map(({ id, name }) => ({ id, name })),
+    ...shopBadges.filter(badge => shopItems.includes(badge.id)),
   ]
   const defaultIds = [tier?.id, PROFILE_STAFF_BADGES.find(badge => badge.rank === role.rank)?.id].filter(Boolean)
   const selected = row.badge_selection === null ? defaultIds : JSON.parse(row.badge_selection)
@@ -58,7 +63,7 @@ function view(row, env, owner = false) {
     tier, badges, appearance, servers, bannerVersion: row.banner_version,
     tierCheckedAt: row.tier_checked_at, joinedAt: row.created_at,
     ...(owner ? { public: Boolean(row.public), revision: row.revision, availableBadges, cosmeticAccess,
-      savedAppearance, badgeRole: { name: role.name, rank: role.rank },
+      savedAppearance, shopEffects: shopEffects.filter(effect => shopItems.includes(effect.id)), badgeRole: { name: role.name, rank: role.rank },
       achievements: achievements.map(badge => ({ ...badge, earned: earnedIds.includes(badge.id) })) } : {}),
   }
 }
@@ -206,7 +211,7 @@ export async function handleProfiles(request, env, origin, path, deps) {
         if (!body || Object.entries(fields).some(([key, max]) => typeof body[key] !== 'string' || body[key].trim().length > max || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(body[key])) ||
             !body.displayName.trim() || !/^#[0-9a-fA-F]{6}$/.test(body.accent || '') || !/^#[0-9a-fA-F]{6}$/.test(body.banner || '') ||
             !link(body.website) || !link(body.showcase) || body.public !== true || !Number.isInteger(body.revision) || body.revision < 0 ||
-            body.badgeIds !== undefined && (!Array.isArray(body.badgeIds) || body.badgeIds.length > 15 ||
+            body.badgeIds !== undefined && (!Array.isArray(body.badgeIds) || body.badgeIds.length > 24 ||
               body.badgeIds.some(id => typeof id !== 'string') || new Set(body.badgeIds).size !== body.badgeIds.length) ||
             body.servers !== undefined && !validServers(body.servers) ||
             body.bannerImage !== undefined && !validBanner(body.bannerImage) ||
@@ -219,12 +224,12 @@ export async function handleProfiles(request, env, origin, path, deps) {
         const saved = JSON.parse(current.appearance)
         const appearance = body.appearance === undefined ? saved : {
           ...body.appearance,
-          ...Object.fromEntries(['colors', 'badgeSize', 'badgeIconOnly']
+          ...Object.fromEntries(['colors', 'badgeSize', 'badgeIconOnly', 'effect']
             .filter(key => body.appearance?.[key] === undefined && saved[key] !== undefined)
             .map(key => [key, saved[key]])),
         }
         if (body.appearance !== undefined && (!body.appearance || typeof body.appearance !== 'object' || Array.isArray(body.appearance) ||
-          Object.keys(appearance).some(key => !['background', 'frame', 'decoration', 'colors', 'badgeSize', 'badgeIconOnly'].includes(key)) ||
+          Object.keys(appearance).some(key => !['background', 'frame', 'decoration', 'colors', 'badgeSize', 'badgeIconOnly', 'effect'].includes(key)) ||
           !backgrounds.some(preset => preset.id === appearance.background) || !frames.some(preset => preset.id === appearance.frame) ||
           !decorations.some(preset => preset.id === appearance.decoration) ||
           appearance.badgeSize !== undefined && !['small', 'medium', 'large'].includes(appearance.badgeSize) ||
@@ -234,6 +239,10 @@ export async function handleProfiles(request, env, origin, path, deps) {
               Object.keys(appearance.colors).length !== 3 ||
               ['surface', 'text', 'links'].some(key => typeof appearance.colors[key] !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(appearance.colors[key]))))) {
           return send({ error: 'Choose supported background, frame and decoration presets.' }, 400)
+        }
+        if (appearance.effect !== undefined && appearance.effect !== 'none' &&
+            !currentView.shopEffects.some(effect => effect.id === appearance.effect)) {
+          return send({ error: 'Purchase this profile effect in the points shop before equipping it.' }, 403)
         }
         if (appearance.colors && JSON.stringify(appearance.colors) !== JSON.stringify(saved.colors) && !currentView.cosmeticAccess.backgrounds) {
           return send({ error: 'Custom profile colors require Spark or higher.' }, 403)
