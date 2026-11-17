@@ -368,6 +368,7 @@ test('uncertain coupons are reconciled read-only after exact scope verification 
     VALUES ('loyalty:old',?,'loyalty',15,'uncertain','ABCDEF12345678','2026-01-01','2026-01-01')`).run(customer)
   const previous = globalThis.fetch
   t.after(() => { globalThis.fetch = previous })
+  let ambiguous = true
   globalThis.fetch = async (input, options = {}) => {
     assert.notEqual(options.method, 'POST', 'Reconciliation must never create a replacement code')
     const url = new URL(input)
@@ -376,11 +377,14 @@ test('uncertain coupons are reconciled read-only after exact scope verification 
       reviews: [], stats: { ...stats, total: 0, max_page: 0 },
     } })
     if (url.pathname.endsWith('/coupons/entries')) return Response.json({ result: 'success', data: {
-      'coupon-entries': [{ coupon_id: 1, content_type: 'resource', content_id: 1001 }], stats,
+      entries: [{ coupon_id: 1, content_type: 'resource', content_id: 1001 }], ...(ambiguous ? { unrelated: [] } : {}), stats,
     } })
     return Response.json({ result: 'success', data: { coupons: [{ coupon_id: 1, label: '123-ABCDEF12345678',
       discount: .15, percent: true, active: true, all_content_types: [], expires_at: 0, max_uses: 0, max_per_user_uses: 0, uses: 0 }], stats } })
   }
+  await runCouponChecks(env)
+  assert.equal(sqlite.prepare("SELECT state FROM coupon_rewards WHERE reward_key='loyalty:old'").get().state, 'uncertain')
+  ambiguous = false
   await Promise.all([runCouponChecks(env), runCouponChecks(env)])
   await runCouponChecks(env)
   const result = await (await call('/studio/coupons', 'GET', undefined, customer)).json()
