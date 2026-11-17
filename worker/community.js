@@ -1157,7 +1157,7 @@ export async function handleCommunity(request, env, origin, path, deps) {
     if (suffix === '/preferences' && ['GET', 'PUT'].includes(request.method)) return preferences(request, env, user, deps)
     if (suffix === '/notifications' && request.method === 'GET') return notifications(request, env, url, user, deps, false)
     if (suffix === '/notifications/read-all' && request.method === 'POST') return markAllRead(request, env, user, deps)
-    match = suffix.match(/^\/notifications\/([0-9a-f-]{36})\/read$/i)
+    match = suffix.match(/^\/notifications\/([a-z0-9:_-]{1,160})\/read$/i)
     if (match && request.method === 'POST') return markRead(request, env, user, deps, match[1])
     if (suffix === '/staff/tickets' && request.method === 'GET') return staffTickets(request, env, url, deps)
     if (suffix === '/staff/members' && request.method === 'GET') return json(request, {

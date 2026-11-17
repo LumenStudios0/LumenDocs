@@ -6,10 +6,13 @@ import { handleProductTools } from '../worker/product-tools.js'
 import { backfillMemberPoints, redeemPointReferral, syncPointEarnings, usdCents } from '../worker/lumen-points.js'
 import { rememberMember } from '../worker/access-control.js'
 import { reconcileShopCoupons } from '../worker/points-shop.js'
+import { productMarketplace } from '../shared/product-marketplace.mjs'
+import { saveLicensePointsChoice } from '../worker/license-points.js'
 
 const member = '123456789012345678'
 const referrer = '223456789012345678'
 const stranger = '323456789012345678'
+const staffRegistry = () => productMarketplace.map(product => ({ productId: product.productId, name: product.name, active: true, plugins: [product.productId] }))
 async function setup(t) {
   const sqlite = new DatabaseSync(':memory:')
   const directory = new URL('../worker/migrations/community/', import.meta.url)
@@ -52,7 +55,7 @@ async function setup(t) {
   const deps = { respond: (body, status) => Response.json(body, { status }), verifyLoginToken: async token => /^\d{5,22}$/.test(token) ? { id: token } : null }
   const call = (path = '/studio/points', method = 'GET', body, user = member) => handleProductTools(new Request('https://worker.example' + path, {
     method, headers: { Authorization: `Bearer ${user}` }, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  }), env, 'https://lumenstudio.fyi', path, deps)
+  }), env, 'https://lumenstudio.fyi', path.split('?')[0], deps)
   const purchase = (overrides = {}) => ({
     purchase_id: 501, content_type: 'resource', content_id: 1001, buyer_id: 55,
     Buyer: { user_id: 55, discord_id: member, banned: false },
@@ -65,6 +68,7 @@ async function setup(t) {
       Buyer: { user_id: 55, discord_id: member, banned: false }, permanent: true, active: true }],
     registry: Array.from({ length: 12 }, (_, i) => ({ productId: `p${i}`, name: `Plugin ${i}`, active: true, plugins: [`plugin${i}`] })),
     ownership: [], failed: '', malformed: false,
+    quotes: productMarketplace.map(product => ({ resource_id: Number(product.resourceId), FinalPrice: { value: '12.35', currency: 'USD' } })),
   }
   const previous = globalThis.fetch
   t.after(() => { globalThis.fetch = previous })
@@ -72,8 +76,14 @@ async function setup(t) {
     const url = new URL(input)
     if (url.hostname === 'api.builtbybit.com') {
       assert.equal(options.headers.Authorization, 'server-only-bbb-token')
+      if (url.pathname.endsWith('/discover/resources')) {
+        if (stateData.failed === 'prices') return Response.json({ error: 'Access denied' }, { status: 403 })
+        const ids = url.searchParams.get('resource_ids').split(',')
+        const rows = stateData.quotes.filter(row => ids.includes(String(row.resource_id)))
+        return Response.json({ result: 'success', data: { resources: rows, stats: { total: rows.length, page: 1, per_page: 100, max_page: 1 } } })
+      }
       assert.equal(url.searchParams.get('with'), 'Buyer')
-      assert.equal(url.searchParams.get('resource_ids'), '1001,1002')
+      assert.equal(url.searchParams.get('resource_ids'), ['1001', '1002', ...productMarketplace.map(product => product.resourceId)].join(','))
       const name = url.pathname.endsWith('/purchases') ? 'purchases' : 'licenses'
       if (stateData.failed === name) return Response.json({ error: 'Access denied' }, { status: 403 })
       const items = stateData[name]
@@ -87,7 +97,7 @@ async function setup(t) {
     return Response.json({ customerDiscordId: url.pathname.split('/').pop(), status: 'active', verificationRequired: false,
       products: stateData.ownership.map(productId => ({ productId, productActive: true, status: 'active', expiresAt: null })) })
   }
-  const clearCache = () => sqlite.exec('UPDATE lumen_points_accounts SET purchase_checked_at=NULL,tier_checked_at=NULL')
+  const clearCache = () => sqlite.exec('UPDATE lumen_points_accounts SET purchase_checked_at=NULL,tier_checked_at=NULL,staff_checked_at=NULL')
   return { db, env, sqlite, call, purchase, data: stateData, clearCache }
 }
 
@@ -279,6 +289,9 @@ test('background backfill credits every registered buyer without a page visit an
   data.purchases.push(purchase({ purchase_id: 503, buyer_id: 57,
     Buyer: { user_id: 57, discord_id: '423456789012345678' } }))
   data.ownership = ['p0', 'p1', 'p2']
+  for (const id of [member, referrer, stranger]) for (const productId of data.ownership) {
+    await saveLicensePointsChoice(env.COMMUNITY_DB, id, productId, false, '1400375985211441242')
+  }
   await backfillMemberPoints(env)
   const balance = id => sqlite.prepare('SELECT SUM(points_units)/100.0 AS n FROM lumen_points_rewards WHERE user_id=?').get(id).n
   assert.equal(balance(member), 173.5)
@@ -530,7 +543,7 @@ test('unvalidated purchases earn no spending points and complete empty purchase 
   assert.equal(summary.history[0].points, -123.5)
 })
 
-test('genuine paid purchases keep their points when a license expires, but free grants alone earn nothing', async t => {
+test('genuine paid purchases keep their points when a license expires, but ownership without a priced eligible product earns nothing', async t => {
   const { call, data, clearCache } = await setup(t)
   data.licenses = []
   const summary = await (await call('/studio/points/sync', 'POST', {})).json()
@@ -539,6 +552,237 @@ test('genuine paid purchases keep their points when a license expires, but free 
   clearCache()
   const free = await (await call('/studio/points/sync', 'POST', {}, stranger)).json()
   assert.equal(free.balance, 0)
+})
+
+test('existing staff licenses earn verified listing points once and retain them after expiry or a later opt-out', async t => {
+  const { call, data, clearCache, sqlite, env } = await setup(t)
+  data.registry = staffRegistry(); data.ownership = ['gladiator']; data.purchases = []
+  let summary = await (await call('/studio/points/sync', 'POST', {})).json()
+  assert.equal(summary.checks.staffLicenses.ok, true)
+  assert.equal(summary.staffLicensePoints, 123.5)
+  assert.equal(summary.balance, 123.5)
+  assert.equal(summary.purchasePoints, 0)
+  assert.equal(summary.eligibleReferralPoints, 0)
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM community_notifications WHERE id LIKE 'points:adjust:%'").get().n, 1)
+  data.quotes[0].FinalPrice.value = '99.99'
+  clearCache()
+  summary = await (await call('/studio/points/sync', 'POST', {})).json()
+  assert.equal(summary.balance, 123.5)
+  data.ownership = []
+  clearCache()
+  assert.equal((await (await call('/studio/points/sync', 'POST', {})).json()).balance, 123.5)
+  data.ownership = ['gladiator']
+  await saveLicensePointsChoice(env.COMMUNITY_DB, member, 'gladiator', false, stranger)
+  clearCache()
+  assert.equal((await (await call('/studio/points/sync', 'POST', {})).json()).balance, 123.5)
+})
+
+test('grant opt-outs, approved trials and shop free products cannot mint staff-license points', async t => {
+  const { call, data, env, sqlite, clearCache } = await setup(t)
+  data.registry = staffRegistry(); data.ownership = ['gladiator', 'lumenauction', 'lumenduels']; data.purchases = []
+  await call()
+  await saveLicensePointsChoice(env.COMMUNITY_DB, member, 'gladiator', false, stranger)
+  const now = new Date().toISOString()
+  sqlite.prepare(`INSERT INTO community_trials(id,user_id,product_id,reason,status,created_at) VALUES (?,?,?,'Trial','approved',?)`)
+    .run(crypto.randomUUID(), member, 'lumenauction', now)
+  sqlite.prepare(`INSERT INTO lumen_points_orders(id,user_id,product_id,product_name,cost_units,state,details,created_at,updated_at)
+    VALUES (?,?,'free_product','Free plugin',150000,'fulfilled',?,?,?)`)
+    .run(crypto.randomUUID(), member, JSON.stringify({ productId: 'lumenduels' }), now, now)
+  let summary = await (await call('/studio/points/sync', 'POST', {})).json()
+  assert.equal(summary.staffLicensePoints, 0)
+  assert.equal(summary.checks.staffLicenses.ok, true)
+  await saveLicensePointsChoice(env.COMMUNITY_DB, member, 'gladiator', true, stranger)
+  clearCache()
+  summary = await (await call('/studio/points/sync', 'POST', {})).json()
+  assert.equal(summary.staffLicensePoints, 123.5)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_staff_rewards').get().n, 1)
+})
+
+test('paid plugins are never topped up as gifts and later purchases reconcile existing gifts without double credit', async t => {
+  const { call, data, purchase, clearCache, sqlite } = await setup(t)
+  data.registry = staffRegistry(); data.ownership = ['gladiator']
+  data.purchases = [purchase({ content_id: 132519 })]
+  let summary = await (await call('/studio/points/sync', 'POST', {})).json()
+  assert.equal(summary.balance, 123.5)
+  assert.equal(summary.staffLicensePoints, 0)
+  data.purchases = []; data.ownership = ['lumenauction']
+  clearCache()
+  summary = await (await call('/studio/points/sync', 'POST', {})).json()
+  assert.equal(summary.balance, 123.5)
+  data.purchases = [purchase({ purchase_id: 502, content_id: 132967, FinalPrice: { value: '5.00', currency: 'USD' } })]
+  clearCache()
+  summary = await (await call('/studio/points/sync', 'POST', {})).json()
+  assert.equal(summary.purchasePoints, 50)
+  assert.equal(summary.staffLicensePoints, 73.5)
+  assert.equal(summary.balance, 123.5)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_purchases').get().n, 2)
+  assert.ok(summary.history.some(row => row.points === -50 && row.label.includes('reconciliation')))
+  data.purchases[0].FinalPrice.value = '20.00'
+  clearCache()
+  summary = await (await call('/studio/points/sync', 'POST', {})).json()
+  assert.equal(summary.balance, 200)
+  assert.equal(summary.staffLicensePoints, 0)
+})
+
+test('failed purchase or price verification fails closed without awarding gift points', async t => {
+  const { call, data, clearCache, sqlite } = await setup(t)
+  data.registry = staffRegistry(); data.ownership = ['gladiator']; data.purchases = []
+  for (const failed of ['purchases', 'prices']) {
+    data.failed = failed; clearCache()
+    const summary = await (await call('/studio/points/sync', 'POST', {})).json()
+    assert.equal(summary.balance, 0)
+    assert.equal(summary.checks.staffLicenses.ok, false)
+    assert.match(summary.checks.staffLicenses.error, failed === 'prices' ? /HTTP 403/ : /purchase verification/)
+  }
+  data.failed = ''; data.quotes[0].FinalPrice.currency = 'EUR'; clearCache()
+  assert.equal((await (await call('/studio/points/sync', 'POST', {})).json()).balance, 0)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_staff_rewards').get().n, 0)
+})
+
+test('Support level 2 can manage wallets without license-grant power; lower levels, juniors, self-edits and revoked permissions cannot', async t => {
+  const { call, env, sqlite } = await setup(t)
+  await call()
+  await rememberMember({ id: stranger, username: 'helper' }, env)
+  sqlite.prepare("UPDATE website_members SET role_id='support_team' WHERE discord_id=?").run(stranger)
+  const path = `/studio/staff/points/${member}`
+  assert.equal((await call(path, 'GET', undefined, stranger)).status, 403)
+  sqlite.prepare(`INSERT INTO staff_xp_ledger VALUES (?,?,100,'ticket_close','test-level',?)`).run(crypto.randomUUID(), stranger, new Date().toISOString())
+  assert.equal((await call(path, 'GET', undefined, stranger)).status, 200)
+  const adjustment = { requestId: crypto.randomUUID(), action: 'give', points: '10.25', reason: 'Helpful community contribution' }
+  assert.equal((await call(path, 'POST', adjustment, stranger)).status, 200)
+  assert.equal((await call(`/studio/staff/points/${stranger}`, 'POST', { ...adjustment, requestId: crypto.randomUUID() }, stranger)).status, 403)
+  sqlite.prepare("UPDATE website_members SET role_id='jr_support' WHERE discord_id=?").run(stranger)
+  assert.equal((await call(path, 'GET', undefined, stranger)).status, 403)
+  sqlite.prepare("UPDATE website_members SET role_id='support_team' WHERE discord_id=?").run(stranger)
+  sqlite.prepare("INSERT INTO website_role_permissions(role_id,permissions,policy_version) VALUES ('support_team',?,2)")
+    .run(JSON.stringify(['dashboard.view', 'customers.view']))
+  assert.equal((await call(path, 'GET', undefined, stranger)).status, 403)
+  assert.equal((await call(path, 'GET', undefined, member)).status, 403)
+  assert.equal((await call(path, 'GET', undefined, '')).status, 401)
+})
+
+test('manual adjustments are idempotent, audited, privately notified, atomically funded and fully paginated', async t => {
+  const { call, sqlite } = await setup(t)
+  const owner = '1400375985211441242', path = `/studio/staff/points/${member}`
+  await call()
+  const give = { requestId: crypto.randomUUID(), action: 'give', points: '10.25', reason: 'Community contribution' }
+  const initial = await Promise.all([call(path, 'POST', give, owner), call(path, 'POST', give, owner)])
+  assert.ok(initial.every(result => result.status === 200))
+  assert.equal((await (await call(path, 'POST', give, owner)).json()).balance, 10.25)
+  assert.equal((await call(path, 'POST', { ...give, points: '99' }, owner)).status, 409)
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM website_access_audit WHERE action='points.adjust'").get().n, 1)
+  const takes = await Promise.all([1, 2].map(() => call(path, 'POST', { ...give, requestId: crypto.randomUUID(), action: 'take', points: '7' }, owner)))
+  assert.equal(takes.filter(result => result.status === 200).length, 1)
+  assert.equal(takes.filter(result => result.status === 409).length, 1)
+  assert.equal((await (await call()).json()).balance, 3.25)
+  for (let index = 0; index < 26; index++) assert.equal((await call(path, 'POST', { ...give, requestId: crypto.randomUUID(), points: '0.01' }, owner)).status, 200)
+  const first = await (await call(path, 'GET', undefined, owner)).json()
+  const second = await (await call(path + '?page=2', 'GET', undefined, owner)).json()
+  assert.equal(first.total, 28); assert.equal(first.items.length, 25); assert.equal(second.items.length, 3)
+  assert.equal(new Set([...first.items, ...second.items].map(row => row.id)).size, 28)
+  assert.equal(first.balance, 3.51)
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM community_notifications WHERE id LIKE 'points:adjust:%' AND recipient_id=?").get(member).n, 28)
+  for (const points of ['0', '-1', '1e3', '0.001', '1000001']) {
+    assert.equal((await call(path, 'POST', { ...give, requestId: crypto.randomUUID(), points }, owner)).status, 400)
+  }
+  assert.equal((await call(path + '?page=0', 'POST', { ...give, requestId: crypto.randomUUID() }, owner)).status, 400)
+  assert.equal((await (await call(path, 'GET', undefined, owner)).json()).total, 28)
+})
+
+test('a failed adjustment audit rolls back both points and its notification', async t => {
+  const { call, db, sqlite } = await setup(t)
+  await call(); db.failBatch = true
+  const body = { requestId: crypto.randomUUID(), action: 'give', points: '10', reason: 'Community contribution' }
+  assert.equal((await call(`/studio/staff/points/${member}`, 'POST', body, '1400375985211441242')).status, 503)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_adjustments').get().n, 0)
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM community_notifications WHERE id LIKE 'points:adjust:%'").get().n, 0)
+  assert.equal((await (await call()).json()).balance, 0)
+})
+
+test('previous positive earnings receive one retroactive notice and future awards notify atomically', async t => {
+  const { call, sqlite } = await setup(t)
+  await call()
+  sqlite.exec('DROP TRIGGER lumen_points_credit_notice; DROP TRIGGER lumen_points_adjustment_notice; DROP TRIGGER lumen_points_refund_notice;')
+  const now = new Date().toISOString()
+  sqlite.prepare("INSERT INTO lumen_points_rewards VALUES (?,?,'tier',10000,'Old reward',?,?)").run('old', member, now, now)
+  sqlite.prepare("UPDATE lumen_points_rewards SET points_units=0 WHERE reward_key='old'").run()
+  sqlite.prepare("INSERT INTO lumen_points_rewards VALUES (?,?,'tier',5000,'Another reward',?,?)").run('other', member, now, now)
+  const migration = await readFile(new URL('../worker/migrations/community/0031_points_notifications.sql', import.meta.url), 'utf8')
+  sqlite.exec(migration)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM community_notifications').get().n, 2)
+  assert.ok(sqlite.prepare('SELECT body FROM community_notifications').all().every(row => row.body.includes('not a second award')))
+  sqlite.exec('DROP TRIGGER lumen_points_credit_notice; DROP TRIGGER lumen_points_adjustment_notice; DROP TRIGGER lumen_points_refund_notice;')
+  sqlite.exec(migration)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM community_notifications').get().n, 2)
+  sqlite.prepare("INSERT INTO lumen_points_rewards VALUES (?,?,'tier',2500,'New reward',?,?)").run('new', member, now, now)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM community_notifications').get().n, 3)
+  assert.equal((await (await call()).json()).balance, 75)
+})
+
+test('the public roundup is broadcast once without publishing private credit notices', async t => {
+  const { call, sqlite } = await setup(t)
+  await call('/studio/points/sync', 'POST', {})
+  const publication = await readFile(new URL('../worker/public-updates/2026-11-17.sql', import.meta.url), 'utf8')
+  sqlite.exec(publication); sqlite.exec(publication)
+  const publicRows = sqlite.prepare("SELECT * FROM community_notifications WHERE audience='all' AND kind='update'").all()
+  assert.equal(publicRows.length, 1)
+  assert.equal(publicRows[0].recipient_id, null)
+  assert.equal(publicRows[0].link, '/updates')
+  assert.doesNotMatch(publicRows[0].body, /token|migration|secret|backend|commit|workflow|123456789012345678/i)
+  assert.ok(sqlite.prepare("SELECT COUNT(*) AS n FROM community_notifications WHERE id LIKE 'points:%' AND audience='user' AND recipient_id=?").get(member).n > 0)
+})
+
+test('staff wallet UI restores pending adjustment IDs after reload and ignores stale account responses', async t => {
+  const { parse, compileScript } = await import('@vue/compiler-sfc')
+  const { transformWithEsbuild } = await import('vite')
+  const names = ['walletUiSession', 'walletUiRequest', 'sessionStorage']
+  const previous = new Map(names.map(name => [name, globalThis[name]]))
+  t.after(() => { for (const [name, value] of previous) { if (value === undefined) delete globalThis[name]; else globalThis[name] = value } })
+  const saved = new Map()
+  globalThis.sessionStorage = { getItem: key => saved.get(key) || null, setItem: (key, value) => saved.set(key, value), removeItem: key => saved.delete(key) }
+  globalThis.walletUiSession = 'first-staff'
+  const summary = { actorId: '1400375985211441242', balance: 500, items: [], total: 0, page: 1, pageSize: 25 }
+  const requests = []
+  let fail = true
+  globalThis.walletUiRequest = async (path, options) => {
+    if (options?.method === 'POST') {
+      requests.push(JSON.parse(options.body))
+      if (fail) { fail = false; throw Error('Connection interrupted') }
+      return { ...summary, balance: 510 }
+    }
+    return summary
+  }
+  const source = (await readFile(new URL('../docs/.vitepress/theme/StaffMemberPoints.vue', import.meta.url), 'utf8'))
+    .replace("import { onMounted, onUnmounted, ref } from 'vue'", "import { ref } from 'vue'\nconst onMounted=()=>{};const onUnmounted=()=>{}")
+    .replace("import { getDiscordSession } from './discord-session'", 'const getDiscordSession=()=>globalThis.walletUiSession')
+    .replace("import { studioRequest } from './studio-api'", 'const studioRequest=(...args)=>globalThis.walletUiRequest(...args)')
+    .replace("import { useSiteDialog } from './site-dialog'", 'const useSiteDialog=()=>({confirm:async()=>true})')
+  const compiled = compileScript(parse(source).descriptor, { id: 'staff-member-points-ui' }).content
+    .replaceAll("from 'vue'", `from '${import.meta.resolve('vue')}'`)
+  const { code } = await transformWithEsbuild(compiled, 'StaffMemberPoints.ts', { loader: 'ts' })
+  const component = (await import('data:text/javascript;base64,' + Buffer.from(code).toString('base64'))).default
+  const first = component.setup({ userId: member, disabled: false }, { expose() {} })
+  await first.load(); first.points.value = '10'; first.reason.value = 'Community contribution'
+  await first.adjust()
+  assert.equal(saved.size, 1)
+  assert.match(first.error.value, /Connection interrupted/)
+  const restored = component.setup({ userId: member, disabled: false }, { expose() {} })
+  await restored.load()
+  assert.equal(restored.points.value, '10')
+  await restored.adjust()
+  assert.equal(requests[0].requestId, requests[1].requestId)
+  assert.equal(saved.size, 0)
+  assert.equal(restored.wallet.value.balance, 510)
+  restored.points.value = '0'; restored.reason.value = 'Community contribution'
+  await restored.adjust()
+  assert.equal(requests.length, 2)
+  let finish
+  globalThis.walletUiRequest = () => new Promise(resolve => { finish = resolve })
+  const loading = restored.load()
+  globalThis.walletUiSession = 'second-staff'
+  finish({ ...summary, balance: 9999 })
+  await loading
+  assert.equal(restored.wallet.value.balance, 510)
 })
 
 test('points page sends only referral codes and ignores stale cross-account responses', async t => {

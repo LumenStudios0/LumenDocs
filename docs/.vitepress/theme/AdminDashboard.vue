@@ -8,6 +8,7 @@ import { clearAdminTestData, createAdminTestStore, TEST_OWNER_ID } from './admin
 import StaffCommunity from './StaffCommunity.vue'
 import StaffPluginRegistry from './StaffPluginRegistry.vue'
 import StaffPluginGrantPicker from './StaffPluginGrantPicker.vue'
+import StaffMemberPoints from './StaffMemberPoints.vue'
 import StaffAccessSettings from './StaffAccessSettings.vue'
 import ProductReleaseManager from './ProductReleaseManager.vue'
 import { useSiteDialog } from './site-dialog'
@@ -110,6 +111,7 @@ const reason = ref('')
 const ipAddress = ref('')
 const grantProductId = ref('')
 const grantExpiresAt = ref('')
+const giveLumenPoints = ref(true)
 const licenseKey = ref('')
 const licenseKeyOwner = ref('')
 const keyVisible = ref(false)
@@ -409,6 +411,7 @@ async function fetchProfile(discordId: string) {
     reason.value = ''
     grantProductId.value = ''
     grantExpiresAt.value = ''
+    giveLumenPoints.value = true
     ipAddress.value = ''
     resetLicenseFilters()
   }
@@ -524,6 +527,7 @@ async function grantLicense() {
   await mutate<{ licenseKey: string; notificationWarning?: string }>('/licenses', {
     method: 'POST', body: JSON.stringify({
       productId: grantProductId.value, customerDiscordId: user.value.discordId,
+      giveLumenPoints: giveLumenPoints.value,
       ...(expiry ? { expiresAt: expiry.toISOString() } : {}),
     }),
   }, result => result.notificationWarning || 'License created. The customer has been notified.', result => {
@@ -582,7 +586,7 @@ async function customerLicenseBatch(action: 'grant' | 'revoke') {
         return { state: 'granted', message: 'Local test license granted; key is test-only.' }
       }
       const response = await studioRequest<{ results: { customerId: string; state: string; message: string }[] }>('/bulk-grants', {
-        method: 'POST', body: JSON.stringify({ requestId: crypto.randomUUID(), customerIds: [customerId], productId: id, expiresAt: expiry?.toISOString() ?? null }),
+        method: 'POST', body: JSON.stringify({ requestId: crypto.randomUUID(), customerIds: [customerId], productId: id, expiresAt: expiry?.toISOString() ?? null, giveLumenPoints: giveLumenPoints.value }),
       })
       const result = response.results?.find(item => item.customerId === customerId)
       if (!result) throw new Error('Missing grant result. Check customer access before retrying.')
@@ -840,6 +844,7 @@ onUnmounted(() => {
         <button type="button" :aria-pressed="profileArea === 'licenses'" :disabled="busy" @click="profileArea = 'licenses'">Licenses &amp; plugins</button>
         <button type="button" :aria-pressed="profileArea === 'account'" :disabled="busy" @click="profileArea = 'account'; selectedLicenseId = ''; clearInspectionKey()">Account &amp; verification</button>
       </nav>
+      <StaffMemberPoints v-if="can('points.manage') && !testMode" :key="user.discordId" :user-id="user.discordId" :disabled="busy || user.deleted" />
       <div class="staff-columns">
         <section v-if="profileArea === 'account'" class="staff-panel">
           <p class="staff-eyebrow">ACCOUNT CONTROLS</p><h2>Access &amp; verification</h2>
@@ -860,6 +865,7 @@ onUnmounted(() => {
           <form @submit.prevent="grantLicense">
             <label class="staff-field">Plugin<select v-model="grantProductId" :disabled="busy || user.deleted"><option disabled value="">Select a plugin</option><option v-for="option in grantOptions" :key="option.id" :value="option.productId" :disabled="!!option.reason">{{ option.name }}{{ option.reason ? ` — ${option.reason}` : '' }}</option></select></label>
             <label class="staff-field">Expires at · local time<input v-model="grantExpiresAt" type="datetime-local" :disabled="busy || user.deleted"><small>Leave blank for a lifetime license. Expiry must be in the future.</small></label>
+            <label class="staff-field"><span><input v-model="giveLumenPoints" type="checkbox" :disabled="busy || user.deleted"> Give Lumen Points</span><small>One award per member/plugin at its verified current USD listing price. Paid purchases are not credited twice; trials and points-shop free products are excluded. Loyalty milestone bonuses are separate.</small></label>
             <button class="staff-primary" type="submit" :disabled="busy || user.deleted || !grantProductId">Review &amp; create license</button>
           </form>
           <p class="staff-note">Only documented plugins matched to an active licensing product with a linked plugin can be selected. Unavailable entries need setup in the licensing service; coming-soon plugins cannot be granted.</p>
@@ -868,6 +874,7 @@ onUnmounted(() => {
           <p class="staff-eyebrow">BULK GIVE / THIS CUSTOMER</p><h2>Build their plugin collection.</h2>
           <p class="staff-note">Give any number of plugins to {{ user.globalName || user.username || user.discordId }}. Newly registered products appear here automatically; refresh to load registry changes.</p>
           <StaffPluginGrantPicker v-model="selectedGrantProducts" :options="bulkGrantOptions" :owned-product-ids="ownedGrantProductIds" :disabled="busy || user.deleted" />
+          <label class="staff-field"><span><input v-model="giveLumenPoints" type="checkbox" :disabled="busy || user.deleted"> Give Lumen Points for these grants</span></label>
           <div class="staff-grant-summary">
             <div><small>ACCESS DURATION</small><strong>{{ grantExpiresAt ? formatDate(grantExpiresAt) : 'Lifetime access' }}</strong><span>{{ grantExpiresAt ? 'Uses the expiry set in Grant a license.' : 'Set an expiry in Grant a license for temporary access.' }}</span></div>
             <button type="button" class="staff-primary" :disabled="busy || user.deleted || !selectedGrantProducts.length" @click="customerLicenseBatch('grant')">{{ submitting ? 'Processing...' : `Review & bulk give${selectedGrantProducts.length ? ` (${selectedGrantProducts.length})` : ''}` }}</button>

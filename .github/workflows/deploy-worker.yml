@@ -215,7 +215,7 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           const base = 'https://lumen-docs-assistant.lumennetwork0.workers.dev'
-          for (const path of ['/studio/downloads', '/studio/downloads/00000000-0000-0000-0000-000000000000', '/studio/coupons', '/studio/staff/coupons', '/community/staff/progression', '/studio/points', '/studio/points/sync', '/studio/points/referral', '/studio/points/shop', '/studio/points/shop/redeem', '/studio/points/shop/fulfill']) {
+          for (const path of ['/studio/downloads', '/studio/downloads/00000000-0000-0000-0000-000000000000', '/studio/coupons', '/studio/staff/coupons', '/community/staff/progression', '/studio/points', '/studio/points/sync', '/studio/points/referral', '/studio/points/shop', '/studio/points/shop/redeem', '/studio/points/shop/fulfill', '/studio/staff/points/123456789012345678']) {
             const response = await fetch(base + path, {
               method: ['/studio/points/sync', '/studio/points/referral', '/studio/points/shop/redeem', '/studio/points/shop/fulfill'].includes(path) ? 'POST' : 'GET',
               headers: { Origin: 'https://lumenstudio.fyi' },
@@ -249,24 +249,48 @@ jobs:
           console.log(`Points shop verified: orders, entitlements, spending/refund history and ${data.shop_wallets} spendable wallets.`)
           const deadline = Date.now() + 660000
           const sql = `SELECT
-            (SELECT COUNT(*) FROM lumen_points_accounts WHERE purchase_checked_at IS NULL) AS pending,
-            (SELECT COUNT(*) FROM lumen_points_accounts WHERE purchase_checked_at IS NULL AND backfill_error IS NOT NULL) AS failed,
-            (SELECT GROUP_CONCAT(DISTINCT backfill_error) FROM lumen_points_accounts WHERE purchase_checked_at IS NULL) AS errors,
+            (SELECT COUNT(*) FROM lumen_points_accounts WHERE purchase_checked_at IS NULL OR tier_checked_at IS NULL OR staff_checked_at IS NULL) AS pending,
+            (SELECT COUNT(*) FROM lumen_points_accounts WHERE (purchase_checked_at IS NULL OR tier_checked_at IS NULL OR staff_checked_at IS NULL) AND backfill_error IS NOT NULL) AS failed,
+            (SELECT GROUP_CONCAT(DISTINCT backfill_error) FROM lumen_points_accounts WHERE purchase_checked_at IS NULL OR tier_checked_at IS NULL OR staff_checked_at IS NULL) AS errors,
             (SELECT COUNT(DISTINCT user_id) FROM lumen_points_rewards WHERE kind='purchase' AND points_units>0) AS recipients,
             (SELECT COALESCE(SUM(points_units),0)/100.0 FROM lumen_points_rewards WHERE kind='purchase') AS purchase_points,
-            (SELECT COALESCE(SUM(points_units),0)/100.0 FROM lumen_points_rewards WHERE kind='tier') AS tier_points`
+            (SELECT COALESCE(SUM(points_units),0)/100.0 FROM lumen_points_rewards WHERE kind='tier') AS tier_points,
+            (SELECT COUNT(DISTINCT user_id) FROM lumen_points_staff_rewards WHERE points_units>0) AS gift_recipients,
+            (SELECT COALESCE(SUM(points_units),0)/100.0 FROM lumen_points_staff_rewards) AS gift_points,
+            (SELECT COUNT(*) FROM lumen_points_history h WHERE delta_units>0 AND NOT EXISTS(SELECT 1 FROM community_notifications n WHERE n.id='points:earn:'||h.id)) AS missing_notices,
+            (SELECT COUNT(*) FROM lumen_points_adjustments a WHERE NOT EXISTS(SELECT 1 FROM community_notifications n WHERE n.id='points:adjust:'||a.id)) AS missing_adjustment_notices`
           while (true) {
             const result = JSON.parse(execFileSync('npx', ['--yes', 'wrangler@4.160.0', 'd1', 'execute',
               'lumen-community', '--remote', '--json', '--command', sql], { encoding: 'utf8', timeout: 60000 }))
             const summary = result[0]?.results?.[0]
             if (!summary) throw new Error('Historical points verification returned no result.')
+            if (summary.missing_notices || summary.missing_adjustment_notices) throw new Error('Points credit notifications are missing.')
             if (summary.failed) throw new Error(`Historical purchase checks failed for ${summary.failed} accounts: ${summary.errors}`)
             if (!summary.pending) {
               console.log(`Historical purchase credits verified: ${summary.recipients} members, ${summary.purchase_points} purchase LP, ${summary.tier_points} milestone LP.`)
+              console.log(`Staff-license credits verified: ${summary.gift_recipients} members, ${summary.gift_points} LP. All previous and new credits have private notifications.`)
               break
             }
             if (Date.now() >= deadline) throw new Error(`Historical purchase checks are still pending for ${summary.pending} members.`)
             console.log(`Waiting for scheduled purchase backfill: ${summary.pending} accounts remaining.`)
             await delay(20000)
           }
+          NODE
+      - name: Publish customer-only 48-hour roundup and member announcement
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx --yes wrangler@4.160.0 d1 execute lumen-community --remote --file worker/public-updates/2026-11-17.sql
+          node --input-type=module <<'NODE'
+          const response = await fetch('https://lumen-docs-assistant.lumennetwork0.workers.dev/community/updates?pageSize=100', {
+            headers: { Origin: 'https://lumenstudio.fyi' }, signal: AbortSignal.timeout(10000),
+          })
+          if (!response.ok) throw new Error('Public studio roundup could not be read.')
+          const payload = await response.json()
+          const item = payload.items?.find(row => row.id === '19ca0e88-4ff1-47d1-8769-cc8b00020261')
+          if (!item || !item.body.includes('Lumen Points') || /token|migration|secret|backend|commit|workflow/i.test(item.body)) {
+            throw new Error('Customer-only studio roundup did not verify.')
+          }
+          console.log('Customer-only 48-hour roundup is public and broadcast to the all-members update audience.')
           NODE

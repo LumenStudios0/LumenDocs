@@ -1,5 +1,7 @@
 import { ensurePointsAccount, pointsBalance } from './points-account.js'
 import { loyaltyStatus } from './loyalty.js'
+import { syncStaffLicensePoints } from './license-points.js'
+import { productMarketplace } from '../shared/product-marketplace.mjs'
 
 export const pointMilestones = [
   { id: 'spark', name: 'Spark', count: 3, points: 50 },
@@ -59,7 +61,7 @@ function purchaseResources(env) {
   if (!env.BUILDBYBIT_API_AUTHORIZATION || !resources.length || resources.length > 50 || resources.some(value => !id(value))) {
     throw failure('Purchase points need the BuiltByBit creator authorization and resource IDs configured.')
   }
-  return resources
+  return [...new Set([...resources, ...productMarketplace.map(product => product.resourceId)])]
 }
 
 export async function verifiedPointPurchases(env, userId, purchaseRows) {
@@ -159,13 +161,17 @@ export async function syncPointEarnings(env, userId, purchaseRows) {
   if (!reserved.meta?.changes) throw failure('An earnings check is already running. Wait a moment, then refresh.', 409)
   const checks = {}
   try {
-    const account = await db.prepare('SELECT purchase_checked_at,tier_checked_at FROM lumen_points_accounts WHERE user_id=?').bind(userId).first()
-    for (const name of ['purchases', 'loyalty']) {
-      const last = name === 'purchases' ? account.purchase_checked_at : account.tier_checked_at
+    const account = await db.prepare('SELECT purchase_checked_at,tier_checked_at,staff_checked_at FROM lumen_points_accounts WHERE user_id=?').bind(userId).first()
+    for (const name of ['purchases', 'loyalty', 'staffLicenses']) {
+      const last = name === 'purchases' ? account.purchase_checked_at : name === 'loyalty' ? account.tier_checked_at : account.staff_checked_at
       if (last && Date.now() - Date.parse(last) < 60000) { checks[name] = { ok: true, checkedAt: last }; continue }
       try {
         if (name === 'purchases') await savePurchases(env, userId, await verifiedPointPurchases(env, userId, purchaseRows))
-        else await saveMilestones(env, userId)
+        else if (name === 'loyalty') await saveMilestones(env, userId)
+        else {
+          if (!checks.purchases?.ok) throw failure('Staff-license points are waiting for successful purchase verification to prevent duplicate credits.')
+          await syncStaffLicensePoints(env, userId)
+        }
         checks[name] = { ok: true, checkedAt: new Date().toISOString() }
       } catch (error) {
         console.error(`Lumen Points ${name} check failed:`, error instanceof Error ? error.message : 'Unknown error')
@@ -182,7 +188,7 @@ export async function backfillMemberPoints(env) {
   if (!env.COMMUNITY_DB) throw failure('Lumen Points storage is unavailable.')
   const db = env.COMMUNITY_DB, now = new Date().toISOString()
   const accounts = (await db.prepare(`SELECT user_id FROM lumen_points_accounts
-    WHERE (purchase_checked_at IS NULL OR tier_checked_at IS NULL)
+    WHERE (purchase_checked_at IS NULL OR tier_checked_at IS NULL OR staff_checked_at IS NULL)
       AND (backfill_attempted_at IS NULL OR backfill_attempted_at<?)
     ORDER BY COALESCE(backfill_attempted_at,''),user_id LIMIT 10`)
     .bind(new Date(Date.now() - 15 * 60000).toISOString()).all()).results || []
@@ -252,9 +258,9 @@ async function pointsSummary(db, userId) {
     FROM lumen_points_purchases WHERE user_id=? AND points_units>0 AND purchased_at>=? AND purchased_at<=?`)
     .bind(userId, new Date(Date.now() - 86400000).toISOString(), new Date().toISOString()).first()
   const rewards = (await db.prepare("SELECT reward_key,points_units FROM lumen_points_rewards WHERE user_id=? AND kind='tier'").bind(userId).all()).results || []
-  const history = (await db.prepare(`SELECT id,delta_units AS units,label,created_at AS createdAt FROM lumen_points_history WHERE user_id=?
-    UNION ALL SELECT 'shop:'||id,delta_units,label,created_at FROM lumen_points_shop_events WHERE user_id=?
-    ORDER BY createdAt DESC,id DESC LIMIT 50`).bind(userId, userId).all()).results || []
+  const history = (await db.prepare(`SELECT id,delta_units AS units,label,created_at AS createdAt
+    FROM lumen_points_transactions WHERE user_id=? ORDER BY created_at DESC,id DESC LIMIT 50`).bind(userId).all()).results || []
+  const staff = await db.prepare("SELECT COALESCE(SUM(delta_units),0) AS units FROM lumen_points_adjustments WHERE user_id=? AND kind='staff_license'").bind(userId).first()
   const totals = (await db.prepare(`SELECT kind,SUM(points_units) AS units,COUNT(*) AS n FROM lumen_points_rewards
     WHERE user_id=? AND points_units>0 GROUP BY kind`).bind(userId).all()).results || []
   const periods = {}
@@ -271,7 +277,7 @@ async function pointsSummary(db, userId) {
     }
   }
   return {
-    balance, referralCode: account.referral_code, successfulReferrals: count.n,
+    balance, staffLicensePoints: staff.units / 100, referralCode: account.referral_code, successfulReferrals: count.n,
     redeemedAt: redeemed?.redeemed_at || null, eligibleReferralPoints: eligible.units / 200,
     referralExpiresAt: eligible.oldest ? new Date(Date.parse(eligible.oldest) + 86400000).toISOString() : null,
     purchaseCheckedAt: account.purchase_checked_at, tierCheckedAt: account.tier_checked_at,

@@ -7,6 +7,7 @@ import { activityCustomerName, staffActivityStatement } from './staff-operations
 import { staffLicenseKey } from './staff-license-key.js'
 import { backfillMemberPoints } from './lumen-points.js'
 import { reconcileShopCoupons } from './points-shop.js'
+import { saveLicensePointsChoice } from './license-points.js'
 
 const jsonHeaders = {
   'Content-Type': 'application/json; charset=utf-8',
@@ -948,7 +949,10 @@ async function adminApi(request, env, origin, path) {
               (parsed.productId !== undefined && (typeof parsed.productId !== 'string' || !parsed.productId.trim() || parsed.productId.length > 64))) {
             return respond({ error: 'A valid customer Discord ID and product ID are required.' }, 400, origin)
           }
-          licenseGrant = { customerId: parsed.customerDiscordId, productId: parsed.productId ?? null }
+          if (parsed.giveLumenPoints !== undefined && typeof parsed.giveLumenPoints !== 'boolean') return respond({ error: 'Give Lumen Points must be a boolean.' }, 400, origin)
+          licenseGrant = { customerId: parsed.customerDiscordId, productId: parsed.productId ?? null, givePoints: parsed.giveLumenPoints !== false }
+          delete parsed.giveLumenPoints
+          options.body = JSON.stringify(parsed)
         }
         if (request.method === 'PATCH') {
           if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !Object.keys(parsed).length ||
@@ -964,7 +968,7 @@ async function adminApi(request, env, origin, path) {
         return respond({ error: 'Expected a JSON request' }, 400, origin)
       }
       headers['Content-Type'] = 'application/json'
-      options.body = registryPatch ? JSON.stringify(registryPatch) : body
+      options.body ??= registryPatch ? JSON.stringify(registryPatch) : body
     } else if (/^\/admin\/licenses\/[0-9a-f-]{36}\/renew$/.test(path)) {
       return respond({ error: 'Choose a future expiration date.' }, 400, origin)
     } else if (request.method === 'PATCH') {
@@ -1008,6 +1012,13 @@ async function adminApi(request, env, origin, path) {
         return respond({ error: 'License audit storage is unavailable; the change was not sent.' }, 503, origin)
       }
     }
+    if (licenseGrant?.productId) {
+      try { await saveLicensePointsChoice(env.COMMUNITY_DB, licenseGrant.customerId, licenseGrant.productId, licenseGrant.givePoints, user.id) }
+      catch (error) {
+        console.error('License points preferences could not be saved:', error)
+        return respond({ error: 'Points preferences are unavailable; no license grant was sent. Please try again later.' }, 503, origin)
+      }
+    }
     const upstream = await fetch(upstreamUrl, options)
     let auditWarning
     let holdWarning
@@ -1047,7 +1058,9 @@ async function adminApi(request, env, origin, path) {
     if (licenseAuditId) {
       try {
         await env.COMMUNITY_DB.prepare('UPDATE website_access_audit SET action = ?, details = ? WHERE id = ?')
-          .bind(`${licenseAction}_${upstream.ok ? 'succeeded' : 'rejected'}`, JSON.stringify({ status: upstream.status }), licenseAuditId).run()
+          .bind(`${licenseAction}_${upstream.ok ? 'succeeded' : 'rejected'}`, JSON.stringify({ status: upstream.status,
+            ...(licenseGrant ? { productId: licenseGrant.productId, giveLumenPoints: licenseGrant.givePoints } : {}),
+          }), licenseAuditId).run()
       } catch (error) {
         console.error('License action outcome could not be saved to the audit:', error)
         auditWarning = 'The license action was sent, but its audit outcome could not be saved. Check the license before retrying.'
@@ -1074,12 +1087,14 @@ async function adminApi(request, env, origin, path) {
         activityWarning = 'License granted, but Last did could not be updated. Do not grant it again.'
       }
       try {
-        await env.COMMUNITY_DB.prepare(
+        await env.COMMUNITY_DB.batch([env.COMMUNITY_DB.prepare(
           `INSERT INTO community_notifications (id, recipient_id, title, body, kind, product_id, audience, link, created_at)
            VALUES (?, ?, ?, ?, 'license', ?, 'user', ?, ?)`,
         ).bind(crypto.randomUUID(), licenseGrant.customerId, 'License granted',
           'A staff member granted you a license. Open My licenses to view your key and manage server IPs.',
-          licenseGrant.productId, '/account/licenses', new Date().toISOString()).run()
+          licenseGrant.productId, '/account/licenses', new Date().toISOString()),
+        env.COMMUNITY_DB.prepare('UPDATE lumen_points_accounts SET staff_checked_at=NULL,backfill_attempted_at=NULL WHERE user_id=?')
+          .bind(licenseGrant.customerId)])
       } catch (error) {
         console.error('License granted, but notification could not be saved:', error)
         return respond({ ...payload, notificationWarning: [

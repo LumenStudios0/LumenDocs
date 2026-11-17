@@ -14,6 +14,7 @@ interface Summary {
   purchaseCheckedAt: string | null
   tierCheckedAt: string | null
   purchasePoints: number
+  staffLicensePoints: number
   referralPoints: number
   milestones: { id: string; name: string; count: number | null; points: number; awarded: boolean }[]
   periods: Record<Period, { purchasePoints: number; referralPoints: number; referrals: number }>
@@ -36,7 +37,7 @@ const periods: { id: Period; label: string; reset: string }[] = [
 ]
 const activity = computed(() => status.value?.periods[period.value])
 const checkErrors = computed(() => Object.entries(status.value?.checks || {}).filter(([, check]) => !check.ok)
-  .map(([name, check]) => `${name === 'purchases' ? 'Purchase verification' : 'Loyalty verification'}: ${check.error || 'Unavailable. Please try again later.'}`))
+  .map(([name, check]) => `${name === 'purchases' ? 'Purchase verification' : name === 'staffLicenses' ? 'Staff-license verification' : 'Loyalty verification'}: ${check.error || 'Unavailable. Please try again later.'}`))
 const formatPoints = (value: number) => value.toLocaleString(undefined, { maximumFractionDigits: 2 })
 const date = (value: string) => new Date(value).toLocaleString()
 let generation = 0
@@ -116,6 +117,7 @@ onUnmounted(() => { generation++; window.removeEventListener('lumen-discord-user
       <div class="points-stats">
         <div><span>PURCHASE POINTS</span><strong>{{ formatPoints(status.purchasePoints) }} <small>LP</small></strong></div>
         <div><span>REFERRAL POINTS</span><strong>{{ formatPoints(status.referralPoints) }} <small>LP</small></strong></div>
+        <div><span>STAFF-LICENSE POINTS</span><strong>{{ formatPoints(status.staffLicensePoints || 0) }} <small>LP</small></strong></div>
         <div><span>SUCCESSFUL REFERRALS</span><strong>{{ status.successfulReferrals }}</strong></div>
       </div>
       <section class="points-referrals" aria-labelledby="points-referrals-title">
@@ -159,7 +161,7 @@ onUnmounted(() => { generation++; window.removeEventListener('lumen-discord-user
         <p v-else class="points-empty">Your story starts here. Check earnings after your next purchase or referral.</p>
       </section>
     </template>
-    <footer class="points-footer"><strong>Real purchases. Real rewards.</strong><p>Purchase checks use verified BuiltByBit buyer identities and final USD amounts. Link the same Discord account on BuiltByBit. Free licenses, trials, and staff grants do not earn purchase points. Invalidated or missing purchases and their referral bonuses are adjusted on verification. Spend points in the shop; points have no cash value.</p><p v-if="status?.purchaseCheckedAt">Purchases last verified {{ date(status.purchaseCheckedAt) }}. Checks are cached for one minute.</p></footer>
+    <footer class="points-footer"><strong>Real purchases. Real rewards.</strong><p>Purchase checks use verified BuiltByBit buyer identities and final USD amounts. Link the same Discord account on BuiltByBit. Eligible staff-granted licenses also earn points once per member/plugin at the verified current USD listing price, unless points were disabled for that grant. Existing eligible grants count automatically. Paid purchases are not credited twice. Trials and points-shop free products never earn license points, and only real paid purchases qualify for referrals. Invalidated or missing purchases and their referral bonuses are adjusted on verification. Spend points in the shop; points have no cash value.</p><p v-if="status?.purchaseCheckedAt">Purchases last verified {{ date(status.purchaseCheckedAt) }}. Checks are cached for one minute.</p></footer>
   </div>
 </template>
 
@@ -191,7 +193,7 @@ onUnmounted(() => { generation++; window.removeEventListener('lumen-discord-user
 .points .points-effects { position: absolute; right: 24px; bottom: 17px; padding: 3px; border: 0; background: transparent; color: #bca3d1; font-size: .6rem; }
 .points-message { margin: 16px 0; padding: 14px 18px; border: 1px solid var(--vp-c-brand-2); border-radius: 11px; background: var(--vp-c-brand-soft); font-size: .78rem; line-height: 1.7; overflow-wrap: anywhere; }
 .points-message.is-error { border-color: var(--vp-c-danger-2); background: var(--vp-c-danger-soft); color: var(--vp-c-danger-1); }
-.points-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 20px 0 36px; }
+.points-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 20px 0 36px; }
 .points-stats > div { display: grid; gap: 9px; padding: 20px; border: 1px solid var(--vp-c-divider); border-radius: 12px; background: var(--vp-c-bg-soft); }
 .points-stats span { color: var(--vp-c-text-2); font: .54rem/1.5 var(--vp-font-family-mono); letter-spacing: .05em; }
 .points-stats strong { font-size: 1.5rem; overflow-wrap: anywhere; }.points-stats small { color: var(--points-accent); font-size: .65rem; }
@@ -222,6 +224,6 @@ onUnmounted(() => { generation++; window.removeEventListener('lumen-discord-user
 @keyframes points-orbit { to { transform: rotate(360deg); } }@keyframes points-shine { 0%, 15% { transform: translateX(-100%); } 85%,100% { transform: translateX(100%); } }@keyframes points-pulse { 50% { opacity: .4; } }
 .effects-paused *, .effects-paused *::before, .effects-paused *::after { animation-play-state: paused !important; }
 @media(max-width:900px) { .points-hero { grid-template-columns: minmax(0, 1fr); }.points-milestones { grid-template-columns: repeat(2,minmax(0,1fr)); } }
-@media(max-width:600px) { .points-referral-grid,.points-task-grid { grid-template-columns: minmax(0,1fr); }.points-stats { gap: 7px; }.points-stats > div { padding: 13px 10px; }.points-stats strong { font-size: 1.15rem; }.points-code { flex-wrap: wrap; }.points-code input { flex-basis: 100%; }.points-code button { width: 100%; }.points-tabs { display:flex; }.points-tabs button { flex:1;padding:9px 12px; }.points-history li { gap: 9px; } }
+@media(max-width:600px) { .points-referral-grid,.points-task-grid { grid-template-columns: minmax(0,1fr); }.points-stats { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 7px; }.points-stats > div { padding: 13px 10px; }.points-stats strong { font-size: 1.15rem; }.points-code { flex-wrap: wrap; }.points-code input { flex-basis: 100%; }.points-code button { width: 100%; }.points-tabs { display:flex; }.points-tabs button { flex:1;padding:9px 12px; }.points-history li { gap: 9px; } }
 @media(prefers-reduced-motion:reduce) { .points *, .points *::before, .points *::after { animation: none !important; } }
 </style>

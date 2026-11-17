@@ -24,6 +24,7 @@ const notice = ref('')
 const customerIds = ref('')
 const grantProduct = ref('')
 const expiry = ref('')
+const giveLumenPoints = ref(true)
 const batchId = ref('')
 const outcomes = ref<{ customerId: string; state: string; message: string }[]>([])
 const page = ref(1)
@@ -79,7 +80,7 @@ async function grant() {
   const token = getDiscordSession()
   try {
     const result = await studioRequest<{ results: typeof outcomes.value }>('/bulk-grants', {
-      method: 'POST', body: JSON.stringify({ requestId: batchId.value, productId: grantProduct.value, customerIds: ids, expiresAt: expiry.value ? new Date(expiry.value).toISOString() : null }),
+      method: 'POST', body: JSON.stringify({ requestId: batchId.value, productId: grantProduct.value, customerIds: ids, expiresAt: expiry.value ? new Date(expiry.value).toISOString() : null, giveLumenPoints: giveLumenPoints.value }),
     })
     if (token === getDiscordSession()) {
       outcomes.value = result.results
@@ -111,6 +112,8 @@ onUnmounted(() => { generation++; window.removeEventListener('lumen-discord-user
       <label>Product<select v-model="grantProduct" required :disabled="busy || !!batchId"><option value="">Choose product</option><option v-for="product in products.filter(item => item.active)" :key="product.productId" :value="product.productId">{{ product.name }}</option></select></label>
       <label>Discord customer IDs<textarea v-model="customerIds" rows="4" required :disabled="busy || !!batchId" placeholder="One Discord ID per line" /></label>
       <label>Expires at (optional; blank means lifetime)<input v-model="expiry" type="datetime-local" :disabled="busy || !!batchId"></label>
+      <label class="website-check"><input v-model="giveLumenPoints" type="checkbox" :disabled="busy || !!batchId">Give Lumen Points</label>
+      <p class="website-note">One award per member/plugin at its verified current USD listing price. Paid purchases are not credited twice. Trials and points-shop free products are excluded.</p>
       <button class="website-primary" type="submit" :disabled="busy || !!batchId || !grantProduct">Grant licenses</button>
       <button v-if="batchId" type="button" :disabled="busy" @click="clearBatch">Start a different batch</button>
       <ul v-if="outcomes.length"><li v-for="outcome in outcomes" :key="outcome.customerId"><strong>{{ outcome.customerId }} — {{ outcome.state }}</strong>: {{ outcome.message }}</li></ul>

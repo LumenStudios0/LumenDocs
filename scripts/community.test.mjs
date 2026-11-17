@@ -32,7 +32,7 @@ function createD1() {
   const migrations = Promise.all(['0001_community.sql', '0002_ticket_routing.sql', '0003_community_forum.sql', '0004_website_access.sql', '0005_member_registration.sql', '0006_community_expansion.sql', '0007_product_tools.sql', '0010_trial_duration.sql', '0011_staff_docs_permissions.sql', '0012_staff_operations.sql', '0013_staff_license_keys.sql', '0014_loyalty_subclients.sql', '0015_member_profiles.sql', '0016_public_member_profiles.sql', '0017_profile_badges.sql', '0018_profile_customization.sql', '0019_support_roles.sql', '0020_coupon_rewards.sql', '0021_staff_progression.sql', '0023_coupon_operations.sql', '0024_coupon_scope.sql', '0025_coupon_discount_range.sql'].map(
     name => readFile(new URL(`../worker/migrations/community/${name}`, import.meta.url), 'utf8'),
   ))
-  const pointsMigrations = Promise.all(['0027_lumen_points.sql', '0028_lumen_points_backfill.sql', '0029_lumen_points_shop.sql'].map(
+  const pointsMigrations = Promise.all(['0027_lumen_points.sql', '0028_lumen_points_backfill.sql', '0029_lumen_points_shop.sql', '0030_staff_member_points.sql', '0031_points_notifications.sql'].map(
     name => readFile(new URL(`../worker/migrations/community/${name}`, import.meta.url), 'utf8'),
   ))
   const database = {
@@ -304,6 +304,7 @@ test('staff license grants notify only the recipient even when ticket alerts are
   globalThis.fetch = async (input, options) => {
     assert.equal(new URL(input).pathname, '/v1/admin/licenses')
     assert.equal(JSON.parse(options.body).customerDiscordId, customerId)
+    assert.equal('giveLumenPoints' in JSON.parse(options.body), false)
     calls++
     return Response.json({ licenseKey: 'private-test-key' }, { status: 201 })
   }
@@ -322,6 +323,23 @@ test('staff license grants notify only the recipient even when ticket alerts are
   assert.equal((await api(`/community/notifications/${page.items[0].id}/read`, 'POST', {}, customer)).status, 200)
   assert.equal((await (await api('/community/notifications', 'GET', undefined, customer)).json()).unreadTotal, 0)
   assert.equal(db.sqlite.prepare("SELECT count(*) AS total FROM community_notifications WHERE kind = 'license'").get().total, 1)
+  assert.equal(db.sqlite.prepare('SELECT give_points FROM lumen_points_license_choices WHERE user_id=? AND product_id=?').get(customerId, 'gladiator').give_points, 1)
+  assert.equal((await api('/admin/licenses', 'POST', { customerDiscordId: customerId, productId: 'gladiator', giveLumenPoints: false }, owner)).status, 201)
+  assert.equal(db.sqlite.prepare('SELECT give_points FROM lumen_points_license_choices WHERE user_id=? AND product_id=?').get(customerId, 'gladiator').give_points, 0)
+  assert.equal((await api('/admin/licenses', 'POST', { customerDiscordId: customerId, productId: 'gladiator', giveLumenPoints: 'false' }, owner)).status, 400)
+})
+
+test('prefixed points notifications remain private and can be marked read with generic alerts disabled', async t => {
+  const { api, db } = await accessFixture(t)
+  const customer = await tokenFor(customerId, 'Customer')
+  const other = await tokenFor('987654321098765432', 'Other')
+  await api('/community/preferences', 'PUT', { updates: false, announcements: false, ticketReplies: false, products: [] }, customer)
+  db.sqlite.prepare(`INSERT INTO community_notifications(id,recipient_id,title,body,kind,audience,link,created_at)
+    VALUES ('points:earn:1',?,'Points received','You received 10 LP.','license','user','/account/points',?)`).run(customerId, new Date().toISOString())
+  assert.equal((await (await api('/community/notifications', 'GET', undefined, customer)).json()).unreadTotal, 1)
+  assert.equal((await api('/community/notifications/points:earn:1/read', 'POST', {}, other)).status, 404)
+  assert.equal((await api('/community/notifications/points:earn:1/read', 'POST', {}, customer)).status, 200)
+  assert.equal((await (await api('/community/notifications', 'GET', undefined, customer)).json()).unreadTotal, 0)
 })
 
 test('staff grant reports notification failure without retrying a committed grant', async t => {

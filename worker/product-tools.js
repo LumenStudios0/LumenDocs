@@ -7,6 +7,8 @@ import { handleProfiles } from './profiles.js'
 import { handleCoupons, handleStaffCoupons } from './coupon-rewards.js'
 import { handleLumenPoints } from './lumen-points.js'
 import { handlePointsShop } from './points-shop.js'
+import { handleStaffMemberPoints } from './staff-member-points.js'
+import { saveLicensePointsChoice } from './license-points.js'
 
 const productPattern = /^[A-Za-z0-9_.-]{1,64}$/
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -71,6 +73,7 @@ async function bulkGrant(request, env, user, access, send) {
   if (!uuidPattern.test(body?.requestId ?? '') || typeof body?.productId !== 'string' || !productPattern.test(body.productId) ||
       !Array.isArray(ids) || !ids.length || ids.length > 10 || ids.some(id => typeof id !== 'string' || !/^\d{5,22}$/.test(id)) ||
       new Set(ids).size !== ids.length ||
+      body.giveLumenPoints !== undefined && typeof body.giveLumenPoints !== 'boolean' ||
       (expiry !== null && (typeof expiry !== 'string' || !Number.isFinite(Date.parse(expiry)) || Date.parse(expiry) <= Date.now()))) {
     return send({ error: 'Choose a product, a valid request ID, up to 10 unique Discord IDs, and a future expiry or lifetime access.' }, 400)
   }
@@ -78,7 +81,7 @@ async function bulkGrant(request, env, user, access, send) {
   const old = await env.COMMUNITY_DB.prepare(
     'SELECT * FROM studio_bulk_grants WHERE actor_id = ? AND request_id = ?',
   ).bind(user.id, body.requestId).all()
-  if ((old.results || []).some(row => row.product_id !== body.productId || row.expires_at !== expiresAt || !ids.includes(row.customer_id)) ||
+  if ((old.results || []).some(row => row.product_id !== body.productId || row.expires_at !== expiresAt || row.give_points !== Number(body.giveLumenPoints !== false) || !ids.includes(row.customer_id)) ||
       (old.results?.length && old.results.length !== ids.length)) {
     return send({ error: 'This request ID belongs to a different batch. Refresh before starting another batch.' }, 409)
   }
@@ -88,9 +91,9 @@ async function bulkGrant(request, env, user, access, send) {
     // Reserve the entire batch before making any external changes.
     await env.COMMUNITY_DB.batch(ids.map(id => env.COMMUNITY_DB.prepare(
       `INSERT INTO studio_bulk_grants
-       (request_id, actor_id, customer_id, product_id, expires_at, state, created_at)
-       VALUES (?, ?, ?, ?, ?, 'processing', ?)`,
-    ).bind(body.requestId, user.id, id, body.productId, expiresAt, now)))
+       (request_id, actor_id, customer_id, product_id, expires_at, state, created_at,give_points)
+       VALUES (?, ?, ?, ?, ?, 'processing', ?,?)`,
+    ).bind(body.requestId, user.id, id, body.productId, expiresAt, now, Number(body.giveLumenPoints !== false))))
   } else {
     return send({ results: old.results.map(row => ({ customerId: row.customer_id, state: row.state, message: row.message })) })
   }
@@ -114,6 +117,7 @@ async function bulkGrant(request, env, user, access, send) {
         state = 'skipped'
         message = 'Existing access or account restriction: review this customer individually.'
       } else {
+        await saveLicensePointsChoice(env.COMMUNITY_DB, id, body.productId, body.giveLumenPoints !== false, user.id)
         grantAttempted = true
         const grant = await licensingRequest(env, '/licenses', {
           method: 'POST',
@@ -136,11 +140,14 @@ async function bulkGrant(request, env, user, access, send) {
     const updates = [env.COMMUNITY_DB.prepare(
       'UPDATE studio_bulk_grants SET state = ?, message = ? WHERE actor_id = ? AND request_id = ? AND customer_id = ?',
     ).bind(state, message, user.id, body.requestId, id),
-    audit(env.COMMUNITY_DB, user, access, 'license.bulk_grant', id, { productId: body.productId, state, requestId: body.requestId })]
+    audit(env.COMMUNITY_DB, user, access, 'license.bulk_grant', id, { productId: body.productId, state, requestId: body.requestId, giveLumenPoints: body.giveLumenPoints !== false })]
     if (state === 'granted') updates.push(env.COMMUNITY_DB.prepare(
       `INSERT INTO community_notifications (id, recipient_id, title, body, kind, product_id, audience, link, created_at)
        VALUES (?, ?, 'License granted', ?, 'license', ?, 'user', '/account/licenses', ?)`,
     ).bind(crypto.randomUUID(), id, `Staff granted access to ${body.productId}${expiresAt ? ` until ${expiresAt}` : ''}.`, body.productId, new Date().toISOString()))
+    if (state === 'granted') updates.push(env.COMMUNITY_DB.prepare(
+      'UPDATE lumen_points_accounts SET staff_checked_at=NULL,backfill_attempted_at=NULL WHERE user_id=?',
+    ).bind(id))
     try { await env.COMMUNITY_DB.batch(updates) }
     catch (error) {
       console.error('Bulk grant result could not be recorded:', error)
@@ -153,6 +160,7 @@ async function bulkGrant(request, env, user, access, send) {
 
 export async function handleProductTools(request, env, origin, path, deps) {
   const send = (payload, status = 200) => deps.respond(payload, status, origin)
+  if (path.startsWith('/studio/staff/points/')) return handleStaffMemberPoints(request, env, origin, path, deps)
   if (path === '/studio/points/shop' || path.startsWith('/studio/points/shop/')) return handlePointsShop(request, env, origin, path, deps)
   if (path === '/studio/points' || path.startsWith('/studio/points/')) return handleLumenPoints(request, env, origin, path, deps)
   if (path === '/studio/coupons') return handleCoupons(request, env, origin, deps)
