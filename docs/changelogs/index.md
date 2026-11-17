@@ -2,20 +2,59 @@
 
 ## Website updates
 
-### November 14, 2026
+### November 17, 2026
 
-- Added plugin trial requests, private expiry reminders, ticket ratings, escalations, and follow-up reminders.
-- Added incident history and subscriptions to published known issues.
-- Added scheduled announcements with image links, Discord-style rich formatting, and a public staff updates feed.
-- Added product release notes and private plugin downloads in My account. Downloads will appear when builds are available and require an active matching license.
-- Fixed connected servers to show installations reported by the licensing service for the signed-in account.
-- Staff-issued account licenses can be viewed without BuiltByBit sign-in. Website grants also send a private notification.
-- Replaced browser confirmation boxes with purple in-site dialogs, including typed confirmation for permanent deletions.
-- Added BuiltByBit purchase checks through the Discord account linked on BuiltByBit. Linking Discord by itself does not grant a license.
-- Shortened the account menu; licenses, purchases and settings remain in My account.
-- Added a notification bell with an unread count across all pages, recent alerts and links to notification preferences. Counts refresh while the site is open and after alerts are read.
-- Added separate Login and Signup tabs using secure Discord verification. Verified accounts are saved to the staff user directory with registration and last-seen dates; repeat sign-ins do not create duplicates.
-- Added BuiltByBit availability to service status.
+Customer-facing changes from November 14-17, covering the latest 88-hour roundup.
+
+#### Lumen Points and referrals
+
+- Added [Lumen Points](/account/points): earn **10 LP per $1 USD actually paid** for eligible plugins, including previous verified purchases.
+- Eligible staff-gifted plugins now earn points once per member/plugin at their published catalog price. Trials and free points-shop plugins do not earn these credits; products without a confirmed price remain pending.
+- Every member receives a unique referral code with a copy button and a successful-referral count. A buyer can enter another member's code within 24 hours of an eligible purchase; the referrer earns an extra **50% of the eligible purchase points**, while the buyer keeps all of theirs.
+- Added animated daily, weekly and monthly earnings views, your available balance and transaction history.
+- Point credits, adjustments and refunds now send private website notifications. Notices for previous credits do not award the points again.
+
+#### Points shop
+
+- Open the new animated [Points shop](/account/points/shop) directly from Lumen Points.
+- Redeem **100 LP for 5% off**, **160 LP for 10% off**, **1,500 LP for a free plugin**, **750 LP for an extra account IP slot**, or **4,500 LP for a small custom-plugin request**.
+- Added three collectible profile badges and two animated profile effects.
+- Coupons and cosmetics are delivered automatically. Free plugins, IP-slot rewards and custom-plugin requests are fulfilled by staff; order history shows their progress.
+
+#### Loyalty and coupons
+
+- Updated [Lumen Loyalty](/account/loyalty): **Spark at 3 eligible plugins, Radiance at 6, Nova at 9, and Lumen Elite with every currently eligible plugin**.
+- Added one-time milestone rewards of **50 / 100 / 150 / 250 LP** for Spark / Radiance / Nova / Elite.
+- Account IP allowances are **3 by default**, increasing to **4 / 5 / 7 / 10** by tier. Check your account for your current allowance.
+- Eligible tiers unlock shared plugin downloads and animated profile cosmetics. Sharing downloads does not transfer ownership or license access.
+- Coupons now have their own account section, separate from Loyalty. Eligible loyalty tiers and verified BuiltByBit reviews can earn coupons; support can also gift coupons.
+- Coupon cards show eligible products, and a private notification tells you when your coupon is used. Usage alerts do not identify the buyer.
+
+#### Profiles and appearance
+
+- Added searchable public [member profiles](/members/) and a **My profile** shortcut in your account menu.
+- Customize your bio, status, colors, banner, links and favorite plugin, with a live preview before saving.
+- Added selectable animated loyalty badges, earned achievements, tier-unlocked backgrounds, avatar frames and decorations.
+- Publish up to three Minecraft server cards with copyable addresses, versions, gamemodes, links and screenshots.
+- Refreshed the website with purple 3D scenes, smoother navigation and coordinated animations that respect reduced-motion settings.
+
+#### Account, licenses and downloads
+
+- Simplified My account so licenses, products and support are easier to find.
+- View staff-issued licenses without signing in to BuiltByBit. Confirmed website license grants send a private notification.
+- Added private plugin downloads for owned products when builds are available. Downloads require current eligible access.
+- Request a plugin trial and select a requested duration; requests remain subject to approval.
+- Added purchase checks through the Discord account linked on BuiltByBit. Linking Discord alone does not grant a license.
+- Fixed connected servers to display installations reported for your account, and added clearer license and setup guidance.
+- Replaced browser confirmation boxes with purple in-site dialogs.
+
+#### Support, community and notifications
+
+- Added private website support tickets, replies, expiry reminders and **1-5 star ratings** after a ticket closes.
+- Introduced a Discord-style [Community Support](/known-issues) forum for general chat, help, bug reports, suggestions and showcases. Authors can mark their threads resolved.
+- Added incident history, subscriptions to published known issues and BuiltByBit availability in service status.
+- Added a notification bell across the website, topic preferences and a working **Mark all as read** action.
+- Customer-facing studio news is available in [Studio updates](/updates), alongside the official plugin release links below.
 
 ## Plugin release notes
 
