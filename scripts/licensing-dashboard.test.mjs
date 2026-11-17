@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   documentedGrantOptions, effectiveLicenseStatus, fetchRegistryItems, hasConnectedAccount, licenseNeedsAttention, normalizeIpAddress,
-  parseIpAllowlist, redactAuditDetails, toSafeCsv,
+  parseIpAllowlist, redactAuditDetails, registryGrantOptions, toSafeCsv,
 } from '../docs/.vitepress/theme/licensing-utils.mjs'
 import { createAdminTestStore, clearAdminTestData, TEST_OWNER_ID } from '../docs/.vitepress/theme/admin-test-store.mjs'
 import { runLicenseBatch } from '../docs/.vitepress/theme/license-batch.mjs'
@@ -11,7 +11,7 @@ import { readFile } from 'node:fs/promises'
 const now = Date.parse('2026-01-01T00:00:00Z')
 const license = { status: 'active', expiresAt: null, allowedIps: [], lastValidatedAt: null }
 
-test('bulk grant picker searches eligible plugins and preserves selections within the ten-product limit', async () => {
+test('bulk grant picker selects the full registry without a cap and includes newly added products', async () => {
   const { parse, compileScript } = await import('@vue/compiler-sfc')
   const { transformWithEsbuild } = await import('vite')
   const { reactive } = await import('vue')
@@ -20,38 +20,53 @@ test('bulk grant picker searches eligible plugins and preserves selections withi
     .replaceAll("from 'vue'", `from '${import.meta.resolve('vue')}'`)
   const { code } = await transformWithEsbuild(compiled, 'StaffPluginGrantPicker.ts', { loader: 'ts' })
   const component = (await import('data:text/javascript;base64,' + Buffer.from(code).toString('base64'))).default
-  const options = Array.from({ length: 12 }, (_, index) => ({ id: `plugin-${index}`, productId: `product-${index}`, name: `Plugin ${index}`, reason: '' }))
+  const options = Array.from({ length: 125 }, (_, index) => ({ id: `plugin-${index}`, productId: `product-${index}`, name: `Plugin ${index}`, reason: '' }))
   const props = reactive({
     options: [...options, { ...options[0], id: 'duplicate' }, { id: 'blocked', productId: 'blocked', name: 'Unavailable', reason: 'Not registered' }],
     modelValue: [], disabled: false,
   })
   const ui = component.setup(props, { expose() {}, emit(_event, value) { props.modelValue = value } })
-  assert.equal(ui.available.value.length, 12)
-  ui.search.value = ' PLUGIN 11 '
-  assert.deepEqual(ui.filtered.value.map(option => option.productId), ['product-11'])
+  assert.equal(ui.available.value.length, 125)
+  assert.equal(ui.filtered.value.length, 126)
+  ui.search.value = ' PLUGIN 124 '
+  assert.deepEqual(ui.filtered.value.map(option => option.productId), ['product-124'])
   ui.selectVisible()
   ui.search.value = ''
   ui.selectVisible()
-  assert.equal(props.modelValue.length, 10)
-  assert.equal(new Set(props.modelValue).size, 10)
-  assert.equal(props.modelValue[0], 'product-11')
+  assert.equal(props.modelValue.length, 125)
+  assert.equal(new Set(props.modelValue).size, 125)
+  assert.equal(props.modelValue[0], 'product-124')
   assert.equal(ui.canSelectVisible.value, false)
-  ui.toggle('product-10')
-  assert.equal(props.modelValue.includes('product-10'), false)
   ui.toggle('product-0')
-  ui.toggle('product-10')
-  assert.equal(props.modelValue.includes('product-10'), true)
+  assert.equal(props.modelValue.includes('product-0'), false)
+  props.options.push({ id: 'new', productId: 'new', name: 'Newly registered plugin', reason: '' })
+  ui.toggle('new')
+  assert.equal(props.modelValue.includes('new'), true)
   ui.search.value = 'no matching plugins'
   assert.equal(ui.filtered.value.length, 0)
-  assert.equal(props.modelValue.length, 10)
+  assert.equal(props.modelValue.length, 125)
   props.disabled = true
   ui.clear()
   ui.toggle('product-11')
-  assert.equal(props.modelValue.length, 10)
+  assert.equal(props.modelValue.length, 125)
   props.disabled = false
   ui.clear()
   ui.toggle('blocked')
   assert.deepEqual(props.modelValue, [])
+})
+
+test('bulk grant options use live product IDs without requiring a documentation entry', () => {
+  const products = [
+    { productId: 'new-plugin', name: 'New plugin not in docs', active: true, plugins: ['new'] },
+    { productId: 'inactive', name: 'Inactive', active: false, plugins: ['old'] },
+    { productId: 'unlinked', name: 'Unlinked', active: true, plugins: [] },
+  ]
+  const options = registryGrantOptions(products)
+  assert.equal(options.length, 3)
+  assert.equal(options[0].productId, 'new-plugin')
+  assert.equal(options[0].reason, '')
+  assert.match(options[1].reason, /Inactive/)
+  assert.match(options[2].reason, /No plugin linked/)
 })
 
 test('registry loading includes later pages so newly registered products remain grantable', async () => {
@@ -293,11 +308,11 @@ test('failed local persistence reports an error and rolls back edits instead of 
   assert.throws(() => createAdminTestStore(brokenStorage, testOwner), /Reset test data/)
 })
 
-test('customer license batches bound selections and stop after uncertainty without replaying writes', async () => {
+test('customer license batches validate selections and stop after uncertainty without replaying writes', async () => {
   let calls = []
   const apply = async id => { calls.push(id); if (id === 'second') throw new Error('Connection lost'); return { state: 'revoked', message: 'Removed' } }
-  for (const ids of [[], ['first', 'first'], Array.from({ length: 11 }, (_, i) => String(i))]) {
-    await assert.rejects(runLicenseBatch(ids, apply, () => true), /1 and 10/)
+  for (const ids of [[], ['first', 'first'], [''], [null]]) {
+    await assert.rejects(runLicenseBatch(ids, apply, () => true), /at least one unique/)
   }
   assert.deepEqual(calls, [])
   const results = await runLicenseBatch(['first', 'second', 'third'], apply, () => true)
@@ -311,6 +326,18 @@ test('customer license batches bound selections and stop after uncertainty witho
   }, () => current)
   assert.deepEqual(calls, ['first'])
   assert.equal(switched[1].state, 'not_attempted')
+})
+
+test('customer bulk give processes every selected plugin beyond ten without dropping items', async () => {
+  const ids = Array.from({ length: 125 }, (_, index) => `product-${index}`)
+  const calls = []
+  const results = await runLicenseBatch(ids, async id => {
+    calls.push(id)
+    return { state: 'granted', message: 'Granted' }
+  }, () => true)
+  assert.deepEqual(calls, ids)
+  assert.equal(results.length, 125)
+  assert.equal(results.every(result => result.state === 'granted'), true)
 })
 
 test('customer license bulk grants preserve skips and expose declined operations', async () => {

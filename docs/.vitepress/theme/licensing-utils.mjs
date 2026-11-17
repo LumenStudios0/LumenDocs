@@ -70,6 +70,15 @@ export function documentedGrantOptions(plugins, products) {
   })
 }
 
+/** @param {{productId: string, name: string, active: boolean, plugins?: string[]}[]} products */
+export function registryGrantOptions(products) {
+  return products.map(product => ({
+    id: product.productId, productId: product.productId, name: product.name,
+    reason: !product.active ? 'Inactive in licensing'
+      : !Array.isArray(product.plugins) || !product.plugins.length ? 'No plugin linked in licensing' : '',
+  }))
+}
+
 /** @param {string} address */
 export function normalizeIpAddress(address) {
   const value = address.trim()

@@ -4,8 +4,8 @@
  * @param {() => boolean} isCurrent
  */
 export async function runLicenseBatch(ids, apply, isCurrent) {
-  if (!Array.isArray(ids) || !ids.length || ids.length > 10 || ids.some(id => typeof id !== 'string' || !id) || new Set(ids).size !== ids.length) {
-    throw new Error('Select between 1 and 10 unique licenses or products.')
+  if (!Array.isArray(ids) || !ids.length || ids.some(id => typeof id !== 'string' || !id) || new Set(ids).size !== ids.length) {
+    throw new Error('Select at least one unique license or product.')
   }
   const results = []
   let stopped = false

@@ -8,21 +8,21 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ 'update:modelValue': [value: string[]] }>()
 const search = ref('')
-const available = computed(() => props.options.filter(option => !option.reason)
+const registered = computed(() => props.options
   .filter((option, index, options) => options.findIndex(item => item.productId === option.productId) === index))
-const filtered = computed(() => available.value.filter(option => option.name.toLowerCase().includes(search.value.trim().toLowerCase())))
-const remaining = computed(() => Math.max(0, 10 - props.modelValue.length))
-const canSelectVisible = computed(() => remaining.value > 0 && filtered.value.some(option => !props.modelValue.includes(option.productId)))
+const available = computed(() => registered.value.filter(option => !option.reason))
+const filtered = computed(() => registered.value.filter(option => option.name.toLowerCase().includes(search.value.trim().toLowerCase())))
+const canSelectVisible = computed(() => filtered.value.some(option => !option.reason && !props.modelValue.includes(option.productId)))
 
 function toggle(productId: string) {
   if (props.disabled) return
   if (props.modelValue.includes(productId)) emit('update:modelValue', props.modelValue.filter(id => id !== productId))
-  else if (remaining.value && available.value.some(option => option.productId === productId)) emit('update:modelValue', [...props.modelValue, productId])
+  else if (available.value.some(option => option.productId === productId)) emit('update:modelValue', [...props.modelValue, productId])
 }
 function selectVisible() {
   if (props.disabled) return
-  emit('update:modelValue', [...props.modelValue, ...filtered.value.filter(option => !props.modelValue.includes(option.productId))
-    .slice(0, remaining.value).map(option => option.productId)])
+  emit('update:modelValue', [...props.modelValue, ...filtered.value.filter(option => !option.reason && !props.modelValue.includes(option.productId))
+    .map(option => option.productId)])
 }
 function clear() {
   if (!props.disabled) emit('update:modelValue', [])
@@ -36,27 +36,27 @@ function clear() {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4 4" /></svg>
         <input v-model="search" type="search" aria-label="Search plugins to grant" placeholder="Search plugins..." :disabled="disabled">
       </label>
-      <span class="grant-picker-count" role="status" aria-live="polite">{{ modelValue.length }} / 10 selected</span>
+      <span class="grant-picker-count" role="status" aria-live="polite">{{ modelValue.length }} selected</span>
     </div>
     <div class="grant-picker-tools">
       <span>{{ filtered.length }} {{ filtered.length === 1 ? 'plugin' : 'plugins' }}</span>
       <div>
-        <button type="button" :disabled="disabled || !canSelectVisible" @click="selectVisible">Select {{ search.trim() ? 'matches' : 'up to 10' }}</button>
+        <button type="button" :disabled="disabled || !canSelectVisible" @click="selectVisible">Select {{ search.trim() ? 'matches' : 'all' }}</button>
         <button type="button" :disabled="disabled || !modelValue.length" @click="clear">Clear</button>
       </div>
     </div>
     <fieldset class="grant-picker-list" :disabled="disabled">
       <legend class="grant-picker-sr-only">Plugins to grant</legend>
-      <label v-for="option in filtered" :key="option.productId" class="grant-picker-option" :class="{ 'is-selected': modelValue.includes(option.productId), 'is-unavailable': disabled || (!remaining && !modelValue.includes(option.productId)) }">
+      <label v-for="option in filtered" :key="option.productId" class="grant-picker-option" :class="{ 'is-selected': modelValue.includes(option.productId), 'is-unavailable': disabled || !!option.reason }">
         <span class="grant-picker-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" /><path d="m4 7.5 8 4.5 8-4.5M12 12v9M8 5.3l8 4.5" /></svg>
         </span>
-        <span class="grant-picker-name">{{ option.name }}<small>{{ modelValue.includes(option.productId) ? 'Ready to grant' : 'Add to selection' }}</small></span>
-        <input type="checkbox" :checked="modelValue.includes(option.productId)" :disabled="disabled || (!remaining && !modelValue.includes(option.productId))" @change="toggle(option.productId)">
+        <span class="grant-picker-name">{{ option.name }}<small>{{ option.reason || (modelValue.includes(option.productId) ? 'Ready to grant' : 'Add to selection') }}</small></span>
+        <input type="checkbox" :checked="modelValue.includes(option.productId)" :disabled="disabled || !!option.reason" @change="toggle(option.productId)">
       </label>
-      <p v-if="!filtered.length" class="grant-picker-empty">{{ available.length ? 'No plugins match your search.' : 'No plugins are available to grant. Check the plugin registry.' }}</p>
+      <p v-if="!filtered.length" class="grant-picker-empty">{{ registered.length ? 'No plugins match your search.' : 'No plugins are registered yet. Add them in Plugins & products.' }}</p>
     </fieldset>
-    <p class="grant-picker-hint" role="status">{{ !remaining ? 'Selection limit reached. Deselect a plugin to choose another.' : 'Existing active access is skipped, never shortened.' }}</p>
+    <p class="grant-picker-hint">No selection limit. Existing active access is skipped, never shortened.</p>
   </div>
 </template>
 
