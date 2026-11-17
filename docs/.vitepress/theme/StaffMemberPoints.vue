@@ -79,7 +79,7 @@ onUnmounted(() => { generation++; window.removeEventListener('lumen-discord-user
 </script>
 
 <template>
-  <section class="member-wallet website-panel" aria-label="Customer Lumen Points">
+  <section class="member-wallet website-workspace website-panel" aria-label="Customer Lumen Points">
     <header><div><p class="website-note">MEMBER REWARDS / LEVEL 2 SUPPORT</p><h2>Lumen Points</h2></div><strong v-if="wallet">{{ format(wallet.balance) }} <small>LP available</small></strong></header>
     <p v-if="error" class="website-message website-error" role="alert">{{ error }}</p>
     <p v-if="notice" class="website-message" role="status">{{ notice }}</p>
