@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { communityDate, communityRequest } from './community-api'
+import { getDiscordSession } from './discord-session'
 
 type WindowName = 'weekly' | 'monthly' | 'all-time'
 type Leader = { id: string; name: string; level: number; windowXp: number; totalXp: number }
@@ -12,8 +13,11 @@ const currentStaff = ref({ level: 1, totalXp: 0 })
 const loading = ref(false)
 const error = ref('')
 const labels: Record<WindowName, string> = { weekly: 'This week', monthly: 'This month', 'all-time': 'All time' }
+let generation = 0
 
 async function load() {
+  const request = ++generation, token = getDiscordSession()
+  leaderboard.value = []; logs.value = []; currentStaff.value = { level: 1, totalXp: 0 }
   loading.value = true
   error.value = ''
   try {
@@ -22,16 +26,19 @@ async function load() {
       logs: Log[]
       currentStaff: { level: number; totalXp: number }
     }>(`/staff/progression?window=${windowName.value}`)
+    if (request !== generation || token !== getDiscordSession()) return
     leaderboard.value = result.leaderboard
     logs.value = result.logs
     currentStaff.value = result.currentStaff
   } catch (requestError) {
-    error.value = requestError instanceof Error ? requestError.message : 'Could not load the staff leaderboard.'
-  } finally { loading.value = false }
+    if (request === generation && token === getDiscordSession()) error.value = requestError instanceof Error ? requestError.message : 'Could not load the staff leaderboard.'
+  } finally { if (request === generation) loading.value = false }
 }
 
 watch(windowName, () => { void load() })
-onMounted(() => { void load() })
+function sessionChanged() { void load() }
+onMounted(() => { void load(); window.addEventListener('lumen-discord-user', sessionChanged); window.addEventListener('storage', sessionChanged) })
+onUnmounted(() => { generation++; window.removeEventListener('lumen-discord-user', sessionChanged); window.removeEventListener('storage', sessionChanged) })
 </script>
 
 <template>

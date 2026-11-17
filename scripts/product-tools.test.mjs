@@ -385,14 +385,14 @@ test('coupon usage notifications log observed increases once without inventing b
   assert.equal(sqlite.prepare('SELECT uses FROM coupon_rewards').get().uses, 3)
 })
 
-test('uncertain coupons are reconciled read-only after exact scope verification without creating duplicates', async t => {
+test('uncertain coupons recover read-only with verified allowed products, rejecting empty and ambiguous scopes', async t => {
   const { env, sqlite, customer, call } = await fixture(t)
-  env.BUILDBYBIT_API_AUTHORIZATION = 'private-test-token'; env.BUILDBYBIT_RESOURCE_IDS = '1001'
+  env.BUILDBYBIT_API_AUTHORIZATION = 'private-test-token'; env.BUILDBYBIT_RESOURCE_IDS = '1001,1002'
   sqlite.prepare(`INSERT INTO coupon_rewards(reward_key,user_id,kind,discount,state,label_suffix,created_at,updated_at)
     VALUES ('loyalty:old',?,'loyalty',15,'uncertain','ABCDEF12345678','2026-01-01','2026-01-01')`).run(customer)
   const previous = globalThis.fetch
   t.after(() => { globalThis.fetch = previous })
-  let ambiguous = true
+  let ambiguous = true, empty = true
   globalThis.fetch = async (input, options = {}) => {
     assert.notEqual(options.method, 'POST', 'Reconciliation must never create a replacement code')
     const url = new URL(input)
@@ -401,10 +401,10 @@ test('uncertain coupons are reconciled read-only after exact scope verification 
       reviews: [], stats: { ...stats, total: 0, max_page: 0 },
     } })
     if (url.pathname.endsWith('/coupons/entries')) return Response.json({ result: 'success', data: {
-      entries: {
+      entries: empty ? {} : {
         first: { coupon_id: 1, content_type: 'resource', content_id: 1001 },
         other: { coupon_id: 99, content_type: 'resource', content_id: 9999 },
-      }, ...(ambiguous ? { unrelated: [] } : {}), stats: { ...stats, total: 2 },
+      }, ...(ambiguous ? { unrelated: [] } : {}), stats: { ...stats, total: empty ? 0 : 2 },
     } })
     return Response.json({ result: 'success', data: { coupons: [{ coupon_id: 1, label: '123-ABCDEF12345678',
       discount: .15, percent: true, active: true, all_content_types: [], expires_at: 0, max_uses: 0, max_per_user_uses: 0, uses: 0 }], stats } })
@@ -412,11 +412,15 @@ test('uncertain coupons are reconciled read-only after exact scope verification 
   await runCouponChecks(env)
   assert.equal(sqlite.prepare("SELECT state FROM coupon_rewards WHERE reward_key='loyalty:old'").get().state, 'uncertain')
   ambiguous = false
+  await runCouponChecks(env)
+  assert.equal(sqlite.prepare("SELECT state FROM coupon_rewards WHERE reward_key='loyalty:old'").get().state, 'uncertain')
+  empty = false
   await Promise.all([runCouponChecks(env), runCouponChecks(env)])
   await runCouponChecks(env)
   const result = await (await call('/studio/coupons', 'GET', undefined, customer)).json()
   assert.equal(result.coupons[0].state, 'issued')
   assert.equal(result.coupons[0].code, '123-ABCDEF12345678')
+  assert.deepEqual(result.coupons[0].resourceIds, ['1001'])
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM community_notifications WHERE title='Your coupon is ready'").get().n, 1)
 })
 
