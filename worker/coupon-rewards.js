@@ -39,6 +39,9 @@ function requireRead(result, name) {
 
 function errorCode(error) {
   const message = error instanceof Error ? error.message : ''
+  for (const prefix of ['Coupon scope format mismatch:', 'Unexpected coupon scope', 'Incomplete coupon scope', 'Incomplete coupon reconciliation']) {
+    if (message.startsWith(prefix)) return message.slice(0, 160)
+  }
   return ['BBB_ACCESS', 'BBB_RATE_LIMIT', 'BBB_RESPONSE'].find(code => message.startsWith(code + ':')) ||
     (message.includes('author details') ? 'BBB_REVIEWER' : 'CHECK_FAILED')
 }
@@ -62,8 +65,10 @@ async function verifyScope(env, couponId, resources) {
     const result = await marketplace(env, `coupons/entries?${query}`)
     requireRead(result, 'coupon scope')
     // The live entry-list key differs from the OpenAPI name; every entry is still verified below.
-    const lists = Object.values(result.data?.data || {}).filter(Array.isArray)
-    const entries = lists.length === 1 ? lists[0] : null, stats = result.data?.data?.stats
+    const data = result.data?.data || {}
+    const lists = Object.entries(data).filter(([key, value]) => key !== 'stats' && value !== null && typeof value === 'object')
+      .map(([, value]) => Array.isArray(value) ? value : Object.values(value))
+    const entries = lists.length === 1 ? lists[0] : null, stats = data.stats
     if (!result.ok || result.data?.result !== 'success' || !Array.isArray(entries) ||
         !Number.isSafeInteger(stats?.total) || stats.total < 0 || stats.page !== page ||
         !Number.isSafeInteger(stats.per_page) || stats.per_page < 1 || stats.per_page > 100 ||
@@ -74,7 +79,9 @@ async function verifyScope(env, couponId, resources) {
     total = stats.total; seen += entries.length
     for (const entry of entries) {
       const id = marketplaceId(entry?.content_id)
-      if (marketplaceId(entry?.coupon_id) !== String(couponId) || entry?.content_type !== 'resource' ||
+      if (!marketplaceId(entry?.coupon_id)) throw new Error('Unexpected coupon scope')
+      if (marketplaceId(entry.coupon_id) !== String(couponId)) continue
+      if (entry?.content_type !== 'resource' ||
           !id || !resources.includes(id) || found.has(id)) throw new Error('Unexpected coupon scope')
       found.add(id)
     }

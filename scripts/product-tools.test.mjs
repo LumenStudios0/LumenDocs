@@ -377,7 +377,10 @@ test('uncertain coupons are reconciled read-only after exact scope verification 
       reviews: [], stats: { ...stats, total: 0, max_page: 0 },
     } })
     if (url.pathname.endsWith('/coupons/entries')) return Response.json({ result: 'success', data: {
-      entries: [{ coupon_id: 1, content_type: 'resource', content_id: 1001 }], ...(ambiguous ? { unrelated: [] } : {}), stats,
+      entries: {
+        first: { coupon_id: 1, content_type: 'resource', content_id: 1001 },
+        other: { coupon_id: 99, content_type: 'resource', content_id: 9999 },
+      }, ...(ambiguous ? { unrelated: [] } : {}), stats: { ...stats, total: 2 },
     } })
     return Response.json({ result: 'success', data: { coupons: [{ coupon_id: 1, label: '123-ABCDEF12345678',
       discount: .15, percent: true, active: true, all_content_types: [], expires_at: 0, max_uses: 0, max_per_user_uses: 0, uses: 0 }], stats } })
