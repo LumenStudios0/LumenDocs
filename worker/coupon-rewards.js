@@ -218,8 +218,10 @@ async function issue(env, resources, reward) {
 }
 
 export async function issuePointsCoupon(env, order) {
+  const discount = { coupon_5: 5, coupon_10: 10, coupon_20: 20 }[order.product_id]
+  if (!discount) throw new Error('Unsupported points-shop coupon.')
   await issue(env, config(env), { key: `shop:${order.id}`, userId: order.user_id, kind: 'manual',
-    discount: order.product_id === 'coupon_5' ? 5 : 10, reason: 'Redeemed in the Lumen Points shop' })
+    discount, reason: 'Redeemed in the Lumen Points shop' })
 }
 
 async function reviews(env, resources) {

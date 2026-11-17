@@ -266,7 +266,7 @@ test('shop rejects unauthenticated, forged, already-owned and incomplete request
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_orders').get().n, 0)
 })
 
-test('shop coupons issue once, uncertain creation stays charged and known rejections refund points', async t => {
+test('350 LP buys a 20% coupon once; uncertain delivery reconciles and rejected coupons refund points', async t => {
   const { call, env, sqlite } = await shopFixture(t)
   const previous = globalThis.fetch
   let mode = 'issued', creates = 0
@@ -277,6 +277,7 @@ test('shop coupons issue once, uncertain creation stays charged and known reject
       if (mode === 'failed') return Response.json({ result: 'error' }, { status: 403 })
       if (mode === 'uncertain') throw Error('Connection interrupted after submit')
       const body = JSON.parse(options.body)
+      assert.equal(body.discount, 20)
       return Response.json({ result: 'success', data: { coupon: {
         coupon_id: 88, label: `88-${body.label}`, percent: true, discount: body.discount / 100, active: true,
         all_content_types: [], expires_at: null, max_per_user_uses: null, max_uses: 1,
@@ -288,20 +289,22 @@ test('shop coupons issue once, uncertain creation stays charged and known reject
     } })
     return previous(input, options)
   }
-  const body = { requestId: crypto.randomUUID(), productId: 'coupon_5' }
+  const body = { requestId: crypto.randomUUID(), productId: 'coupon_20', price: 1, discount: 50 }
   const issued = await (await call('/studio/points/shop/redeem', 'POST', body)).json()
-  assert.equal(issued.balance, 100 + 4900)
+  assert.equal(issued.balance, 4750)
+  assert.equal(issued.orders[0].price, 350)
+  assert.equal(sqlite.prepare("SELECT discount FROM coupon_rewards WHERE reward_key=?").get(`shop:${body.requestId}`).discount, 20)
   assert.equal(issued.orders[0].state, 'fulfilled')
   await call('/studio/points/shop/redeem', 'POST', body)
   assert.equal(creates, 1)
   mode = 'failed'
   const failed = await (await call('/studio/points/shop/redeem', 'POST', { requestId: crypto.randomUUID(), productId: 'coupon_10' })).json()
-  assert.equal(failed.balance, 100 + 4900)
+  assert.equal(failed.balance, 4750)
   assert.ok(failed.orders.some(order => order.state === 'refunded'))
   mode = 'uncertain'
   const pendingId = crypto.randomUUID()
-  const pending = await (await call('/studio/points/shop/redeem', 'POST', { requestId: pendingId, productId: 'coupon_10' })).json()
-  assert.equal(pending.balance, 100 + 4740)
+  const pending = await (await call('/studio/points/shop/redeem', 'POST', { requestId: pendingId, productId: 'coupon_20' })).json()
+  assert.equal(pending.balance, 4400)
   assert.equal(sqlite.prepare('SELECT state FROM lumen_points_orders WHERE id=?').get(pendingId).state, 'review')
   sqlite.prepare("UPDATE coupon_rewards SET state='issued' WHERE reward_key=?").run(`shop:${pendingId}`)
   await reconcileShopCoupons(env)

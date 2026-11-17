@@ -18,7 +18,7 @@ Customer-facing changes from November 14-17, covering the latest 88-hour roundup
 #### Points shop
 
 - Open the new animated [Points shop](/account/points/shop) directly from Lumen Points.
-- Redeem **100 LP for 5% off**, **160 LP for 10% off**, **1,500 LP for a free plugin**, **750 LP for an extra account IP slot**, or **4,500 LP for a small custom-plugin request**.
+- Redeem **100 LP for 5% off**, **160 LP for 10% off**, **350 LP for 20% off**, **1,500 LP for a free plugin**, **750 LP for an extra account IP slot**, or **4,500 LP for a small custom-plugin request**.
 - Added three collectible profile badges and two animated profile effects.
 - Coupons and cosmetics are delivered automatically. Free plugins, IP-slot rewards and custom-plugin requests are fulfilled by staff; order history shows their progress.
 

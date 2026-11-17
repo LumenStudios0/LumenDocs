@@ -28,7 +28,7 @@ export async function reconcileShopCoupons(env) {
     WHERE reward_key LIKE 'shop:%' AND state='issuing' AND created_at<?`)
     .bind(new Date(Date.now() - 15 * 60000).toISOString()).run()
   const rows = (await env.COMMUNITY_DB.prepare(`SELECT id FROM lumen_points_orders
-    WHERE product_id IN ('coupon_5','coupon_10') AND state IN ('processing','review') ORDER BY updated_at LIMIT 20`).all()).results || []
+    WHERE product_id IN ('coupon_5','coupon_10','coupon_20') AND state IN ('processing','review') ORDER BY updated_at LIMIT 20`).all()).results || []
   for (const row of rows) await settleCoupon(env.COMMUNITY_DB, row.id)
 }
 

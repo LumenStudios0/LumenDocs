@@ -1,6 +1,7 @@
 export const shopProducts = [
   { id: 'coupon_5', name: '5% off your next purchase', price: 100, category: 'discounts', delivery: 'coupon', art: 'coupon', color: '#b892ff', description: 'One use across eligible Lumen products on BuiltByBit. Your code appears in Coupons.' },
   { id: 'coupon_10', name: '10% off your next purchase', price: 160, category: 'discounts', delivery: 'coupon', art: 'coupon', color: '#f5acff', description: 'A bigger saving for your next eligible BuiltByBit purchase. Single-use coupon.' },
+  { id: 'coupon_20', name: '20% off your next purchase', price: 350, category: 'discounts', delivery: 'coupon', art: 'coupon', color: '#ffd084', description: 'Save 20% on your next eligible BuiltByBit purchase. Your single-use code appears in Coupons.' },
   { id: 'free_product', name: 'Free product', price: 1500, category: 'plugins', delivery: 'staff', art: 'gift', color: '#78eac8', description: 'Choose a plugin you do not own. All staff are notified to arrange your license. This reward earns no points or point milestones.' },
   { id: 'ip_slot', name: '+1 IP slot', price: 750, category: 'plugins', delivery: 'staff', art: 'server', color: '#83c9ff', description: 'One extra account IP slot, applied by staff to your licensing account. Pending until staff confirm delivery.' },
   { id: 'badge_starlit', name: 'Starlit badge', price: 250, category: 'cosmetics', delivery: 'instant', art: 'badge', color: '#ffe09c', description: 'A permanent, shimmering star badge for your member profile. Not a staff rank.' },
