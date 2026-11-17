@@ -13,7 +13,7 @@ Spend points on **5% and 10% discount coupons, free plugins, an extra IP slot, p
 Spark unlocks at 3 eligible plugins, Radiance at 6, Nova at 9, and Lumen Elite with every active eligible plugin. Account IP allowances are **3 by default, then 4 / 5 / 7 / 10** by tier. One-time points bonuses are **50 / 100 / 150 / 250 LP**.
 
 ## Staff-gifted plugins count
-Existing eligible staff-granted licenses now earn points too. New grants can include points at the verified current USD listing price, once per member/plugin. Paid purchases are not credited twice; trials and points-shop free plugins are excluded.
+Existing eligible staff-granted licenses now earn points too. New grants can include points at the published USD catalog price, once per member/plugin. Paid purchases are not credited twice; trials and points-shop free plugins are excluded. Unpriced products wait until their points price is published.
 
 ## Know when points arrive
 New credits now send a private website notification. Notices for previous credits have also been sent; those notices do not award the same points again. Your wallet shows your current balance and transaction history.

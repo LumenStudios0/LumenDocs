@@ -84,6 +84,8 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           npx --yes wrangler@4.160.0 deploy
+          npx --yes wrangler@4.160.0 d1 execute lumen-community --remote --json \
+            --command "UPDATE lumen_points_accounts SET backfill_attempted_at=NULL,backfill_error=NULL WHERE staff_checked_at IS NULL AND (backfill_error LIKE 'Staff-license prices are unavailable%' OR backfill_error LIKE 'Staff-license point pricing is not configured%')"
       - name: Verify staff starter XP awards
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -258,7 +260,8 @@ jobs:
             (SELECT COUNT(DISTINCT user_id) FROM lumen_points_staff_rewards WHERE points_units>0) AS gift_recipients,
             (SELECT COALESCE(SUM(points_units),0)/100.0 FROM lumen_points_staff_rewards) AS gift_points,
             (SELECT COUNT(*) FROM lumen_points_history h WHERE delta_units>0 AND NOT EXISTS(SELECT 1 FROM community_notifications n WHERE n.id='points:earn:'||h.id)) AS missing_notices,
-            (SELECT COUNT(*) FROM lumen_points_adjustments a WHERE NOT EXISTS(SELECT 1 FROM community_notifications n WHERE n.id='points:adjust:'||a.id)) AS missing_adjustment_notices`
+            (SELECT COUNT(*) FROM lumen_points_adjustments a WHERE NOT EXISTS(SELECT 1 FROM community_notifications n WHERE n.id='points:adjust:'||a.id)) AS missing_adjustment_notices,
+            (SELECT GROUP_CONCAT(DISTINCT value) FROM lumen_points_accounts,json_each(staff_deferred_products)) AS unpriced_products`
           while (true) {
             const result = JSON.parse(execFileSync('npx', ['--yes', 'wrangler@4.160.0', 'd1', 'execute',
               'lumen-community', '--remote', '--json', '--command', sql], { encoding: 'utf8', timeout: 60000 }))
@@ -269,6 +272,7 @@ jobs:
             if (!summary.pending) {
               console.log(`Historical purchase credits verified: ${summary.recipients} members, ${summary.purchase_points} purchase LP, ${summary.tier_points} milestone LP.`)
               console.log(`Staff-license credits verified: ${summary.gift_recipients} members, ${summary.gift_points} LP. All previous and new credits have private notifications.`)
+              console.log(`License products awaiting published prices: ${summary.unpriced_products || 'none'}. Members see these as deferred, not awarded.`)
               break
             }
             if (Date.now() >= deadline) throw new Error(`Historical purchase checks are still pending for ${summary.pending} members.`)

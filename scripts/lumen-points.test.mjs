@@ -68,7 +68,8 @@ async function setup(t) {
       Buyer: { user_id: 55, discord_id: member, banned: false }, permanent: true, active: true }],
     registry: Array.from({ length: 12 }, (_, i) => ({ productId: `p${i}`, name: `Plugin ${i}`, active: true, plugins: [`plugin${i}`] })),
     ownership: [], failed: '', malformed: false,
-    quotes: productMarketplace.map(product => ({ resource_id: Number(product.resourceId), FinalPrice: { value: '12.35', currency: 'USD' } })),
+    resourceCatalog: [...productMarketplace.filter(product => product.resourceId).map(product => ({ resource_id: Number(product.resourceId), title: product.name })),
+      { resource_id: 199999, title: 'LumenCosmetics - Player cosmetics' }],
   }
   const previous = globalThis.fetch
   t.after(() => { globalThis.fetch = previous })
@@ -76,14 +77,15 @@ async function setup(t) {
     const url = new URL(input)
     if (url.hostname === 'api.builtbybit.com') {
       assert.equal(options.headers.Authorization, 'server-only-bbb-token')
-      if (url.pathname.endsWith('/discover/resources')) {
-        if (stateData.failed === 'prices') return Response.json({ error: 'Access denied' }, { status: 403 })
-        const ids = url.searchParams.get('resource_ids').split(',')
-        const rows = stateData.quotes.filter(row => ids.includes(String(row.resource_id)))
+      if (url.pathname.endsWith('/creator/resources')) {
+        if (stateData.failed === 'resources') return Response.json({ error: 'Access denied' }, { status: 403 })
+        assert.equal(url.searchParams.get('with'), null)
+        const rows = stateData.resourceCatalog
         return Response.json({ result: 'success', data: { resources: rows, stats: { total: rows.length, page: 1, per_page: 100, max_page: 1 } } })
       }
       assert.equal(url.searchParams.get('with'), 'Buyer')
-      assert.equal(url.searchParams.get('resource_ids'), ['1001', '1002', ...productMarketplace.map(product => product.resourceId)].join(','))
+      const discovered = sqlite.prepare('SELECT resource_id FROM lumen_points_resource_catalog').all().map(row => row.resource_id)
+      assert.equal(url.searchParams.get('resource_ids'), ['1001', '1002', ...productMarketplace.map(product => product.resourceId).filter(Boolean), ...discovered].join(','))
       const name = url.pathname.endsWith('/purchases') ? 'purchases' : 'licenses'
       if (stateData.failed === name) return Response.json({ error: 'Access denied' }, { status: 403 })
       const items = stateData[name]
@@ -554,27 +556,29 @@ test('genuine paid purchases keep their points when a license expires, but owner
   assert.equal(free.balance, 0)
 })
 
-test('existing staff licenses earn verified listing points once and retain them after expiry or a later opt-out', async t => {
+test('existing staff licenses earn published-price points once and retain them after expiry or a later opt-out', async t => {
   const { call, data, clearCache, sqlite, env } = await setup(t)
   data.registry = staffRegistry(); data.ownership = ['gladiator']; data.purchases = []
   let summary = await (await call('/studio/points/sync', 'POST', {})).json()
   assert.equal(summary.checks.staffLicenses.ok, true)
-  assert.equal(summary.staffLicensePoints, 123.5)
-  assert.equal(summary.balance, 123.5)
+  assert.equal(summary.staffLicensePoints, 139.7)
+  assert.equal(summary.balance, 139.7)
   assert.equal(summary.purchasePoints, 0)
   assert.equal(summary.eligibleReferralPoints, 0)
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM community_notifications WHERE id LIKE 'points:adjust:%'").get().n, 1)
-  data.quotes[0].FinalPrice.value = '99.99'
+  const oldPrice = productMarketplace[0].priceCents
+  t.after(() => { productMarketplace[0].priceCents = oldPrice })
+  productMarketplace[0].priceCents = 9999
   clearCache()
   summary = await (await call('/studio/points/sync', 'POST', {})).json()
-  assert.equal(summary.balance, 123.5)
+  assert.equal(summary.balance, 139.7)
   data.ownership = []
   clearCache()
-  assert.equal((await (await call('/studio/points/sync', 'POST', {})).json()).balance, 123.5)
+  assert.equal((await (await call('/studio/points/sync', 'POST', {})).json()).balance, 139.7)
   data.ownership = ['gladiator']
   await saveLicensePointsChoice(env.COMMUNITY_DB, member, 'gladiator', false, stranger)
   clearCache()
-  assert.equal((await (await call('/studio/points/sync', 'POST', {})).json()).balance, 123.5)
+  assert.equal((await (await call('/studio/points/sync', 'POST', {})).json()).balance, 139.7)
 })
 
 test('grant opt-outs, approved trials and shop free products cannot mint staff-license points', async t => {
@@ -594,7 +598,7 @@ test('grant opt-outs, approved trials and shop free products cannot mint staff-l
   await saveLicensePointsChoice(env.COMMUNITY_DB, member, 'gladiator', true, stranger)
   clearCache()
   summary = await (await call('/studio/points/sync', 'POST', {})).json()
-  assert.equal(summary.staffLicensePoints, 123.5)
+  assert.equal(summary.staffLicensePoints, 139.7)
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_staff_rewards').get().n, 1)
 })
 
@@ -608,13 +612,13 @@ test('paid plugins are never topped up as gifts and later purchases reconcile ex
   data.purchases = []; data.ownership = ['lumenauction']
   clearCache()
   summary = await (await call('/studio/points/sync', 'POST', {})).json()
-  assert.equal(summary.balance, 123.5)
+  assert.equal(summary.balance, 89.9)
   data.purchases = [purchase({ purchase_id: 502, content_id: 132967, FinalPrice: { value: '5.00', currency: 'USD' } })]
   clearCache()
   summary = await (await call('/studio/points/sync', 'POST', {})).json()
   assert.equal(summary.purchasePoints, 50)
-  assert.equal(summary.staffLicensePoints, 73.5)
-  assert.equal(summary.balance, 123.5)
+  assert.equal(summary.staffLicensePoints, 39.9)
+  assert.equal(summary.balance, 89.9)
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_purchases').get().n, 2)
   assert.ok(summary.history.some(row => row.points === -50 && row.label.includes('reconciliation')))
   data.purchases[0].FinalPrice.value = '20.00'
@@ -624,18 +628,52 @@ test('paid plugins are never topped up as gifts and later purchases reconcile ex
   assert.equal(summary.staffLicensePoints, 0)
 })
 
-test('failed purchase or price verification fails closed without awarding gift points', async t => {
+test('failed purchase verification cannot award gifts, while unpriced products defer without blocking priced licenses', async t => {
   const { call, data, clearCache, sqlite } = await setup(t)
   data.registry = staffRegistry(); data.ownership = ['gladiator']; data.purchases = []
-  for (const failed of ['purchases', 'prices']) {
-    data.failed = failed; clearCache()
-    const summary = await (await call('/studio/points/sync', 'POST', {})).json()
-    assert.equal(summary.balance, 0)
-    assert.equal(summary.checks.staffLicenses.ok, false)
-    assert.match(summary.checks.staffLicenses.error, failed === 'prices' ? /HTTP 403/ : /purchase verification/)
-  }
-  data.failed = ''; data.quotes[0].FinalPrice.currency = 'EUR'; clearCache()
-  assert.equal((await (await call('/studio/points/sync', 'POST', {})).json()).balance, 0)
+  data.failed = 'purchases'; clearCache()
+  let summary = await (await call('/studio/points/sync', 'POST', {})).json()
+  assert.equal(summary.balance, 0)
+  assert.equal(summary.checks.staffLicenses.ok, false)
+  assert.match(summary.checks.staffLicenses.error, /purchase verification/)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_staff_rewards').get().n, 0)
+  data.failed = ''; data.registry.push({ productId: 'unpriced', name: 'Unpriced plugin', active: true, plugins: ['unpriced'] })
+  data.ownership.push('unpriced'); clearCache()
+  summary = await (await call('/studio/points/sync', 'POST', {})).json()
+  assert.equal(summary.balance, 139.7)
+  assert.equal(summary.checks.staffLicenses.ok, true)
+  assert.deepEqual(summary.deferredLicenseProducts, ['Unpriced plugin'])
+})
+
+test('newly identified priced products verify purchase identities before awarding staff-license points', async t => {
+  const { call, data, purchase, sqlite, clearCache } = await setup(t)
+  data.registry = staffRegistry(); data.ownership = ['lumenbounty', 'lumencosmetics']
+  data.purchases = [purchase({ content_id: 132973, FinalPrice: { value: '8.97', currency: 'USD' } })]
+  let summary = await (await call('/studio/points/sync', 'POST', {})).json()
+  assert.equal(summary.purchasePoints, 89.7)
+  assert.equal(summary.staffLicensePoints, 59.9)
+  assert.equal(summary.balance, 149.6)
+  assert.equal(sqlite.prepare("SELECT resource_id FROM lumen_points_resource_catalog WHERE product_id='lumencosmetics'").get().resource_id, '199999')
+  data.purchases.push(purchase({ purchase_id: 502, content_id: 199999, FinalPrice: { value: '4.00', currency: 'USD' } }))
+  clearCache()
+  summary = await (await call('/studio/points/sync', 'POST', {})).json()
+  assert.equal(summary.purchasePoints, 129.7)
+  assert.equal(summary.staffLicensePoints, 19.9)
+  assert.equal(summary.balance, 149.6)
+})
+
+test('unavailable or ambiguous marketplace resource identities cannot mint gift points', async t => {
+  const { call, data, clearCache, sqlite } = await setup(t)
+  data.registry = staffRegistry(); data.ownership = ['lumencosmetics']; data.purchases = []
+  data.failed = 'resources'
+  let summary = await (await call('/studio/points/sync', 'POST', {})).json()
+  assert.equal(summary.balance, 0)
+  assert.equal(summary.checks.purchases.ok, false)
+  data.failed = ''; data.resourceCatalog.push({ resource_id: 199998, title: 'LumenCosmetics - Another listing' }); clearCache()
+  summary = await (await call('/studio/points/sync', 'POST', {})).json()
+  assert.equal(summary.balance, 0)
+  assert.match(summary.checks.purchases.error, /could not be uniquely verified/)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_resource_catalog').get().n, 0)
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM lumen_points_staff_rewards').get().n, 0)
 })
 

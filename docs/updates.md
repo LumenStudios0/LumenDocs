@@ -5,7 +5,7 @@ description: Customer-facing studio news, Lumen Points rewards, loyalty improvem
 
 # Studio updates
 
-The latest roundup covers customer-facing changes published in the previous 48 hours.
+Roundups cover customer-facing changes from the 48 hours before publication.
 Older published updates remain available below.
 
 <CommunityWorkspace mode="updates" />

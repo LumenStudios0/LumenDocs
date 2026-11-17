@@ -1,5 +1,5 @@
 import { ensurePointsAccount, pointsBalance } from './points-account.js'
-import { loyaltyStatus } from './loyalty.js'
+import { activeRegistry, loyaltyStatus } from './loyalty.js'
 import { syncStaffLicensePoints } from './license-points.js'
 import { productMarketplace } from '../shared/product-marketplace.mjs'
 
@@ -25,7 +25,7 @@ async function marketplaceRows(env, name, resources, deadline) {
   let total
   for (let page = 1; page <= 25; page++) {
     if (Date.now() >= deadline) throw failure('Purchase verification timed out. Please try again later.')
-    const query = new URLSearchParams({ resource_ids: resources.join(','), with: 'Buyer', page: String(page), per_page: '100' })
+    const query = new URLSearchParams({ resource_ids: resources.join(','), ...(name === 'purchases' ? { with: 'Buyer' } : {}), page: String(page), per_page: '100' })
     const response = await fetch(`https://api.builtbybit.com/v2/resources/creator/${name}?${query}`, {
       headers: { Authorization: env.BUILDBYBIT_API_AUTHORIZATION, Accept: 'application/json' },
       signal: AbortSignal.timeout(Math.min(10000, deadline - Date.now())),
@@ -56,16 +56,39 @@ function buyer(row) {
   return row.Buyer
 }
 
-function purchaseResources(env) {
+async function purchaseResources(env) {
   const resources = (env.BUILDBYBIT_RESOURCE_IDS || '').split(',').map(value => value.trim())
   if (!env.BUILDBYBIT_API_AUTHORIZATION || !resources.length || resources.length > 50 || resources.some(value => !id(value))) {
     throw failure('Purchase points need the BuiltByBit creator authorization and resource IDs configured.')
   }
-  return [...new Set([...resources, ...productMarketplace.map(product => product.resourceId)])]
+  const resolved = (await env.COMMUNITY_DB.prepare('SELECT resource_id FROM lumen_points_resource_catalog').all()).results || []
+  return [...new Set([...resources, ...productMarketplace.map(product => product.resourceId).filter(Boolean), ...resolved.map(row => row.resource_id)])]
+}
+
+async function preparePointResourceCatalog(env) {
+  const rows = (await env.COMMUNITY_DB.prepare('SELECT product_id FROM lumen_points_resource_catalog').all()).results || []
+  const unresolved = productMarketplace.filter(product => !product.resourceId && !rows.some(row => row.product_id === product.productId))
+  if (!unresolved.length) return
+  const registry = await activeRegistry(env)
+  const needed = unresolved.filter(product => registry.some(item => item.productId === product.productId || item.name.toLowerCase() === product.name.toLowerCase()))
+  if (!needed.length) return
+  const resources = await marketplaceRows(env, 'resources', [], Date.now() + 30000)
+  if (resources.some(row => !id(row.resource_id) || typeof row.title !== 'string') ||
+      new Set(resources.map(row => id(row.resource_id))).size !== resources.length) throw failure('Marketplace resource identities are invalid.')
+  const matches = needed.map(product => {
+    const name = product.name.toLowerCase()
+    const matches = resources.filter(row => row.title.toLowerCase() === name ||
+      row.title.toLowerCase().startsWith(name) && /[^a-z0-9]/.test(row.title[name.length] || ''))
+    if (matches.length !== 1) throw failure(`The marketplace listing for ${product.name} could not be uniquely verified.`)
+    return { productId: product.productId, resourceId: id(matches[0].resource_id) }
+  })
+  await env.COMMUNITY_DB.batch(matches.map(product => env.COMMUNITY_DB.prepare(
+    'INSERT INTO lumen_points_resource_catalog(product_id,resource_id,verified_at) VALUES (?,?,?) ON CONFLICT(product_id) DO NOTHING',
+  ).bind(product.productId, product.resourceId, new Date().toISOString())))
 }
 
 export async function verifiedPointPurchases(env, userId, purchaseRows) {
-  const resources = purchaseResources(env)
+  const resources = await purchaseResources(env)
   const account = await env.COMMUNITY_DB.prepare('SELECT buyer_id FROM lumen_points_accounts WHERE user_id=?').bind(userId).first()
   const purchases = purchaseRows ?? await marketplaceRows(env, 'purchases', resources, Date.now() + 30000)
   const buyerIds = new Set(), seen = new Set(), verified = []
@@ -166,7 +189,10 @@ export async function syncPointEarnings(env, userId, purchaseRows) {
       const last = name === 'purchases' ? account.purchase_checked_at : name === 'loyalty' ? account.tier_checked_at : account.staff_checked_at
       if (last && Date.now() - Date.parse(last) < 60000) { checks[name] = { ok: true, checkedAt: last }; continue }
       try {
-        if (name === 'purchases') await savePurchases(env, userId, await verifiedPointPurchases(env, userId, purchaseRows))
+        if (name === 'purchases') {
+          if (purchaseRows === undefined) await preparePointResourceCatalog(env)
+          await savePurchases(env, userId, await verifiedPointPurchases(env, userId, purchaseRows))
+        }
         else if (name === 'loyalty') await saveMilestones(env, userId)
         else {
           if (!checks.purchases?.ok) throw failure('Staff-license points are waiting for successful purchase verification to prevent duplicate credits.')
@@ -196,7 +222,10 @@ export async function backfillMemberPoints(env) {
   await db.batch(accounts.map(account => db.prepare('UPDATE lumen_points_accounts SET backfill_attempted_at=?,backfill_error=NULL WHERE user_id=?')
     .bind(now, account.user_id)))
   let purchases, purchaseError
-  try { purchases = await marketplaceRows(env, 'purchases', purchaseResources(env), Date.now() + 30000) }
+  try {
+    await preparePointResourceCatalog(env)
+    purchases = await marketplaceRows(env, 'purchases', await purchaseResources(env), Date.now() + 30000)
+  }
   catch (error) {
     purchaseError = error instanceof Error ? error.message : 'Historical purchases could not be verified.'
     console.error('Lumen Points backfill purchase scan failed:', purchaseError)
@@ -250,7 +279,7 @@ export async function redeemPointReferral(db, userId, code) {
 }
 
 async function pointsSummary(db, userId) {
-  const account = await db.prepare('SELECT referral_code,purchase_checked_at,tier_checked_at FROM lumen_points_accounts WHERE user_id=?').bind(userId).first()
+  const account = await db.prepare('SELECT referral_code,purchase_checked_at,tier_checked_at,staff_deferred_products FROM lumen_points_accounts WHERE user_id=?').bind(userId).first()
   const balance = await pointsBalance(db, userId)
   const count = await db.prepare("SELECT COUNT(*) AS n FROM lumen_points_rewards WHERE user_id=? AND kind='referral' AND points_units>0").bind(userId).first()
   const redeemed = await db.prepare('SELECT redeemed_at FROM lumen_points_referrals WHERE buyer_user_id=?').bind(userId).first()
@@ -277,7 +306,8 @@ async function pointsSummary(db, userId) {
     }
   }
   return {
-    balance, staffLicensePoints: staff.units / 100, referralCode: account.referral_code, successfulReferrals: count.n,
+    balance, staffLicensePoints: staff.units / 100, deferredLicenseProducts: JSON.parse(account.staff_deferred_products),
+    referralCode: account.referral_code, successfulReferrals: count.n,
     redeemedAt: redeemed?.redeemed_at || null, eligibleReferralPoints: eligible.units / 200,
     referralExpiresAt: eligible.oldest ? new Date(Date.parse(eligible.oldest) + 86400000).toISOString() : null,
     purchaseCheckedAt: account.purchase_checked_at, tierCheckedAt: account.tier_checked_at,

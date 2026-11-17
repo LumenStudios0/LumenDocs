@@ -113,7 +113,7 @@ onUnmounted(() => { generation++; window.removeEventListener('lumen-discord-user
       <label>Discord customer IDs<textarea v-model="customerIds" rows="4" required :disabled="busy || !!batchId" placeholder="One Discord ID per line" /></label>
       <label>Expires at (optional; blank means lifetime)<input v-model="expiry" type="datetime-local" :disabled="busy || !!batchId"></label>
       <label class="website-check"><input v-model="giveLumenPoints" type="checkbox" :disabled="busy || !!batchId">Give Lumen Points</label>
-      <p class="website-note">One award per member/plugin at its verified current USD listing price. Paid purchases are not credited twice. Trials and points-shop free products are excluded.</p>
+      <p class="website-note">One award per member/plugin at its published USD catalog price. Paid purchases are not credited twice. Trials and points-shop free products are excluded; unpriced products wait for catalog setup.</p>
       <button class="website-primary" type="submit" :disabled="busy || !!batchId || !grantProduct">Grant licenses</button>
       <button v-if="batchId" type="button" :disabled="busy" @click="clearBatch">Start a different batch</button>
       <ul v-if="outcomes.length"><li v-for="outcome in outcomes" :key="outcome.customerId"><strong>{{ outcome.customerId }} — {{ outcome.state }}</strong>: {{ outcome.message }}</li></ul>

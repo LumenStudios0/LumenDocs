@@ -15,6 +15,7 @@ interface Summary {
   tierCheckedAt: string | null
   purchasePoints: number
   staffLicensePoints: number
+  deferredLicenseProducts: string[]
   referralPoints: number
   milestones: { id: string; name: string; count: number | null; points: number; awarded: boolean }[]
   periods: Record<Period, { purchasePoints: number; referralPoints: number; referrals: number }>
@@ -113,6 +114,7 @@ onUnmounted(() => { generation++; window.removeEventListener('lumen-discord-user
     <p v-if="error" class="points-message is-error" role="alert">{{ error }}</p>
     <p v-if="notice" class="points-message" role="status">{{ notice }}</p>
     <p v-for="message in checkErrors" :key="message" class="points-message is-error" role="alert">{{ message }} Your saved balance remains visible.</p>
+    <p v-if="status?.deferredLicenseProducts?.length" class="points-message">Waiting for published points prices or marketplace identification: {{ status.deferredLicenseProducts.join(', ') }}. These licenses have not earned license-value points yet; your other eligible licenses still count.</p>
     <template v-if="status">
       <div class="points-stats">
         <div><span>PURCHASE POINTS</span><strong>{{ formatPoints(status.purchasePoints) }} <small>LP</small></strong></div>
@@ -161,7 +163,7 @@ onUnmounted(() => { generation++; window.removeEventListener('lumen-discord-user
         <p v-else class="points-empty">Your story starts here. Check earnings after your next purchase or referral.</p>
       </section>
     </template>
-    <footer class="points-footer"><strong>Real purchases. Real rewards.</strong><p>Purchase checks use verified BuiltByBit buyer identities and final USD amounts. Link the same Discord account on BuiltByBit. Eligible staff-granted licenses also earn points once per member/plugin at the verified current USD listing price, unless points were disabled for that grant. Existing eligible grants count automatically. Paid purchases are not credited twice. Trials and points-shop free products never earn license points, and only real paid purchases qualify for referrals. Invalidated or missing purchases and their referral bonuses are adjusted on verification. Spend points in the shop; points have no cash value.</p><p v-if="status?.purchaseCheckedAt">Purchases last verified {{ date(status.purchaseCheckedAt) }}. Checks are cached for one minute.</p></footer>
+    <footer class="points-footer"><strong>Real purchases. Real rewards.</strong><p>Purchase checks use verified BuiltByBit buyer identities and final USD amounts. Link the same Discord account on BuiltByBit. Eligible staff-granted licenses also earn points once per member/plugin at the studio's published USD catalog price, unless points were disabled for that grant. Existing eligible grants count automatically. Paid purchases are not credited twice. Trials and points-shop free products never earn license points, and only real paid purchases qualify for referrals. Unpriced or unidentified products wait for catalog setup rather than using an invented value. Invalidated or missing purchases and their referral bonuses are adjusted on verification. Spend points in the shop; points have no cash value.</p><p v-if="status?.purchaseCheckedAt">Purchases last verified {{ date(status.purchaseCheckedAt) }}. Checks are cached for one minute.</p></footer>
   </div>
 </template>
 

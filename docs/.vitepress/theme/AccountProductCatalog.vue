@@ -14,17 +14,17 @@ type Product = {
 }
 
 const products: Product[] = [
-  { name: 'Gladiator', price: '$19.99', url: 'https://builtbybit.com/resources/gladiator.132519/', docs: '/products/gladiator', category: 'Combat' },
-  { name: 'LumenAuction', price: 'See current listing', url: 'https://builtbybit.com/resources/lumenauction.132967/', docs: '/products/lumen-auction', category: 'Economy' },
-  { name: 'LumenBounty', price: 'Coming soon', url: '/products/lumen-bounty', docs: '/products/lumen-bounty', category: 'Coming soon' },
+  { name: 'Gladiator', price: '$13.97', url: 'https://builtbybit.com/resources/gladiator.132519/', docs: '/products/gladiator', category: 'Combat' },
+  { name: 'LumenAuction', price: '$8.99', url: 'https://builtbybit.com/resources/lumenauction.132967/', docs: '/products/lumen-auction', category: 'Economy' },
+  { name: 'LumenBounty', price: '$8.97', url: 'https://builtbybit.com/resources/lumenbounty.132973/', docs: '/products/lumen-bounty', category: 'Combat' },
   { name: 'LumenDuels', price: '$12.99', url: 'https://builtbybit.com/resources/lumenduels.119760/', docs: '/products/lumen-duels', category: 'Combat' },
   { name: 'LumenDuels Premium', price: '$18.99', url: 'https://builtbybit.com/resources/lumenduels-premium.132188/', docs: '/products/lumen-duels-premium', category: 'Combat' },
   { name: 'LumenEconomy', price: '$5.99', url: 'https://builtbybit.com/resources/lumeneconomy.132341/', docs: '/products/lumen-economy', category: 'Economy' },
-  { name: 'LumenEssentials', price: 'See current listing', url: 'https://builtbybit.com/resources/lumenessentials.132966/', docs: '/products/lumen-essentials', category: 'Utilities' },
-  { name: 'LumenOrder', price: 'See current listing', url: 'https://builtbybit.com/resources/lumenorders.132969/', docs: '/products/lumen-order', category: 'Utilities' },
+  { name: 'LumenEssentials', price: '$11.99', url: 'https://builtbybit.com/resources/lumenessentials.132966/', docs: '/products/lumen-essentials', category: 'Utilities' },
+  { name: 'LumenOrder', price: '$8.99', url: 'https://builtbybit.com/resources/lumenorders.132969/', docs: '/products/lumen-order', category: 'Utilities' },
   { name: 'LumenShards', price: '$8.99', url: 'https://builtbybit.com/resources/lumenshards.116897/', docs: '/products/lumen-shards', category: 'Economy' },
-  { name: 'LumenSpoofer', price: 'See current listing', url: 'https://builtbybit.com/resources/lumenspoof.135950/', docs: '/products/lumen-spoofer', category: 'Utilities' },
-  { name: 'LumenSpawners', price: 'See current listing', url: 'https://builtbybit.com/resources/lumenspawners.132970/', docs: '/products/lumen-spawners', category: 'Gameplay' },
+  { name: 'LumenSpoofer', price: '$14.97', url: 'https://builtbybit.com/resources/lumenspoof.135950/', docs: '/products/lumen-spoofer', category: 'Utilities' },
+  { name: 'LumenSpawners', price: '$5.99', url: 'https://builtbybit.com/resources/lumenspawners.132970/', docs: '/products/lumen-spawners', category: 'Gameplay' },
 ]
 
 const selectedCategory = ref<'owned' | 'not-owned'>('owned')
