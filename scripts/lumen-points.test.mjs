@@ -760,13 +760,17 @@ test('previous positive earnings receive one retroactive notice and future award
 test('the public roundup is broadcast once without publishing private credit notices', async t => {
   const { call, sqlite } = await setup(t)
   await call('/studio/points/sync', 'POST', {})
-  const publication = await readFile(new URL('../worker/public-updates/2026-11-17.sql', import.meta.url), 'utf8')
-  sqlite.exec(publication); sqlite.exec(publication)
+  for (const file of ['2026-11-17.sql', '2026-11-17-88-hours.sql']) {
+    const publication = await readFile(new URL(`../worker/public-updates/${file}`, import.meta.url), 'utf8')
+    sqlite.exec(publication); sqlite.exec(publication)
+  }
   const publicRows = sqlite.prepare("SELECT * FROM community_notifications WHERE audience='all' AND kind='update'").all()
-  assert.equal(publicRows.length, 1)
-  assert.equal(publicRows[0].recipient_id, null)
-  assert.equal(publicRows[0].link, '/updates')
-  assert.doesNotMatch(publicRows[0].body, /token|migration|secret|backend|commit|workflow|123456789012345678/i)
+  assert.equal(publicRows.length, 2)
+  for (const row of publicRows) {
+    assert.equal(row.recipient_id, null)
+    assert.equal(row.link, '/updates')
+    assert.doesNotMatch(row.body, /token|migration|secret|backend|commit|workflow|webhook|123456789012345678/i)
+  }
   assert.ok(sqlite.prepare("SELECT COUNT(*) AS n FROM community_notifications WHERE id LIKE 'points:%' AND audience='user' AND recipient_id=?").get(member).n > 0)
 })
 
